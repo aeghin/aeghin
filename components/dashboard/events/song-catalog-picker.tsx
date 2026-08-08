@@ -283,7 +283,7 @@ export function CatalogPicker({
         )}
 
         {/* Song list */}
-        <ScrollArea className="h-96 pr-2">
+        <ScrollArea className="h-96 pr-2 [&>[data-slot=scroll-area-viewport]>div]:block!">
           <div className="space-y-1">
             {filtered.length === 0 ? (
               <p className="py-8 text-center text-xs text-muted-foreground">
