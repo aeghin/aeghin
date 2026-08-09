@@ -86,7 +86,9 @@ const describeActivity = (item: ActivityItem): ReactNode => {
         </>
       );
     case ActivityType.INVITE_SENT:
-      return item.eventId ? (
+      // eventName, not eventId: the FK is nulled when the event is deleted, and
+      // that must not turn an event invite into an org invite.
+      return item.eventName ? (
         <>
           <Name>{item.actorName}</Name> sent invites for{" "}
           <Name>{item.eventName ?? item.targetName}</Name>

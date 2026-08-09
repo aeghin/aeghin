@@ -57,15 +57,14 @@ export const getOrganizationActivity = async (
       targetName: true,
       detail: true,
       eventId: true,
+      // Read from the snapshot, not a join on event — the join goes null the
+      // moment the event is deleted, and these rows outlive their event.
+      eventName: true,
       createdAt: true,
-      event: { select: { name: true } },
     },
   });
 
-  return rows.map(({ event, ...row }) => ({
-    ...row,
-    eventName: event?.name ?? null,
-  }));
+  return rows;
 };
 
 // Cached apart from the rows so paging through the feed reuses a single count

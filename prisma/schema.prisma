@@ -369,10 +369,15 @@ model ActivityLog {
   actorName  String?
   targetName String?
   detail     String?
+  // The event's name at write time. eventId is SetNull, so this is also the only
+  // durable "this activity was about an event" flag — read it, not eventId, when
+  // deciding how to phrase a row.
+  eventName  String?
 
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
+  // Only good for linking to a live event; null once the event is deleted.
   eventId String?
   event   Event?  @relation(fields: [eventId], references: [id], onDelete: SetNull)
 

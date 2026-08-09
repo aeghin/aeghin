@@ -28,6 +28,9 @@ type LogActivityInput = {
   organizationId: string;
   type: ActivityType;
   eventId?: string;
+  // Pass this whenever eventId is passed — eventId is nulled when the event is
+  // deleted, so the snapshot is what keeps the row readable afterwards.
+  eventName?: string;
   actorName?: string;
   targetName?: string;
   detail?: string;

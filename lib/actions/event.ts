@@ -350,6 +350,7 @@ export async function createEvent(
     await logActivity({
       organizationId,
       eventId: newEventId,
+      eventName: name,
       type: ActivityType.EVENT_CREATED,
       actorName: `${users.firstName} ${users.lastName}`,
       targetName: name,
@@ -360,6 +361,7 @@ export async function createEvent(
       await logActivity({
         organizationId,
         eventId: newEventId,
+        eventName: name,
         type: ActivityType.SMART_SCHEDULING_ENABLED,
         actorName: `${users.firstName} ${users.lastName}`,
       });
@@ -464,11 +466,13 @@ export const declineEventInvitation = async (organizationId: string, eventId: st
 
     const declinerName = `${user.firstName} ${user.lastName}`;
     const roleLabel = volunteerRoleLabels[assignment.role];
+    const eventName = assignment.event.name;
 
     if (!assignment.event.smartSchedulingEnabled) {
       await logActivity({
         organizationId,
         eventId,
+        eventName,
         type: ActivityType.SMART_FILL_SKIPPED,
         actorName: declinerName,
         targetName: roleLabel,
@@ -514,6 +518,7 @@ export const declineEventInvitation = async (organizationId: string, eventId: st
         await logActivity({
           organizationId,
           eventId,
+          eventName,
           type: ActivityType.AUTO_INVITE_SENT,
           actorName: declinerName,
           targetName: `${replacement.firstName} ${replacement.lastName}`,
@@ -541,6 +546,7 @@ export const declineEventInvitation = async (organizationId: string, eventId: st
         await logActivity({
           organizationId,
           eventId,
+          eventName,
           type: ActivityType.SMART_FILL_NO_CANDIDATES,
           actorName: declinerName,
           targetName: roleLabel,
@@ -557,6 +563,7 @@ export const declineEventInvitation = async (organizationId: string, eventId: st
         await logActivity({
           organizationId,
           eventId,
+          eventName,
           type: ActivityType.SMART_FILL_ALL_UNAVAILABLE,
           actorName: declinerName,
           targetName: roleLabel,
@@ -566,6 +573,7 @@ export const declineEventInvitation = async (organizationId: string, eventId: st
         await logActivity({
           organizationId,
           eventId,
+          eventName,
           type: ActivityType.SMART_FILL_FAILED,
           actorName: declinerName,
           targetName: roleLabel,
@@ -576,6 +584,7 @@ export const declineEventInvitation = async (organizationId: string, eventId: st
       await logActivity({
         organizationId,
         eventId,
+        eventName,
         type: ActivityType.SMART_FILL_FAILED,
         actorName: declinerName,
         targetName: roleLabel,
@@ -674,19 +683,23 @@ export const setEventSmartScheduling = async (
 
     if (membership.role === OrgRole.MEMBER) return { success: false, error: "Unauthorized" };
 
-    await prisma.event.update({
+    const updatedEvent = await prisma.event.update({
       where: {
         id: eventId,
         organizationId,
       },
       data: {
         smartSchedulingEnabled: enabled
+      },
+      select: {
+        name: true
       }
     });
 
     await logActivity({
       organizationId,
       eventId,
+      eventName: updatedEvent.name,
       type: enabled
         ? ActivityType.SMART_SCHEDULING_ENABLED
         : ActivityType.SMART_SCHEDULING_DISABLED,
@@ -1112,6 +1125,7 @@ export const inviteMembersToEvent = async (
     await logActivity({
       organizationId,
       eventId,
+      eventName: event.name,
       type: ActivityType.INVITE_SENT,
       actorName: `${user.firstName} ${user.lastName}`,
       targetName: event.name,
@@ -1180,6 +1194,11 @@ export const deleteEvent = async (organizationId: string, eventId: string): Prom
         assignments: {
           select: { userId: true, status: true },
         },
+        // Deleting the event cascades these away, which changes each of those
+        // members' top-songs tally — read them while they still exist.
+        setlistSongs: {
+          select: { setlistSongAssignment: { select: { userId: true } } },
+        },
       },
     });
 
@@ -1201,10 +1220,21 @@ export const deleteEvent = async (organizationId: string, eventId: string): Prom
 
     updateTag(`org-${organizationId}-events`);
     updateTag(`event-${eventId}-org-${organizationId}-details`);
+    updateTag(`event-${eventId}-org-${organizationId}-activity`);
     updateTag(`org-${organizationId}-activity`);
 
     for (const { userId } of event.assignments) {
       updateTag(`user-${userId}-events-${organizationId}`);
+    };
+
+    const setlistUserIds = new Set(
+      event.setlistSongs.flatMap((s) =>
+        s.setlistSongAssignment.map((a) => a.userId),
+      ),
+    );
+
+    for (const userId of setlistUserIds) {
+      updateTag(`user-${userId}-songs-${organizationId}`);
     };
 
     const affectsAcceptanceStats = event.assignments.some(
