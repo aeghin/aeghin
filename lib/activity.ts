@@ -27,6 +27,7 @@ export const orgRoleLabels: Record<OrgRole, string> = {
 type LogActivityInput = {
   organizationId: string;
   type: ActivityType;
+  eventId?: string;
   actorName?: string;
   targetName?: string;
   detail?: string;

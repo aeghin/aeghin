@@ -13,9 +13,11 @@ import { EventDetailsCard } from "@/components/dashboard/events/event-details-ca
 import { EventSetlistSection } from "@/components/dashboard/events/event-setlist-section";
 import { EventAssignmentsCard } from "@/components/dashboard/events/event-assignment-section";
 import { EventChatPanel } from "@/components/dashboard/events/event-chat-panel";
+import { SmartSchedulingActivity } from "@/components/dashboard/events/smart-scheduling-activity";
 // import { EventStatusCard } from "@/components/dashboard/events/event-status-card";
 import { currentUser } from "@/lib/services/user";
 import { getEventDetailsById } from "@/lib/services/events";
+import { getEventSmartSchedulingActivity } from "@/lib/services/activity";
 import { getEventMessages } from "@/lib/services/chat";
 import {
   getOrgMembersWithUser,
@@ -64,6 +66,18 @@ export default async function EventDetailPage({
   // Only managers can invite, so members never pay for the roster
   const members = canManage ? await getOrgMembersWithUser(orgId) : [];
 
+  const smartSchedulingActivity = canManage
+    ? await getEventSmartSchedulingActivity(eventId, orgId)
+    : [];
+
+  const now = Date.now();
+  const expiredInviteCount = canManage
+    ? event.assignments.filter(
+        (a) =>
+          a.status === InvitationStatus.PENDING && a.expiresAt.getTime() < now,
+      ).length
+    : 0;
+
   return (
     <main className="mx-auto max-w-screen-2xl px-6 py-8">
       <div className="space-y-8">
@@ -81,6 +95,16 @@ export default async function EventDetailPage({
             canManage={canManage}
           />
         </AnimatedSection>
+
+        {canManage && (
+          <AnimatedSection delay={0.15}>
+            <SmartSchedulingActivity
+              enabled={event.smartSchedulingEnabled}
+              items={smartSchedulingActivity}
+              expiredCount={expiredInviteCount}
+            />
+          </AnimatedSection>
+        )}
 
         <div className="grid gap-6 lg:grid-cols-3">
           <div className="space-y-6 lg:col-span-2">

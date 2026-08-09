@@ -449,66 +449,128 @@ export const declineEventInvitation = async (organizationId: string, eventId: st
     updateTag(`event-${eventId}-org-${organizationId}-details`);
     updateTag(`org-${organizationId}-acceptance-stats`);
 
+    const declinerName = `${user.firstName} ${user.lastName}`;
+    const roleLabel = volunteerRoleLabels[assignment.role];
+
+    if (!assignment.event.smartSchedulingEnabled) {
+      await logActivity({
+        organizationId,
+        eventId,
+        type: ActivityType.SMART_FILL_SKIPPED,
+        actorName: declinerName,
+        targetName: roleLabel,
+      });
+
+      updateTag(`org-${organizationId}-activity`);
+      updateTag(`event-${eventId}-org-${organizationId}-activity`);
+
+      return { success: true };
+    }
+
     // Smart scheduling: auto-invite the next best available member into the
     // role just vacated. Best-effort and isolated — if anything here fails, the
     // decline the user already committed must still succeed.
-    if (assignment.event.smartSchedulingEnabled) {
-      try {
-        const replacement = await findBestReplacement({
-          organizationId,
-          eventId,
-          declinedRole: assignment.role,
+    try {
+      const outcome = await findBestReplacement({
+        organizationId,
+        eventId,
+        declinedRole: assignment.role,
+      });
+
+      if (outcome.status === "FOUND") {
+        const replacement = outcome.candidate;
+
+        await prisma.eventAssignment.create({
+          data: {
+            eventId,
+            userId: replacement.userId,
+            role: assignment.role,
+            assignedById: assignment.assignedById,
+            organizationId,
+            status: InvitationStatus.PENDING,
+            autoAssigned: true,
+            // Keep the slot's original deadline; fall back to a fresh window
+            // only if that deadline has already passed.
+            expiresAt:
+              assignment.expiresAt > new Date()
+                ? assignment.expiresAt
+                : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+          },
         });
 
-        if (replacement) {
-          await prisma.eventAssignment.create({
-            data: {
-              eventId,
-              userId: replacement.userId,
-              role: assignment.role,
-              assignedById: assignment.assignedById,
-              organizationId,
-              status: InvitationStatus.PENDING,
-              autoAssigned: true,
-              // Keep the slot's original deadline; fall back to a fresh window
-              // only if that deadline has already passed.
-              expiresAt:
-                assignment.expiresAt > new Date()
-                  ? assignment.expiresAt
-                  : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-            },
-          });
+        await logActivity({
+          organizationId,
+          eventId,
+          type: ActivityType.AUTO_INVITE_SENT,
+          actorName: declinerName,
+          targetName: `${replacement.firstName} ${replacement.lastName}`,
+          detail: roleLabel,
+        });
 
-          await logActivity({
-            organizationId,
-            type: ActivityType.AUTO_INVITE_SENT,
-            targetName: replacement.firstName,
-            detail: `${volunteerRoleLabels[assignment.role]} for "${assignment.event.name}" after ${user.firstName} ${user.lastName} declined`,
-          });
+        updateTag(`user-${replacement.userId}-events-${organizationId}`);
+        updateTag(`event-${eventId}-org-${organizationId}-details`);
 
-          updateTag(`user-${replacement.userId}-events-${organizationId}`);
-          updateTag(`event-${eventId}-org-${organizationId}-details`);
-          updateTag(`org-${organizationId}-activity`);
-
-          after(async () => {
-            await resend.emails.send({
-              from: "Aeghin <support@aeghin.com>",
-              to: replacement.email,
-              subject: `You've been assigned to ${assignment.event.name}`,
-              react: EventAssignmentEmail({
-                recipientName: replacement.firstName,
-                eventName: assignment.event.name,
-                organizationName: assignment.organization.name,
-                logoUrl: assignment.organization.logoUrl,
-                viewLink: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/organizations/${organizationId}`,
-              }),
-            });
+        after(async () => {
+          await resend.emails.send({
+            from: "Aeghin <support@aeghin.com>",
+            to: replacement.email,
+            subject: `You've been assigned to ${assignment.event.name}`,
+            react: EventAssignmentEmail({
+              recipientName: replacement.firstName,
+              eventName: assignment.event.name,
+              organizationName: assignment.organization.name,
+              logoUrl: assignment.organization.logoUrl,
+              viewLink: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/organizations/${organizationId}`,
+            }),
           });
-        }
-      } catch {
-        // Swallow: smart-fill is best-effort; the decline already committed.
+        });
+      } else if (outcome.status === "NO_QUALIFIED_MEMBERS") {
+        await logActivity({
+          organizationId,
+          eventId,
+          type: ActivityType.SMART_FILL_NO_CANDIDATES,
+          actorName: declinerName,
+          targetName: roleLabel,
+        });
+      } else if (outcome.status === "ALL_UNAVAILABLE") {
+        const breakdown = [
+          `${outcome.qualified} qualified`,
+          outcome.conflicting > 0 && `${outcome.conflicting} double-booked`,
+          outcome.blocked > 0 && `${outcome.blocked} on blockout`,
+          outcome.alreadyAssigned > 0 &&
+            `${outcome.alreadyAssigned} already on this event`,
+        ].filter(Boolean);
+
+        await logActivity({
+          organizationId,
+          eventId,
+          type: ActivityType.SMART_FILL_ALL_UNAVAILABLE,
+          actorName: declinerName,
+          targetName: roleLabel,
+          detail: breakdown.join(" · "),
+        });
+      } else {
+        await logActivity({
+          organizationId,
+          eventId,
+          type: ActivityType.SMART_FILL_FAILED,
+          actorName: declinerName,
+          targetName: roleLabel,
+        });
       }
+    } catch {
+      // Swallow: smart-fill is best-effort; the decline already committed.
+      await logActivity({
+        organizationId,
+        eventId,
+        type: ActivityType.SMART_FILL_FAILED,
+        actorName: declinerName,
+        targetName: roleLabel,
+      });
     }
+
+    updateTag(`org-${organizationId}-activity`);
+    updateTag(`event-${eventId}-org-${organizationId}-activity`);
 
     return { success: true };
 
@@ -609,7 +671,18 @@ export const setEventSmartScheduling = async (
       }
     });
 
+    await logActivity({
+      organizationId,
+      eventId,
+      type: enabled
+        ? ActivityType.SMART_SCHEDULING_ENABLED
+        : ActivityType.SMART_SCHEDULING_DISABLED,
+      actorName: `${user.firstName} ${user.lastName}`,
+    });
+
     updateTag(`event-${eventId}-org-${organizationId}-details`);
+    updateTag(`org-${organizationId}-activity`);
+    updateTag(`event-${eventId}-org-${organizationId}-activity`);
 
     return { success: true };
 

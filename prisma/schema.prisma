@@ -46,6 +46,12 @@ enum ActivityType {
   MEMBER_REMOVED
   MEMBER_LEFT
   ROLE_CHANGED
+  SMART_FILL_SKIPPED
+  SMART_FILL_NO_CANDIDATES
+  SMART_FILL_ALL_UNAVAILABLE
+  SMART_FILL_FAILED
+  SMART_SCHEDULING_ENABLED
+  SMART_SCHEDULING_DISABLED
 }
 
 enum Pitch {
@@ -255,6 +261,7 @@ model Event {
 
   setlistSongs SetlistSong[]
   messages Message[]
+  activityLogs ActivityLog[]
 
 
   createdById String?
@@ -366,9 +373,13 @@ model ActivityLog {
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
+  eventId String?
+  event   Event?  @relation(fields: [eventId], references: [id], onDelete: SetNull)
+
   createdAt DateTime @default(now())
 
   @@index([organizationId, createdAt])
+  @@index([eventId, createdAt])
 }
 
 model Song {

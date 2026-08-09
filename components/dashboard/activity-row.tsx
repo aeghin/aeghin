@@ -1,15 +1,19 @@
 import type { ReactNode } from "react";
 import {
+  CalendarClock,
   CalendarPlus,
   CalendarX,
   Mail,
   MailX,
+  TriangleAlert,
   UserCheck,
   UserCog,
   UserMinus,
+  UserSearch,
   UserX,
   XCircle,
   Zap,
+  ZapOff,
   type LucideIcon,
 } from "lucide-react";
 import { formatDistanceToNow, format } from "date-fns";
@@ -29,7 +33,36 @@ const activityConfig: Record<ActivityType, { icon: LucideIcon; className: string
   MEMBER_REMOVED: { icon: UserX, className: "bg-destructive/10 text-destructive" },
   MEMBER_LEFT: { icon: UserMinus, className: "bg-muted text-muted-foreground" },
   ROLE_CHANGED: { icon: UserCog, className: "bg-violet-500/10 text-violet-600" },
+  SMART_FILL_SKIPPED: { icon: ZapOff, className: "bg-muted text-muted-foreground" },
+  SMART_FILL_NO_CANDIDATES: {
+    icon: UserSearch,
+    className: "bg-amber-500/10 text-amber-600",
+  },
+  SMART_FILL_ALL_UNAVAILABLE: {
+    icon: CalendarClock,
+    className: "bg-amber-500/10 text-amber-600",
+  },
+  SMART_FILL_FAILED: {
+    icon: TriangleAlert,
+    className: "bg-destructive/10 text-destructive",
+  },
+  SMART_SCHEDULING_ENABLED: {
+    icon: Zap,
+    className: "bg-emerald-500/10 text-emerald-600",
+  },
+  SMART_SCHEDULING_DISABLED: {
+    icon: ZapOff,
+    className: "bg-muted text-muted-foreground",
+  },
 };
+
+const EventContext = ({ eventName }: { eventName: string | null }) =>
+  eventName ? (
+    <>
+      {" "}
+      on <span className="font-medium text-foreground">{eventName}</span>
+    </>
+  ) : null;
 
 const Name = ({ children }: { children: ReactNode }) => (
   <span className="font-medium text-foreground">{children}</span>
@@ -76,9 +109,61 @@ const describeActivity = (item: ActivityItem): ReactNode => {
         </>
       );
     case ActivityType.AUTO_INVITE_SENT:
-      return (
+      return item.actorName ? (
+        <>
+          Smart Scheduling invited <Name>{item.targetName}</Name> after{" "}
+          <Name>{item.actorName}</Name> declined
+          <EventContext eventName={item.eventName} />
+        </>
+      ) : (
         <>
           Smart Scheduling auto-invited <Name>{item.targetName}</Name>
+        </>
+      );
+    case ActivityType.SMART_FILL_SKIPPED:
+      return (
+        <>
+          <Name>{item.actorName}</Name> declined <Name>{item.targetName}</Name>
+          <EventContext eventName={item.eventName} /> — auto-fill is off, so the slot
+          is still open
+        </>
+      );
+    case ActivityType.SMART_FILL_NO_CANDIDATES:
+      return (
+        <>
+          Smart Scheduling couldn&apos;t fill <Name>{item.targetName}</Name>
+          <EventContext eventName={item.eventName} /> — nobody in this organization
+          has that role
+        </>
+      );
+    case ActivityType.SMART_FILL_ALL_UNAVAILABLE:
+      return (
+        <>
+          Smart Scheduling couldn&apos;t fill <Name>{item.targetName}</Name>
+          <EventContext eventName={item.eventName} /> — everyone qualified is
+          unavailable
+        </>
+      );
+    case ActivityType.SMART_FILL_FAILED:
+      return (
+        <>
+          Smart Scheduling hit an error filling <Name>{item.targetName}</Name>
+          <EventContext eventName={item.eventName} /> after <Name>{item.actorName}</Name>{" "}
+          declined
+        </>
+      );
+    case ActivityType.SMART_SCHEDULING_ENABLED:
+      return (
+        <>
+          <Name>{item.actorName}</Name> turned auto-fill on
+          <EventContext eventName={item.eventName} />
+        </>
+      );
+    case ActivityType.SMART_SCHEDULING_DISABLED:
+      return (
+        <>
+          <Name>{item.actorName}</Name> turned auto-fill off
+          <EventContext eventName={item.eventName} />
         </>
       );
     case ActivityType.MEMBER_REMOVED:

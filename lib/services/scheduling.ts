@@ -89,7 +89,20 @@ export type ReplacementCandidate = {
   userId: string;
   email: string;
   firstName: string;
+  lastName: string;
 };
+
+export type ReplacementOutcome =
+  | { status: "FOUND"; candidate: ReplacementCandidate }
+  | { status: "EVENT_MISSING" }
+  | { status: "NO_QUALIFIED_MEMBERS" }
+  | {
+      status: "ALL_UNAVAILABLE";
+      qualified: number;
+      alreadyAssigned: number;
+      conflicting: number;
+      blocked: number;
+    };
 
 
 export async function findBestReplacement(params: {
@@ -97,14 +110,14 @@ export async function findBestReplacement(params: {
   eventId: string;
   declinedRole: VolunteerRole;
   excludeUserIds?: string[];
-}): Promise<ReplacementCandidate | null> {
+}): Promise<ReplacementOutcome> {
   const { organizationId, eventId, declinedRole, excludeUserIds = [] } = params;
 
   const event = await prisma.event.findUnique({
     where: { id: eventId },
     select: { dates: { select: { startTime: true, endTime: true } } },
   });
-  if (!event) return null;
+  if (!event) return { status: "EVENT_MISSING" };
 
   const existing = await prisma.eventAssignment.findMany({
     where: { eventId },
@@ -125,10 +138,14 @@ export async function findBestReplacement(params: {
       },
       select: {
         createdAt: true,
-        user: { select: { id: true, email: true, firstName: true } },
+        user: {
+          select: { id: true, email: true, firstName: true, lastName: true },
+        },
       },
     }),
   ]);
+
+  if (candidates.length === 0) return { status: "NO_QUALIFIED_MEMBERS" };
 
   const eligible = candidates.filter(
     (m) =>
@@ -136,7 +153,26 @@ export async function findBestReplacement(params: {
       !conflicting.has(m.user.id) &&
       !blocked.has(m.user.id),
   );
-  if (eligible.length === 0) return null;
+
+  if (eligible.length === 0) {
+    let alreadyAssigned = 0;
+    let conflictingCount = 0;
+    let blockedCount = 0;
+
+    for (const m of candidates) {
+      if (excluded.has(m.user.id)) alreadyAssigned += 1;
+      else if (conflicting.has(m.user.id)) conflictingCount += 1;
+      else blockedCount += 1;
+    }
+
+    return {
+      status: "ALL_UNAVAILABLE",
+      qualified: candidates.length,
+      alreadyAssigned,
+      conflicting: conflictingCount,
+      blocked: blockedCount,
+    };
+  }
 
   const counts = await getAcceptanceCounts(organizationId);
 
@@ -158,5 +194,13 @@ export async function findBestReplacement(params: {
     });
 
   const best = ranked[0].member.user;
-  return { userId: best.id, email: best.email, firstName: best.firstName };
+  return {
+    status: "FOUND",
+    candidate: {
+      userId: best.id,
+      email: best.email,
+      firstName: best.firstName,
+      lastName: best.lastName,
+    },
+  };
 }
