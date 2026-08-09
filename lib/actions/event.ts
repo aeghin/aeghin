@@ -18,7 +18,9 @@ import {
   InviteToEventInput,
   inviteToEventSchema,
   editEventDetailsSchema,
-  EditEventDetailsInput
+  EditEventDetailsInput,
+  RemoveEventRoleInput,
+  removeEventRoleSchema
 } from "@/lib/validations/event";
 
 import {
@@ -623,6 +625,116 @@ export const addEventRoles = async (
   } catch {
 
     return { success: false, error: "Unable to add roles, please try again" };
+
+  };
+};
+
+
+// The counterpart to addEventRoles. Only a role nobody is live on can come off —
+// pulling a volunteer from an event stays its own explicit act. Dead rows
+// (declined, canceled, lapsed) are deleted with it, since the roster is the union
+// of rolesNeeded and assignment roles and would otherwise keep rendering the role.
+export const removeEventRole = async (
+  organizationId: string,
+  eventId: string,
+  input: RemoveEventRoleInput,
+): Promise<ActionResponse> => {
+
+  try {
+
+    const user = await currentUser();
+
+    if (!user) return { success: false, error: "Unauthorized" };
+
+    const parsed = removeEventRoleSchema.safeParse(input);
+
+    if (!parsed.success) return { success: false, error: parsed.error.message };
+
+    const { role } = parsed.data;
+
+    const [membership, event] = await Promise.all([
+      prisma.membership.findUnique({
+        where: {
+          userId_organizationId: { userId: user.id, organizationId },
+        },
+        select: { role: true },
+      }),
+      prisma.event.findFirst({
+        where: { id: eventId, organizationId },
+        select: {
+          rolesNeeded: true,
+          assignments: {
+            where: { role },
+            select: {
+              userId: true,
+              status: true,
+              expiresAt: true,
+              user: { select: { firstName: true, lastName: true } },
+            },
+          },
+        },
+      }),
+    ]);
+
+    if (!membership) return { success: false, error: "Unable to locate membership" };
+
+    if (membership.role === OrgRole.MEMBER) return { success: false, error: "Unauthorized" };
+
+    if (!event) return { success: false, error: "Unable to locate event" };
+
+    // Mirrors the roster union the Team card renders from, so a legacy event
+    // carrying assignments the role was never declared for is still removable.
+    const onRoster =
+      event.rolesNeeded.includes(role) || event.assignments.length > 0;
+
+    if (!onRoster) return { success: false, error: "That role isn't on this event" };
+
+    const now = new Date();
+
+    const live = event.assignments.filter(
+      (a) =>
+        a.status === InvitationStatus.ACCEPTED ||
+        (a.status === InvitationStatus.PENDING && a.expiresAt > now),
+    );
+
+    if (live.length > 0) {
+      const names = live
+        .map((a) => `${a.user.firstName} ${a.user.lastName}`)
+        .join(", ");
+
+      return {
+        success: false,
+        error: `Remove ${names} from this role first`,
+      };
+    }
+
+    await prisma.$transaction([
+      prisma.eventAssignment.deleteMany({
+        where: { eventId, organizationId, role },
+      }),
+      prisma.event.update({
+        where: { id: eventId },
+        data: { rolesNeeded: event.rolesNeeded.filter((r) => r !== role) },
+      }),
+    ]);
+
+    updateTag(`event-${eventId}-org-${organizationId}-details`);
+    updateTag(`org-${organizationId}-events`);
+
+    for (const { userId } of event.assignments) {
+      updateTag(`user-${userId}-events-${organizationId}`);
+    };
+
+    // Dropping declined rows moves the denominator the acceptance rate counts from.
+    if (event.assignments.some((a) => a.status === InvitationStatus.DECLINED)) {
+      updateTag(`org-${organizationId}-acceptance-stats`);
+    }
+
+    return { success: true };
+
+  } catch {
+
+    return { success: false, error: "Unable to remove role, please try again" };
 
   };
 };

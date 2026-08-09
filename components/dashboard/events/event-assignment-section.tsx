@@ -30,6 +30,7 @@ import { EventVolunteerRowMenu } from "./event-volunteer-row-menu";
 import { EmailTeamDialog } from "./email-team-dialog";
 import { AddEventRolesDialog } from "./add-event-roles-dialog";
 import { InviteToEventDialog } from "./invite-to-event-dialog";
+import { EventRoleRemoveButton } from "./event-role-remove-button";
 
 export type TeamMember = {
   userId: string;
@@ -238,7 +239,7 @@ export function EventAssignmentsCard({
                   const isUnfilled = group.items.length === 0;
 
                   return (
-                    <div key={group.role} className="space-y-2">
+                    <div key={group.role} className="group/role space-y-2">
                       <div className="flex items-center gap-2 text-xs">
                         <span className="text-[14px] leading-none">
                           {roleInfo.icon}
@@ -252,16 +253,23 @@ export function EventAssignmentsCard({
                         <span className="text-muted-foreground tabular-nums">
                           {group.items.length}
                         </span>
-                        {canManage && !isUnfilled && (
-                          <span className="ml-auto">
-                            <InviteToEventDialog
+                        {canManage && (
+                          <span className="ml-auto flex items-center gap-1">
+                            {!isUnfilled && (
+                              <InviteToEventDialog
+                                organizationId={event.organizationId}
+                                eventId={event.id}
+                                role={group.role}
+                                members={membersByRole[group.role] || []}
+                                unavailableUserIds={unavailableUserIds}
+                                eventDates={eventDates}
+                                serviceColor={event.serviceType.color}
+                              />
+                            )}
+                            <EventRoleRemoveButton
                               organizationId={event.organizationId}
                               eventId={event.id}
                               role={group.role}
-                              members={membersByRole[group.role] || []}
-                              unavailableUserIds={unavailableUserIds}
-                              eventDates={eventDates}
-                              serviceColor={event.serviceType.color}
                             />
                           </span>
                         )}

@@ -38,6 +38,13 @@ export const addEventRolesSchema = z.object({
 export type AddEventRolesInput = z.infer<typeof addEventRolesSchema>;
 
 
+export const removeEventRoleSchema = z.object({
+  role: z.enum(VolunteerRole),
+});
+
+export type RemoveEventRoleInput = z.infer<typeof removeEventRoleSchema>;
+
+
 export const inviteToEventSchema = z.object({
   role: z.enum(VolunteerRole),
   userIds: z.array(z.string()).min(1, "Select at least one member"),
