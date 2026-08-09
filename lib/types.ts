@@ -73,6 +73,7 @@ export type EventDetails = {
   description: string
   location: string
   rolesNeeded: VolunteerRole[]
+  smartSchedulingEnabled: boolean
   createdAt: Date
   updatedAt: Date
   createdById: string | null
@@ -139,6 +140,7 @@ export type EventTemplateWithServiceType = {
   days: EventTemplateDay[]
   rolesNeeded: VolunteerRole[]
   expiresInDays: number
+  smartSchedulingEnabled: boolean
   serviceTypeId: string
   serviceType: {
     id: string

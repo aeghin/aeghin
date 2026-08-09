@@ -31,6 +31,7 @@ import { EmailTeamDialog } from "./email-team-dialog";
 import { AddEventRolesDialog } from "./add-event-roles-dialog";
 import { InviteToEventDialog } from "./invite-to-event-dialog";
 import { EventRoleRemoveButton } from "./event-role-remove-button";
+import { EventSmartSchedulingToggle } from "./event-smart-scheduling-toggle";
 
 export type TeamMember = {
   userId: string;
@@ -191,6 +192,13 @@ export function EventAssignmentsCard({
             <span className="text-xs text-muted-foreground tabular-nums">
               {acceptedCount}/{total} confirmed
             </span>
+            {canManage && (
+              <EventSmartSchedulingToggle
+                organizationId={event.organizationId}
+                eventId={event.id}
+                enabled={event.smartSchedulingEnabled}
+              />
+            )}
             {canManage && (
               <AddEventRolesDialog
                 organizationId={event.organizationId}

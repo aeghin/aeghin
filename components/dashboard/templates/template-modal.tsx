@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Spinner } from "@/components/ui/spinner";
+import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -79,6 +80,7 @@ const getFormValues = (
   })),
   rolesNeeded: template.rolesNeeded,
   expiresInDays: template.expiresInDays,
+  smartSchedulingEnabled: template.smartSchedulingEnabled,
 });
 
 interface TemplateModalProps {
@@ -114,6 +116,7 @@ export function TemplateModal({
       days: [{ startTime: "", endTime: "" }],
       rolesNeeded: [],
       expiresInDays: 3,
+      smartSchedulingEnabled: false,
     },
     values: template ? getFormValues(organizationId, template) : undefined,
   });
@@ -338,6 +341,28 @@ export function TemplateModal({
                   )}
                 />
               </div>
+
+              <FormField
+                control={form.control}
+                name="smartSchedulingEnabled"
+                render={({ field }) => (
+                  <FormItem className="flex flex-row items-center justify-between rounded-lg border border-border/40 p-3">
+                    <div className="space-y-0.5 pr-3">
+                      <FormLabel>Auto-fill Declines</FormLabel>
+                      <p className="text-xs text-muted-foreground">
+                        Events from this template start with auto-fill on
+                      </p>
+                    </div>
+                    <FormControl>
+                      <Switch
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                        className="cursor-pointer"
+                      />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
 
               <div className="space-y-3">
                 <div className="flex items-center justify-between">

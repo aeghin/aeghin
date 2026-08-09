@@ -20,6 +20,7 @@ export const eventTemplateSchema = z.object({
     })).min(1, "Add at least one day").max(7, "A template can span at most 7 days"),
     rolesNeeded: z.array(z.enum(VolunteerRole)).min(1, "Select at least one role"),
     expiresInDays: z.number().refine((v) => [3, 5, 7].includes(v)),
+    smartSchedulingEnabled: z.boolean(),
 });
 
 export type EventTemplateInput = z.infer<typeof eventTemplateSchema>;

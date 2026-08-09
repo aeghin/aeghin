@@ -21,7 +21,7 @@ export const createEventTemplate = async (input: EventTemplateInput): Promise<Ac
 
         if (!parsed.success) return { success: false, error: parsed.error.issues[0].message };
 
-        const { organizationId, serviceTypeId, name, description, location, dayOfWeek, days, rolesNeeded, expiresInDays } = parsed.data;
+        const { organizationId, serviceTypeId, name, description, location, dayOfWeek, days, rolesNeeded, expiresInDays, smartSchedulingEnabled } = parsed.data;
 
         const membership = await prisma.membership.findUnique({
             where: {
@@ -54,6 +54,7 @@ export const createEventTemplate = async (input: EventTemplateInput): Promise<Ac
                 dayOfWeek,
                 rolesNeeded,
                 expiresInDays,
+                smartSchedulingEnabled,
                 serviceTypeId,
                 organizationId,
                 days: {
@@ -93,7 +94,7 @@ export const updateEventTemplate = async (templateId: string, input: EventTempla
 
         if (!parsed.success) return { success: false, error: parsed.error.issues[0].message };
 
-        const { organizationId, serviceTypeId, name, description, location, dayOfWeek, days, rolesNeeded, expiresInDays } = parsed.data;
+        const { organizationId, serviceTypeId, name, description, location, dayOfWeek, days, rolesNeeded, expiresInDays, smartSchedulingEnabled } = parsed.data;
 
         const membership = await prisma.membership.findUnique({
             where: {
@@ -137,6 +138,7 @@ export const updateEventTemplate = async (templateId: string, input: EventTempla
                 dayOfWeek,
                 rolesNeeded,
                 expiresInDays,
+                smartSchedulingEnabled,
                 serviceTypeId,
                 days: {
                     deleteMany: {},

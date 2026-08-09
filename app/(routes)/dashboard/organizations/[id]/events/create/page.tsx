@@ -8,7 +8,6 @@ import {
 } from "@/lib/services/organization";
 import { getOrgServiceTypes } from "@/lib/services/service-types";
 import { getOrgEventTemplates } from "@/lib/services/event-templates";
-import { getSmartSchedulingStatus } from "@/lib/services/smart-scheduling";
 
 
 export default async function CreateEventPage({
@@ -26,12 +25,11 @@ export default async function CreateEventPage({
 
   if (!user) redirect("/sign-in");
 
-  const [membership, members, serviceTypes, templates, smartSchedulingStatus] = await Promise.all([
+  const [membership, members, serviceTypes, templates] = await Promise.all([
     getUserMembershipWithOrg(user.id, orgId),
     getOrgMembersWithUser(orgId),
     getOrgServiceTypes(orgId),
-    getOrgEventTemplates(orgId),
-    getSmartSchedulingStatus(orgId)
+    getOrgEventTemplates(orgId)
   ])
 
   const organizationName = membership?.organization.name || '';
@@ -50,7 +48,6 @@ export default async function CreateEventPage({
       serviceTypes={serviceTypes}
       templates={templates}
       initialTemplateId={templateId}
-      smartSchedulingStatus={smartSchedulingStatus?.smartSchedulingEnabled || false}
     />
   )
 }

@@ -170,7 +170,8 @@ export async function createEvent(
       description,
       roleAssignments,
       rolesNeeded,
-      expiresAt
+      expiresAt,
+      smartSchedulingEnabled
     } = parsed.data;
 
     const [membership, serviceType] = await Promise.all([
@@ -284,6 +285,7 @@ export async function createEvent(
           description: description || "",
           location,
           rolesNeeded,
+          smartSchedulingEnabled,
           createdById: id,
           serviceTypeId,
           organizationId,
@@ -426,8 +428,8 @@ export const declineEventInvitation = async (organizationId: string, eventId: st
         role: true,
         assignedById: true,
         expiresAt: true,
-        event: { select: { name: true } },
-        organization: { select: { smartSchedulingEnabled: true, name: true, logoUrl: true } },
+        event: { select: { name: true, smartSchedulingEnabled: true } },
+        organization: { select: { name: true, logoUrl: true } },
       },
     });
 
@@ -450,7 +452,7 @@ export const declineEventInvitation = async (organizationId: string, eventId: st
     // Smart scheduling: auto-invite the next best available member into the
     // role just vacated. Best-effort and isolated — if anything here fails, the
     // decline the user already committed must still succeed.
-    if (assignment.organization.smartSchedulingEnabled) {
+    if (assignment.event.smartSchedulingEnabled) {
       try {
         const replacement = await findBestReplacement({
           organizationId,
@@ -560,7 +562,59 @@ export const cancelUserEventAssignment = async (userId: string, organizationId: 
     return { success: true };
 
   } catch {
-    
+
+    return { success: false, error: "Something went wrong, try again" };
+
+  };
+}
+
+
+// Smart scheduling is per-event, so it can be flipped on the event page after
+// creation without touching any other event.
+export const setEventSmartScheduling = async (
+  organizationId: string,
+  eventId: string,
+  enabled: boolean,
+): Promise<ActionResponse> => {
+
+  try {
+
+    const user = await currentUser();
+
+    if (!user) return { success: false, error: "Unauthorized" };
+
+    const membership = await prisma.membership.findUnique({
+      where: {
+        userId_organizationId: {
+          userId: user.id,
+          organizationId,
+        }
+      },
+      select: {
+        role: true
+      }
+    });
+
+    if (!membership) return { success: false, error: "Unable to locate membership" };
+
+    if (membership.role === OrgRole.MEMBER) return { success: false, error: "Unauthorized" };
+
+    await prisma.event.update({
+      where: {
+        id: eventId,
+        organizationId,
+      },
+      data: {
+        smartSchedulingEnabled: enabled
+      }
+    });
+
+    updateTag(`event-${eventId}-org-${organizationId}-details`);
+
+    return { success: true };
+
+  } catch {
+
     return { success: false, error: "Something went wrong, try again" };
 
   };

@@ -270,40 +270,6 @@ export const removeOrganizationLogo = async (organizationId: string): Promise<Ac
 }
 
 
-export const setSmartScheduling = async (organizationId: string, enabled: boolean): Promise<ActionResponse> => {
-
-    try {
-
-        const { userId } = await auth();
-
-        if (!userId) return { success: false, error: "Unauthorized" };
-
-        const membership = await prisma.membership.findFirst({
-            where: {
-                user: { clerkId: userId },
-                organizationId,
-                role: { in: [OrgRole.OWNER, OrgRole.ADMIN] },
-            },
-            select: { id: true },
-        });
-
-        if (!membership) return { success: false, error: "Unauthorized" };
-
-        await prisma.organization.update({
-            where: { id: organizationId },
-            data: { smartSchedulingEnabled: enabled },
-        });
-
-        updateTag(`org-${organizationId}-setting-details`);
-
-        return { success: true };
-
-    } catch {
-        return { success: false, error: "Something went wrong, please try again." };
-    }
-};
-
-
 export const deleteOrganization = async (organizationId: string): Promise<ActionResponse> => {
 
     try {

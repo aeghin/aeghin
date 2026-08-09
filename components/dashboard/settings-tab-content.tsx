@@ -5,7 +5,6 @@ import { EditSettingsDialog } from "./edit-settings-dialog";
 import { DeleteOrgDialog } from "./delete-org-dialog";
 import { LeaveOrgDialog } from "./leave-org-dialog";
 import { ManageSubscriptionButton } from "./manage-subscription-button";
-import { SmartSchedulingToggle } from "./smart-scheduling-toggle";
 import { ServiceTypesSettings } from "./service-types-settings";
 import { OrgLogoUploader } from "./org-logo-uploader";
 import { AppearanceToggle } from "./appearance-toggle";
@@ -88,12 +87,6 @@ export const SettingsTabContent = async ({
         logoUrl={org?.logoUrl ?? null}
         isOwner={isOwner}
       />
-      {canManage && (
-        <SmartSchedulingToggle
-          organizationId={organizationId}
-          enabled={org?.smartSchedulingEnabled ?? false}
-        />
-      )}
       {canManage && (
         <ServiceTypesSettings organizationId={organizationId} serviceTypes={org?.serviceTypes ?? []} />
       )}

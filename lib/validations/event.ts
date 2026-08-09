@@ -19,6 +19,7 @@ export const createEventSchema = z.object({
   location: z.string().trim().min(1, "Location is required").max(20, "Location must be 20 characters or less"),
   rolesNeeded: z.array(z.enum(VolunteerRole)).min(1, "Select at least one role"),
   expiresAt: z.number().refine((v) => [3, 5, 7].includes(v)),
+  smartSchedulingEnabled: z.boolean(),
 });
 
 export type CreateEventFormData = z.infer<typeof createEventSchema>

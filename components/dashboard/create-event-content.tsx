@@ -67,6 +67,7 @@ import {
   LayoutTemplate,
   Search,
   ChevronRight,
+  Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { VolunteerRole } from "@/generated/prisma/enums";
@@ -82,7 +83,7 @@ import { checkMemberAvailability } from "@/lib/actions/event";
 import { createServiceType } from "@/lib/actions/service-type";
 import { createEvent } from "@/lib/actions/event";
 
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Switch } from "@/components/ui/switch";
 
 import { getServiceColors as getColorClasses } from "@/lib/config/service-types-config";
 
@@ -119,6 +120,7 @@ const EMPTY_EVENT_DEFAULTS = {
   location: "",
   rolesNeeded: [],
   expiresAt: 3,
+  smartSchedulingEnabled: false,
 };
 
 
@@ -148,6 +150,7 @@ const templateToFormValues = (
     location: template.location,
     rolesNeeded: template.rolesNeeded,
     expiresAt: template.expiresInDays,
+    smartSchedulingEnabled: template.smartSchedulingEnabled,
   };
 };
 
@@ -219,7 +222,6 @@ interface CreateEventPageContentProps {
   serviceTypes: ServiceType[];
   templates: EventTemplateWithServiceType[];
   initialTemplateId?: string;
-  smartSchedulingStatus: boolean;
 }
 
 export function CreateEventPageContent({
@@ -229,7 +231,6 @@ export function CreateEventPageContent({
   serviceTypes,
   templates,
   initialTemplateId,
-  smartSchedulingStatus
 }: CreateEventPageContentProps) {
   const router = useRouter();
 
@@ -294,6 +295,7 @@ export function CreateEventPageContent({
   const watchedLocation = watch("location");
   const watchedRolesNeeded = watch("rolesNeeded");
   const watchedExpiresAt = watch("expiresAt");
+  const watchedSmartScheduling = watch("smartSchedulingEnabled");
 
   // The role grid tests every known role against this, so keep it keyed.
   const rolesNeededSet = new Set(watchedRolesNeeded);
@@ -725,35 +727,8 @@ export function CreateEventPageContent({
                 </p>
               </div>
             </div>
-            {/* Smart scheduling status + step indicator */}
+            {/* Step indicator */}
             <div className="flex flex-wrap items-center gap-3">
-            <Tooltip>
-              <TooltipTrigger asChild>
-              <div
-                className={cn(
-                  "flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
-                  smartSchedulingStatus
-                    ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                    : "border-red-500/20 bg-red-500/10 text-red-600 dark:text-red-400",
-                )}
-              >
-                <span
-                  className={cn(
-                    "h-2 w-2 rounded-full",
-                    smartSchedulingStatus ? "bg-emerald-500" : "bg-red-500",
-                  )}
-                />
-                Smart Scheduling {smartSchedulingStatus ? "On" : "Off"}
-              </div>
-              </TooltipTrigger>
-              <TooltipContent className="max-w-56 border border-border/60 bg-muted text-foreground shadow-md [&_svg]:bg-muted [&_svg]:fill-muted">
-                  <p>
-                    {smartSchedulingStatus
-                      ? "Declines auto-fill from your roster. Manage in Settings."
-                      : "Declines won't be refilled automatically. Enable in Settings."}
-                  </p>
-              </TooltipContent>
-            </Tooltip>
               <p className="text-xs font-medium text-muted-foreground sm:hidden">
                 Step {step} of 2
               </p>
@@ -1370,6 +1345,31 @@ export function CreateEventPageContent({
                           <SelectItem value="7">7 days</SelectItem>
                         </SelectContent>
                       </Select>
+                  </div>
+
+                  {/* Smart Scheduling — per event, not org-wide */}
+                  <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-border/40 bg-card/50 p-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex items-center gap-2">
+                        <Zap className="h-4 w-4 text-muted-foreground" />
+                        <div>
+                          <p className="text-sm font-medium">Auto-fill Declines</p>
+                          <p className="text-xs text-muted-foreground">
+                            Invite the next best available member when someone
+                            declines
+                          </p>
+                        </div>
+                      </div>
+                      <Switch
+                        size="lg"
+                        checked={watchedSmartScheduling}
+                        onCheckedChange={(checked) =>
+                          setValue("smartSchedulingEnabled", checked, {
+                            shouldValidate: true,
+                          })
+                        }
+                        aria-label="Toggle auto-fill for this event"
+                        className="cursor-pointer self-start sm:self-auto"
+                      />
                   </div>
 
                   {/* Role Assignments — compact rows; picking happens in a modal */}

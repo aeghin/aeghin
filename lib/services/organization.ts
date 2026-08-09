@@ -279,7 +279,6 @@ export const getOrganizationSettings = async (organizationId: string) => {
       name: true,
       description: true,
       logoUrl: true,
-      smartSchedulingEnabled: true,
       serviceTypes: {
         where: { deletedAt: null }
       }
