@@ -2,6 +2,7 @@ import Link from "next/link";
 import { UserButton } from "@clerk/nextjs";
 import { NavLinks } from "./nav-links";
 import { PremiumNav } from "./premium-nav";
+import { ThemeSwitch } from "./theme-switch";
 
 export function Navbar() {
   return (
@@ -21,6 +22,7 @@ export function Navbar() {
 
         <div className="flex items-center gap-3">
           <PremiumNav />
+          <ThemeSwitch />
           <UserButton
             appearance={{ elements: { avatarBox: { width: "36px", height: "36px" } } }}
           />

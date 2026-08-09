@@ -7,7 +7,6 @@ import { LeaveOrgDialog } from "./leave-org-dialog";
 import { ManageSubscriptionButton } from "./manage-subscription-button";
 import { ServiceTypesSettings } from "./service-types-settings";
 import { OrgLogoUploader } from "./org-logo-uploader";
-import { AppearanceToggle } from "./appearance-toggle";
 
 interface SettingsTabContentProps {
   organizationId: string;
@@ -90,7 +89,6 @@ export const SettingsTabContent = async ({
       {canManage && (
         <ServiceTypesSettings organizationId={organizationId} serviceTypes={org?.serviceTypes ?? []} />
       )}
-      <AppearanceToggle />
       {isOwner && (
         <section className="rounded-xl border border-border/40 bg-secondary/10 p-5">
           <h3 className="text-sm font-semibold">Billing</h3>
