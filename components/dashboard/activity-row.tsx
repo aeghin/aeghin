@@ -1,8 +1,10 @@
 import type { ReactNode } from "react";
+import Link from "next/link";
 import {
   CalendarClock,
   CalendarPlus,
   CalendarX,
+  ChevronRight,
   Mail,
   MailX,
   TriangleAlert,
@@ -73,7 +75,8 @@ const describeActivity = (item: ActivityItem): ReactNode => {
     case ActivityType.EVENT_CREATED:
       return (
         <>
-          <Name>{item.actorName}</Name> created the event <Name>{item.targetName}</Name>
+          <Name>{item.actorName}</Name> created the event{" "}
+          <Name>{item.eventName ?? item.targetName}</Name>
         </>
       );
     case ActivityType.EVENT_DELETED:
@@ -83,7 +86,12 @@ const describeActivity = (item: ActivityItem): ReactNode => {
         </>
       );
     case ActivityType.INVITE_SENT:
-      return (
+      return item.eventId ? (
+        <>
+          <Name>{item.actorName}</Name> sent invites for{" "}
+          <Name>{item.eventName ?? item.targetName}</Name>
+        </>
+      ) : (
         <>
           <Name>{item.actorName}</Name> invited <Name>{item.targetName}</Name> to the
           organization
@@ -206,9 +214,10 @@ const formatActivityTime = (date: Date) => {
 interface ActivityRowProps {
   item: ActivityItem;
   index: number;
+  organizationId: string;
 }
 
-export const ActivityRow = ({ item, index }: ActivityRowProps) => {
+export const ActivityRow = ({ item, index, organizationId }: ActivityRowProps) => {
   const config = activityConfig[item.type];
   const Icon = config.icon;
 
@@ -216,28 +225,44 @@ export const ActivityRow = ({ item, index }: ActivityRowProps) => {
   const supplementalDetail =
     item.type === ActivityType.ROLE_CHANGED ? null : item.detail;
 
+  const body = (
+    <>
+      <div
+        className={cn(
+          "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl",
+          config.className
+        )}
+      >
+        <Icon className="h-4 w-4" />
+      </div>
+      <div className="min-w-0 space-y-1">
+        <p className="text-sm text-muted-foreground">{describeActivity(item)}</p>
+        <p
+          className="text-xs text-muted-foreground"
+          title={format(item.createdAt, "PPpp")}
+        >
+          {formatActivityTime(item.createdAt)}
+          {supplementalDetail && ` · ${supplementalDetail}`}
+        </p>
+      </div>
+    </>
+  );
+
   return (
     <AnimatedInvitationRow index={index}>
-      <div className="flex min-w-0 items-start gap-4">
-        <div
-          className={cn(
-            "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl",
-            config.className
-          )}
+      {item.eventId ? (
+        <Link
+          href={`/dashboard/organizations/${organizationId}/events/${item.eventId}`}
+          className="flex min-w-0 flex-1 items-start gap-4"
         >
-          <Icon className="h-4 w-4" />
-        </div>
-        <div className="min-w-0 space-y-1">
-          <p className="text-sm text-muted-foreground">{describeActivity(item)}</p>
-          <p
-            className="text-xs text-muted-foreground"
-            title={format(item.createdAt, "PPpp")}
-          >
-            {formatActivityTime(item.createdAt)}
-            {supplementalDetail && ` · ${supplementalDetail}`}
-          </p>
-        </div>
-      </div>
+          {body}
+        </Link>
+      ) : (
+        <div className="flex min-w-0 items-start gap-4">{body}</div>
+      )}
+      {item.eventId && (
+        <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+      )}
     </AnimatedInvitationRow>
   );
 };

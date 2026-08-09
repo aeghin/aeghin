@@ -278,7 +278,7 @@ export async function createEvent(
       }
     }
 
-     await prisma.$transaction(async (tx) => {
+     const newEventId = await prisma.$transaction(async (tx) => {
       const event = await tx.event.create({
         data: {
           name,
@@ -314,6 +314,8 @@ export async function createEvent(
           ),
         });
       }
+
+      return event.id;
     });
 
     if (assignedUserIds.length > 0) {
@@ -347,14 +349,25 @@ export async function createEvent(
 
     await logActivity({
       organizationId,
+      eventId: newEventId,
       type: ActivityType.EVENT_CREATED,
       actorName: `${users.firstName} ${users.lastName}`,
       targetName: name,
       detail: serviceType.name,
     });
 
+    if (smartSchedulingEnabled) {
+      await logActivity({
+        organizationId,
+        eventId: newEventId,
+        type: ActivityType.SMART_SCHEDULING_ENABLED,
+        actorName: `${users.firstName} ${users.lastName}`,
+      });
+    }
+
     updateTag(`org-${organizationId}-events`);
     updateTag(`org-${organizationId}-activity`);
+    updateTag(`event-${newEventId}-org-${organizationId}-activity`);
 
     revalidatePath(`/dashboard/organizations/${organizationId}`);
 
@@ -1098,6 +1111,7 @@ export const inviteMembersToEvent = async (
 
     await logActivity({
       organizationId,
+      eventId,
       type: ActivityType.INVITE_SENT,
       actorName: `${user.firstName} ${user.lastName}`,
       targetName: event.name,

@@ -82,7 +82,12 @@ export const ActivityFeed = ({
         {items.map((item, i) => (
           // The stagger caps at the tenth row so a full page never takes a
           // second to finish animating in on every page change.
-          <ActivityRow key={item.id} item={item} index={Math.min(i, 9)} />
+          <ActivityRow
+            key={item.id}
+            item={item}
+            index={Math.min(i, 9)}
+            organizationId={organizationId}
+          />
         ))}
       </div>
 

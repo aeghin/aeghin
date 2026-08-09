@@ -16,12 +16,18 @@ export const SMART_SCHEDULING_ACTIVITY_TYPES: ActivityType[] = [
   ActivityType.SMART_SCHEDULING_DISABLED,
 ];
 
+const ORG_FEED_EXCLUDED_TYPES: ActivityType[] = [
+  ActivityType.SMART_SCHEDULING_ENABLED,
+  ActivityType.SMART_SCHEDULING_DISABLED,
+];
+
 export type ActivityItem = {
   id: string;
   type: ActivityType;
   actorName: string | null;
   targetName: string | null;
   detail: string | null;
+  eventId: string | null;
   eventName: string | null;
   createdAt: Date;
 };
@@ -38,7 +44,7 @@ export const getOrganizationActivity = async (
   cacheTag(`org-${organizationId}-activity`);
 
   const rows = await prisma.activityLog.findMany({
-    where: { organizationId },
+    where: { organizationId, type: { notIn: ORG_FEED_EXCLUDED_TYPES } },
     // id is the unique tiebreak so the sort is total and a row can't drift
     // between pages when several share a createdAt.
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
@@ -50,6 +56,7 @@ export const getOrganizationActivity = async (
       actorName: true,
       targetName: true,
       detail: true,
+      eventId: true,
       createdAt: true,
       event: { select: { name: true } },
     },
@@ -71,7 +78,9 @@ export const getOrganizationActivityPageCount = async (
   cacheLife("minutes");
   cacheTag(`org-${organizationId}-activity`);
 
-  const total = await prisma.activityLog.count({ where: { organizationId } });
+  const total = await prisma.activityLog.count({
+    where: { organizationId, type: { notIn: ORG_FEED_EXCLUDED_TYPES } },
+  });
 
   return Math.ceil(total / ACTIVITY_PAGE_SIZE);
 };
