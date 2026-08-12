@@ -117,7 +117,7 @@ export function createSetlistAgent(opts: {
 
   const tools = (
     tier === "pro"
-      ? { proposeSetlist, web_search: anthropic.tools.webSearch_20260209({ maxUses: 5 }) }
+      ? { proposeSetlist, web_search: anthropic.tools.webSearch_20260209({ maxUses: 2 }) }
       : { proposeSetlist }
   ) as {
     proposeSetlist: typeof proposeSetlist;
