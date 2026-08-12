@@ -38,6 +38,7 @@ export function AiSetlistPanel({
 }: AiSetlistPanelProps) {
   const serviceColors = colorClasses[serviceColor];
   const [input, setInput] = useState("");
+  const [timedOut, setTimedOut] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const { messages, sendMessage, status, stop, error } =
@@ -46,10 +47,24 @@ export function AiSetlistPanel({
         api: "/api/setlist-ai",
         body: { eventId, orgId },
       }),
+      onFinish: ({ isAbort, isError, finishReason }) => {
+        setTimedOut(!isAbort && !isError && finishReason == null);
+      },
     });
 
   const isStreaming = status === "submitted" || status === "streaming";
   const hasMessages = messages.length > 0;
+
+  const lastPart = messages.at(-1)?.parts.at(-1);
+  const tailIsLive =
+    lastPart?.type === "text"
+      ? lastPart.state === "streaming"
+      : lastPart?.type === "tool-web_search" ||
+          lastPart?.type === "tool-proposeSetlist"
+        ? lastPart.state === "input-streaming" ||
+          lastPart.state === "input-available"
+        : false;
+  const showBusy = isStreaming && !tailIsLive;
 
   // Keep the latest message in view as tokens stream in.
   useEffect(() => {
@@ -59,6 +74,7 @@ export function AiSetlistPanel({
   function submit() {
     const text = input.trim();
     if (!text || isStreaming) return;
+    setTimedOut(false);
     sendMessage({ text });
     setInput("");
   }
@@ -169,8 +185,13 @@ export function AiSetlistPanel({
             ))
           )}
 
-          {status === "submitted" && (
+          {showBusy && (
             <BuildingIndicator label="Thinking…" accent={serviceColors.badgeText} />
+          )}
+          {timedOut && (
+            <p className="text-xs text-destructive">
+              That timed out before finishing. Try again, or narrow the request.
+            </p>
           )}
           {error && (
             <p className="text-xs text-destructive">

@@ -8,7 +8,7 @@ import { OrgRole } from "@/generated/prisma/enums";
 import { createSetlistAgent } from "@/lib/agents/setlist/agent";
 
 
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 export async function POST(req: Request) {
   const { messages, eventId, orgId } = await req.json();
@@ -62,5 +62,9 @@ export async function POST(req: Request) {
     })),
   });
 
-  return createAgentUIStreamResponse({ agent, uiMessages: messages });
+  return createAgentUIStreamResponse({
+    agent,
+    uiMessages: messages,
+    timeout: 290_000,
+  });
 }
