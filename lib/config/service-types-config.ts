@@ -41,7 +41,7 @@ export const colorClasses: Record<
     dot: "bg-amber-500",
     border: "border-l-amber-500",
     badge: "bg-amber-500/10",
-    badgeText: "text-amber-600 dark:text-amber-400",
+    badgeText: "text-amber-600 dark:text-amber-500",
     blurSoft: "bg-amber-500/5",
     blurStrong: "bg-amber-500/10",
     gradientTo: "to-amber-500/5",
