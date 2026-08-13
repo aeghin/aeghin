@@ -62,7 +62,7 @@ export const OrganizationTabsSection = async ({
  
       <div className="mt-6">
         {effectiveTab === "events" && (
-          <Suspense fallback={<EventsTabSkeleton />}>
+          <Suspense fallback={<EventsTabSkeleton canManage={canManage} />}>
             <EventsTabContent
               organizationId={organizationId}
               canManage={canManage}
