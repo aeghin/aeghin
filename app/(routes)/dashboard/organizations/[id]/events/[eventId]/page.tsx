@@ -56,12 +56,8 @@ export default async function EventDetailPage({
   if (!hasAccess) notFound();
 
   
-  const canChat = event.assignments.some(
-    (a) => a.userId === user.id && a.status === InvitationStatus.ACCEPTED,
-  );
-  const { messages: initialMessages } = canChat
-    ? await getEventMessages(eventId)
-    : { messages: [] };
+  // Everyone past the guard above may read the chat; only accepted assignees post.
+  const { messages: initialMessages } = await getEventMessages(eventId);
 
   // Only managers can invite, so members never pay for the roster
   const members = canManage ? await getOrgMembersWithUser(orgId) : [];
@@ -118,19 +114,18 @@ export default async function EventDetailPage({
               canManage={canManage}
               members={members}
             />
-            {canChat && (
-              <EventChatPanel
-                eventId={eventId}
-                serviceColor={event.serviceType.color}
-                currentUserId={user.id}
-                me={{
-                  firstName: user.firstName,
-                  lastName: user.lastName,
-                  userImageUrl: user.userImageUrl,
-                }}
-                initialMessages={initialMessages}
-              />
-            )}
+            <EventChatPanel
+              eventId={eventId}
+              serviceColor={event.serviceType.color}
+              currentUserId={user.id}
+              canPost={hasAssignment}
+              me={{
+                firstName: user.firstName,
+                lastName: user.lastName,
+                userImageUrl: user.userImageUrl,
+              }}
+              initialMessages={initialMessages}
+            />
             {/* <EventStatusCard event={event} /> */}
           </div>
         </div>

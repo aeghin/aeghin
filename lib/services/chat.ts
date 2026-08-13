@@ -1,7 +1,7 @@
 import "server-only";
 
 import prisma from "@/lib/prisma";
-import { InvitationStatus } from "@/generated/prisma/enums";
+import { InvitationStatus, OrgRole } from "@/generated/prisma/enums";
 import { currentUser } from "@/lib/services/user";
 import type { ChatMessage } from "@/lib/realtime/types";
 
@@ -33,25 +33,43 @@ export function toChatMessage(m: {
 
 /**
  * The single shared authorization gate. Returns the local user + the event's
- * organization ONLY if the user has an ACCEPTED assignment for the event.
- * Intentionally NOT cached — authorization must reflect live status, so a
- * CANCELED/DECLINED user is locked out immediately.
+ * organization when the user may SEE the chat: an ACCEPTED assignment, or an
+ * org ADMIN/OWNER previewing it. `canPost` is the narrower right — only accepted
+ * assignees write. Intentionally NOT cached — authorization must reflect live
+ * status, so a CANCELED/DECLINED user is locked out immediately.
  */
-export async function getAcceptedChatMembership(eventId: string) {
+export async function getChatAccess(eventId: string) {
   const user = await currentUser();
   if (!user) return null;
 
-  const assignment = await prisma.eventAssignment.findUnique({
-    where: {
-      eventId_userId: { eventId, userId: user.id },
-      status: InvitationStatus.ACCEPTED,
+  const event = await prisma.event.findUnique({
+    where: { id: eventId },
+    select: {
+      organizationId: true,
+      assignments: {
+        where: { userId: user.id, status: InvitationStatus.ACCEPTED },
+        select: { id: true },
+      },
+      organization: {
+        select: {
+          memberships: {
+            where: { userId: user.id },
+            select: { role: true },
+          },
+        },
+      },
     },
-    select: { organizationId: true },
   });
 
-  if (!assignment) return null;
+  if (!event) return null;
 
-  return { user, organizationId: assignment.organizationId };
+  const canPost = event.assignments.length > 0;
+  const role = event.organization.memberships[0]?.role;
+  const canManage = role === OrgRole.ADMIN || role === OrgRole.OWNER;
+
+  if (!canPost && !canManage) return null;
+
+  return { user, organizationId: event.organizationId, canPost };
 }
 
 /**

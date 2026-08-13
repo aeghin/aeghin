@@ -14,7 +14,7 @@ import type {
 
 export function useEventChat(
   eventId: string,
-  { initial, me }: UseEventChatOptions,
+  { initial, canPost, me }: UseEventChatOptions,
 ): UseEventChatReturn {
   // initial is newest-first from the server; render oldest-first.
   const [messages, setMessages] = useState<ChatMessage[]>(() =>
@@ -78,13 +78,19 @@ export function useEventChat(
     // attached, enter() goes straight to sendPresence.
     channel
       .attach()
-      .then(() =>
-        channel.presence.enter({
-          firstName: me.firstName,
-          lastName: me.lastName,
-          userImageUrl: me.userImageUrl,
-        }),
-      )
+      .then(async () => {
+        if (canPost) {
+          await channel.presence.enter({
+            firstName: me.firstName,
+            lastName: me.lastName,
+            userImageUrl: me.userImageUrl,
+          });
+        }
+        // Viewers hold a subscribe-only token and never enter, so no presence
+        // event of their own fires — seed the roster once on attach or their
+        // "N online" sits at 0 until someone else joins or leaves.
+        await syncPresence();
+      })
       .catch(() => {});
 
     return () => {
@@ -97,10 +103,18 @@ export function useEventChat(
       // dev double-mount), but each is caught, so closing is safe. The old
       // "defer close until connected" guard left those rejections unhandled and
       // leaked the client whenever it never reached the connected state.
-      channel.presence.leave().catch(() => {});
+      if (canPost) channel.presence.leave().catch(() => {});
       client.close();
     };
-  }, [eventId, me.id, me.firstName, me.lastName, me.userImageUrl, upsert]);
+  }, [
+    eventId,
+    canPost,
+    me.id,
+    me.firstName,
+    me.lastName,
+    me.userImageUrl,
+    upsert,
+  ]);
 
   const sendOptimistic = useCallback(
     async (body: string) => {

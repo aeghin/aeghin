@@ -6,7 +6,7 @@ import {
   type SendMessageInput,
 } from "@/lib/validations/message";
 import {
-  getAcceptedChatMembership,
+  getChatAccess,
   getEventMessages,
   toChatMessage,
 } from "@/lib/services/chat";
@@ -22,8 +22,8 @@ export async function sendMessage(
   input: SendMessageInput,
 ): Promise<SendMessageResult> {
   try {
-    const ctx = await getAcceptedChatMembership(eventId);
-    if (!ctx) return { success: false, error: "Unauthorized" };
+    const ctx = await getChatAccess(eventId);
+    if (!ctx || !ctx.canPost) return { success: false, error: "Unauthorized" };
 
     const parsed = sendMessageSchema.safeParse(input);
     if (!parsed.success) return { success: false, error: parsed.error.message };
@@ -67,7 +67,8 @@ export async function fetchOlderMessages(
   eventId: string,
   cursor: string,
 ): Promise<OlderMessagesResult> {
-  const ctx = await getAcceptedChatMembership(eventId);
+  // View access is enough — previewing admins page back through history too.
+  const ctx = await getChatAccess(eventId);
   if (!ctx) return { success: false, error: "Unauthorized" };
 
   const { messages, nextCursor } = await getEventMessages(eventId, { cursor });

@@ -16,6 +16,7 @@ import type { ChatMessage } from "@/lib/realtime/types";
 interface EventChatPanelProps {
   eventId: string;
   currentUserId: string;
+  canPost: boolean;
   me: { firstName: string; lastName: string; userImageUrl: string | null };
   initialMessages: ChatMessage[];
   serviceColor: string;
@@ -24,6 +25,7 @@ interface EventChatPanelProps {
 export function EventChatPanel({
   eventId,
   currentUserId,
+  canPost,
   me,
   initialMessages,
   serviceColor,
@@ -33,6 +35,7 @@ export function EventChatPanel({
   const { messages, presence, status, sendOptimistic, loadOlder, hasMore } =
     useEventChat(eventId, {
       initial: initialMessages,
+      canPost,
       me: { id: currentUserId, ...me },
     });
 
@@ -132,28 +135,35 @@ export function EventChatPanel({
           </div>
         </ScrollArea>
 
-        <div className="flex items-end gap-2">
-          <Textarea
-            ref={draftRef}
-            rows={1}
-            placeholder="Message the team…"
-            className="max-h-28 min-h-9 resize-none"
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                handleSend();
-              }
-            }}
-          />
-          <Button
-            size="icon"
-            className={cn(serviceColors.solid, serviceColors.solidHover)}
-            onClick={handleSend}
-            aria-label="Send"
-          >
-            <SendHorizontal className="h-4 w-4" />
-          </Button>
-        </div>
+        {canPost ? (
+          <div className="flex items-end gap-2">
+            <Textarea
+              ref={draftRef}
+              rows={1}
+              placeholder="Message the team…"
+              className="max-h-28 min-h-9 resize-none"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSend();
+                }
+              }}
+            />
+            <Button
+              size="icon"
+              className={cn(serviceColors.solid, serviceColors.solidHover)}
+              onClick={handleSend}
+              aria-label="Send"
+            >
+              <SendHorizontal className="h-4 w-4" />
+            </Button>
+          </div>
+        ) : (
+          <p className="rounded-md bg-muted/50 px-3 py-2 text-center text-xs text-muted-foreground">
+            You&apos;re previewing this chat as an organizer. Only assigned
+            volunteers can reply.
+          </p>
+        )}
       </CardContent>
     </Card>
   );

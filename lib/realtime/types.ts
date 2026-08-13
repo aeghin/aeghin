@@ -26,6 +26,8 @@ export interface RealtimeAdapter {
 
 export interface UseEventChatOptions {
   initial: ChatMessage[];
+  /** Accepted assignees write; ADMIN/OWNER previews are read-only. */
+  canPost: boolean;
   me: {
     id: string;
     firstName: string;
