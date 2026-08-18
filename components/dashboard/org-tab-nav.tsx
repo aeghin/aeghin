@@ -51,7 +51,7 @@ export const OrgTabNav = ({ activeTab, canManage, counts }: OrgTabNavProps) => {
             className={cn(
               "cursor-pointer rounded-lg px-4 py-2.5 text-sm transition-all inline-flex items-center justify-center",
               isActive
-                ? "bg-background shadow-sm font-medium"
+                ? "text-primary bg-background ring-1 ring-primary/25 shadow-sm font-medium"
                 : "text-muted-foreground hover:text-foreground"
             )}
           >
