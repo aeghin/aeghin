@@ -32,6 +32,9 @@ export const organizationInvitations = async (organizationId: string) => {
     where: {
       organizationId
     },
+    orderBy: {
+      createdAt: "desc"
+    },
     include: {
       invitedBy: {
         select: {
