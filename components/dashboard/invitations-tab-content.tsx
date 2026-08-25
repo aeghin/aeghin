@@ -29,10 +29,10 @@ const getStatusConfig = (status: InvitationStatus) => {
         label: "Canceled",
         className: "bg-muted text-muted-foreground border-border",
       };
-    default:
+    case InvitationStatus.PENDING:
       return {
         icon: Clock,
-        label: InvitationStatus.PENDING,
+        label: "Pendng",
         className:
           "bg-amber-500/10 text-amber-600 border-amber-500/20",
       };
