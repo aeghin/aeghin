@@ -32,7 +32,7 @@ const getStatusConfig = (status: InvitationStatus) => {
     case InvitationStatus.PENDING:
       return {
         icon: Clock,
-        label: "Pendng",
+        label: "Pending",
         className:
           "bg-amber-500/10 text-amber-600 border-amber-500/20",
       };
