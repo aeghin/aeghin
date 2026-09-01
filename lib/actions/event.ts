@@ -381,7 +381,25 @@ export async function createEvent(
 }
 
 
-export const acceptEventInvitation = async (organizationId: string, eventId: string): Promise<ActionResponse> => {
+/**
+ * How a caller expires the cache tags the two invitation actions touch.
+ *
+ * `updateTag` is a Server Action-only API — it throws the moment it runs inside
+ * a Route Handler, which is where the mobile app's answers arrive. Defaulting
+ * to it leaves every dashboard call exactly as it was; the mobile route passes
+ * `revalidateTag` instead, and nothing else about the work changes.
+ *
+ * Deliberately not exported: a "use server" module may only export async
+ * functions. The mobile route passes a matching function and TypeScript checks
+ * it structurally.
+ */
+type TagInvalidator = (tag: string) => void;
+
+export const acceptEventInvitation = async (
+  organizationId: string,
+  eventId: string,
+  touch: TagInvalidator = updateTag,
+): Promise<ActionResponse> => {
 
   try {
 
@@ -410,9 +428,9 @@ export const acceptEventInvitation = async (organizationId: string, eventId: str
       }
     });
 
-    updateTag(`user-${user.id}-events-${organizationId}`);
-    updateTag(`event-${eventId}-org-${organizationId}-details`);
-    updateTag(`org-${organizationId}-acceptance-stats`);
+    touch(`user-${user.id}-events-${organizationId}`);
+    touch(`event-${eventId}-org-${organizationId}-details`);
+    touch(`org-${organizationId}-acceptance-stats`);
 
     return { success: true };
 
@@ -424,7 +442,11 @@ export const acceptEventInvitation = async (organizationId: string, eventId: str
 
 }
 
-export const declineEventInvitation = async (organizationId: string, eventId: string): Promise<ActionResponse> => {
+export const declineEventInvitation = async (
+  organizationId: string,
+  eventId: string,
+  touch: TagInvalidator = updateTag,
+): Promise<ActionResponse> => {
 
   try {
 
@@ -460,9 +482,9 @@ export const declineEventInvitation = async (organizationId: string, eventId: st
       }
     });
 
-    updateTag(`user-${user.id}-events-${organizationId}`);
-    updateTag(`event-${eventId}-org-${organizationId}-details`);
-    updateTag(`org-${organizationId}-acceptance-stats`);
+    touch(`user-${user.id}-events-${organizationId}`);
+    touch(`event-${eventId}-org-${organizationId}-details`);
+    touch(`org-${organizationId}-acceptance-stats`);
 
     const declinerName = `${user.firstName} ${user.lastName}`;
     const roleLabel = volunteerRoleLabels[assignment.role];
@@ -478,8 +500,8 @@ export const declineEventInvitation = async (organizationId: string, eventId: st
         targetName: roleLabel,
       });
 
-      updateTag(`org-${organizationId}-activity`);
-      updateTag(`event-${eventId}-org-${organizationId}-activity`);
+      touch(`org-${organizationId}-activity`);
+      touch(`event-${eventId}-org-${organizationId}-activity`);
 
       return { success: true };
     }
@@ -525,8 +547,8 @@ export const declineEventInvitation = async (organizationId: string, eventId: st
           detail: roleLabel,
         });
 
-        updateTag(`user-${replacement.userId}-events-${organizationId}`);
-        updateTag(`event-${eventId}-org-${organizationId}-details`);
+        touch(`user-${replacement.userId}-events-${organizationId}`);
+        touch(`event-${eventId}-org-${organizationId}-details`);
 
         after(async () => {
           await resend.emails.send({
@@ -591,8 +613,8 @@ export const declineEventInvitation = async (organizationId: string, eventId: st
       });
     }
 
-    updateTag(`org-${organizationId}-activity`);
-    updateTag(`event-${eventId}-org-${organizationId}-activity`);
+    touch(`org-${organizationId}-activity`);
+    touch(`event-${eventId}-org-${organizationId}-activity`);
 
     return { success: true };
 
