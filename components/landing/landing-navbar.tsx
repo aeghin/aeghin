@@ -59,7 +59,7 @@ export function LandingNavbar() {
           </div>
 
           <div className="hidden lg:flex items-center gap-3">
-            <SignInButton>
+            <SignInButton forceRedirectUrl="/dashboard">
               <Button
                 variant="ghost"
                 size="sm"
@@ -68,7 +68,7 @@ export function LandingNavbar() {
                 Sign in
               </Button>
             </SignInButton>
-            <SignUpButton>
+            <SignUpButton forceRedirectUrl="/setup">
               <Button size="sm" className="shadow-lg shadow-primary/25">
                 Get started free
               </Button>
@@ -110,12 +110,12 @@ export function LandingNavbar() {
                 Pricing
               </Link>
               <div className="flex flex-col gap-3 pt-4 border-t border-border">
-                <SignInButton>
+                <SignInButton forceRedirectUrl="/dashboard">
                   <Button variant="outline" className="w-full bg-transparent">
                     Sign in
                   </Button>
                 </SignInButton>
-                <SignUpButton>
+                <SignUpButton forceRedirectUrl="/setup">
                   <Button className="w-full">Get started free</Button>
                 </SignUpButton>
               </div>
