@@ -11,7 +11,20 @@ import { Prisma } from "@/generated/prisma/client";
 
 type ActionResponse = { success: true } | { success: false; error: string };
 
-export const addSongToLibrary = async (song: songSchemaInput): Promise<ActionResponse> => {
+/**
+ * How an action expires its cache tags.
+ *
+ * `updateTag` throws outside a Server Action, so the mobile route handlers pass
+ * `revalidateTag` instead — the same expiry without the read-your-writes
+ * refresh a dashboard render wants and a JSON response has no use for. Same
+ * arrangement `lib/actions/event.ts` makes for the invitation routes.
+ */
+type TagInvalidator = (tag: string) => void;
+
+export const addSongToLibrary = async (
+    song: songSchemaInput,
+    touch: TagInvalidator = updateTag,
+): Promise<ActionResponse> => {
 
     try {
 
@@ -86,7 +99,7 @@ export const addSongToLibrary = async (song: songSchemaInput): Promise<ActionRes
         });
     };
 
-    updateTag(`org-${organizationId}-songs`);
+    touch(`org-${organizationId}-songs`);
     revalidatePath(`/dashboard/organizations/${organizationId}/songs`);
 
     return { success: true };
@@ -100,7 +113,11 @@ export const addSongToLibrary = async (song: songSchemaInput): Promise<ActionRes
 }
 
 
-    export const updateSongInLibrary = async (songId: string, song: songSchemaInput): Promise<ActionResponse> => {
+    export const updateSongInLibrary = async (
+        songId: string,
+        song: songSchemaInput,
+        touch: TagInvalidator = updateTag,
+    ): Promise<ActionResponse> => {
 
         try {
 
@@ -146,7 +163,7 @@ export const addSongToLibrary = async (song: songSchemaInput): Promise<ActionRes
             });
 
 
-            updateTag(`org-${organizationId}-songs`);
+            touch(`org-${organizationId}-songs`);
             revalidatePath(`/dashboard/organizations/${organizationId}/songs`);
 
   return { success: true };
@@ -263,7 +280,11 @@ export const deleteSongAttachment = async (attachmentId: string, organizationId:
     }
 }
 
-export const deleteSongFromLibrary = async (organizationId: string, songId: string): Promise<ActionResponse> => {
+export const deleteSongFromLibrary = async (
+    organizationId: string,
+    songId: string,
+    touch: TagInvalidator = updateTag,
+): Promise<ActionResponse> => {
 
     try {
 
@@ -343,7 +364,7 @@ export const deleteSongFromLibrary = async (organizationId: string, songId: stri
             }
         }
 
-        updateTag(`org-${organizationId}-songs`);
+        touch(`org-${organizationId}-songs`);
         revalidatePath(`/dashboard/organizations/${organizationId}/songs`);
 
         return { success: true };
