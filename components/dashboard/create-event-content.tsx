@@ -82,6 +82,8 @@ import {
 import { checkMemberAvailability } from "@/lib/actions/event";
 import { createServiceType } from "@/lib/actions/service-type";
 import { createEvent } from "@/lib/actions/event";
+import { AiEventPanel } from "@/components/dashboard/events/ai-event-panel";
+import type { EventDraft } from "@/lib/agents/event/agent";
 
 import { Switch } from "@/components/ui/switch";
 
@@ -204,6 +206,16 @@ function formatBlockoutDate(iso: string): string {
   });
 }
 
+/**
+ * A YYYY-MM-DD draft day as LOCAL midnight. getSelectedDates formats these back
+ * with date-fns `format`, which reads local time — parsing as UTC would shift
+ * the day in negative-offset zones and desync the dayTimes keys.
+ */
+const parseLocalDate = (iso: string): Date => {
+  const [year, month, day] = iso.split("-").map(Number);
+  return new Date(year, month - 1, day);
+};
+
 /** Format a raw "HH:mm" time-input value as 12-hour time (e.g. "14:30" -> "2:30 PM") */
 function formatDayTime(time: string): string {
   if (!time) return "";
@@ -222,6 +234,7 @@ interface CreateEventPageContentProps {
   serviceTypes: ServiceType[];
   templates: EventTemplateWithServiceType[];
   initialTemplateId?: string;
+  canDraftWithAi: boolean;
 }
 
 export function CreateEventPageContent({
@@ -231,6 +244,7 @@ export function CreateEventPageContent({
   serviceTypes,
   templates,
   initialTemplateId,
+  canDraftWithAi,
 }: CreateEventPageContentProps) {
   const router = useRouter();
 
@@ -346,6 +360,8 @@ export function CreateEventPageContent({
   // Apply ?templateId= once on mount. Client-only on purpose: the
   // next-occurrence date math reads the clock, and running it during SSR
   // could disagree with the browser and cause a hydration mismatch.
+  const formTopRef = useRef<HTMLDivElement>(null);
+
   const appliedInitialTemplate = useRef(false);
   useEffect(() => {
     if (appliedInitialTemplate.current) return;
@@ -368,6 +384,59 @@ export function CreateEventPageContent({
     const template = templates.find((t) => t.id === value);
     if (template) applyTemplate(template);
   };
+
+  // "Edit manually" from an AI draft. Fills step 1 exactly as a template does
+  // and stays put, so the draft's dates and times stay editable. Pressing Next
+  // then runs the ordinary availability check against whatever they settled on.
+  const applyDraft = useCallback(
+    (draft: EventDraft) => {
+      const dayTimes: CreateEventFormData["dayTimes"] = {};
+      for (const day of draft.days) {
+        dayTimes[day.date] = {
+          startTime: day.startTime,
+          endTime: day.endTime,
+        };
+      }
+
+      // proposeEvent rejects non-consecutive days, so first and last bound
+      // exactly the interval eachDayOfInterval will walk.
+      const first = draft.days[0];
+      const last = draft.days[draft.days.length - 1];
+
+      reset({
+        serviceTypeId: draft.serviceTypeId,
+        name: draft.name,
+        description: draft.description,
+        dateRange: {
+          from: parseLocalDate(first.date),
+          to: parseLocalDate(last.date),
+        },
+        dayTimes,
+        location: draft.location,
+        rolesNeeded: draft.rolesNeeded,
+        expiresAt: draft.expiresInDays,
+        smartSchedulingEnabled: draft.smartSchedulingEnabled,
+      });
+
+      const assignments = {} as Record<VolunteerRole, string[]>;
+      for (const assignment of draft.assignments) {
+        assignments[assignment.role] = [
+          ...(assignments[assignment.role] || []),
+          assignment.userId,
+        ];
+      }
+
+      setRoleAssignments(assignments);
+      setSelectedTemplateId("");
+      // Recomputed by handleNext once they commit to dates on Next.
+      setMemberConflicts({});
+      setMemberBlockouts({});
+      setError(null);
+
+      formTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    },
+    [reset],
+  );
 
   const handleDateRangeChange = useCallback(
     (range: DateRange | undefined) => {
@@ -787,6 +856,21 @@ export function CreateEventPageContent({
               </button>
             </m.div>
           )}
+
+          {canDraftWithAi && (
+            // Hidden rather than unmounted: AnimatePresence drops the step-1
+            // subtree, which would throw away the conversation the moment
+            // someone stepped through the manual form and came back.
+            <div className={cn(step !== 1 && "hidden")}>
+              <AiEventPanel
+                orgId={organizationId}
+                hasServiceTypes={optimisticServiceTypes.length > 0}
+                onRefine={applyDraft}
+              />
+            </div>
+          )}
+
+          <div ref={formTopRef} className="scroll-mt-6" />
 
           <AnimatePresence mode="wait">
               {step === 1 ? (

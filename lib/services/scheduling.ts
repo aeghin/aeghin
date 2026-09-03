@@ -2,7 +2,12 @@ import "server-only";
 
 import prisma from "@/lib/prisma";
 import { InvitationStatus, VolunteerRole } from "@/generated/prisma/enums";
-import { getBlockedUserIds } from "@/lib/services/blockouts";
+import { getBlockedUserIds, getBlockoutsForDates } from "@/lib/services/blockouts";
+import type {
+  RoleCandidate,
+  RoleEligibility,
+  RoleExclusion,
+} from "@/lib/types";
 
 type DateRange = { startTime: Date | string; endTime: Date | string };
 
@@ -65,7 +70,7 @@ export async function getConflictingUserIds(
   return new Set(rows.map((r) => r.userId));
 }
 
-async function getAcceptanceCounts(organizationId: string) {
+export async function getAcceptanceCounts(organizationId: string) {
   const grouped = await prisma.eventAssignment.groupBy({
     by: ["userId", "status"],
     where: {
@@ -203,4 +208,209 @@ export async function findBestReplacement(params: {
       lastName: best.lastName,
     },
   };
+}
+
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** Blockouts and event days are stored as floating UTC, so slice in UTC. */
+const toDateOnly = (d: Date) => d.toISOString().slice(0, 10);
+
+/**
+ * How often each member has actually served recently, and when they last did.
+ *
+ * Only ACCEPTED assignments on events that already started count — a pending
+ * invitation isn't a serve, and a future booking isn't fatigue. This is the
+ * rotation signal `findBestReplacement` has no notion of: it ranks purely on
+ * reliability, so left alone it will pick the same dependable member forever.
+ */
+export async function getRecentServeCounts(
+  organizationId: string,
+  sinceDays: number,
+): Promise<Map<string, { count: number; lastServedOn: Date | null }>> {
+  const now = new Date();
+  const since = new Date(now.getTime() - sinceDays * DAY_MS);
+
+  const rows = await prisma.eventAssignment.findMany({
+    where: {
+      organizationId,
+      status: InvitationStatus.ACCEPTED,
+      event: { dates: { some: { startTime: { gte: since, lte: now } } } },
+    },
+    select: {
+      userId: true,
+      event: {
+        select: {
+          dates: {
+            where: { startTime: { gte: since, lte: now } },
+            select: { startTime: true },
+          },
+        },
+      },
+    },
+  });
+
+  const counts = new Map<string, { count: number; lastServedOn: Date | null }>();
+
+  for (const row of rows) {
+    const entry = counts.get(row.userId) ?? { count: 0, lastServedOn: null };
+    entry.count += 1;
+
+    for (const { startTime } of row.event.dates) {
+      if (entry.lastServedOn === null || startTime > entry.lastServedOn) {
+        entry.lastServedOn = startTime;
+      }
+    }
+
+    counts.set(row.userId, entry);
+  }
+
+  return counts;
+}
+
+/**
+ * The full scheduling picture for a set of candidate days, one entry per role.
+ *
+ * Ranking deliberately mirrors `findBestReplacement` — Laplace-smoothed
+ * acceptance, then proven volume — so the automatic floor here is the same
+ * member smart scheduling would have picked. `recentServes`/`lastServedOn` ride
+ * along so a caller can deviate for rotation and say why.
+ *
+ * Exclusions come back named and reasoned rather than silently filtered: a
+ * caller that can't see *who* was dropped and why will invent an explanation.
+ */
+export async function getEligibilityByRole(params: {
+  organizationId: string;
+  dates: DateRange[];
+  roles: VolunteerRole[];
+  maxPerRole?: number;
+  recentWindowDays?: number;
+}): Promise<RoleEligibility[]> {
+  const {
+    organizationId,
+    dates,
+    roles,
+    maxPerRole = 8,
+    recentWindowDays = 60,
+  } = params;
+
+  if (dates.length === 0 || roles.length === 0) {
+    return roles.map((role) => ({
+      role,
+      eligible: [],
+      excluded: [],
+      totalQualified: 0,
+    }));
+  }
+
+  const [conflictRows, blockoutRows, memberships, acceptance, recent] =
+    await Promise.all([
+      getConflictingAssignments(organizationId, dates),
+      getBlockoutsForDates(organizationId, dates),
+      prisma.membership.findMany({
+        where: { organizationId, volunteerRoles: { hasSome: roles } },
+        select: {
+          createdAt: true,
+          volunteerRoles: true,
+          user: { select: { id: true, firstName: true, lastName: true } },
+        },
+      }),
+      getAcceptanceCounts(organizationId),
+      getRecentServeCounts(organizationId, recentWindowDays),
+    ]);
+
+  const conflictBy = new Map<string, string>();
+  for (const row of conflictRows) {
+    if (!conflictBy.has(row.userId)) conflictBy.set(row.userId, row.event.name);
+  }
+
+  const blockoutBy = new Map<string, string>();
+  for (const row of blockoutRows) {
+    if (!blockoutBy.has(row.userId)) {
+      blockoutBy.set(
+        row.userId,
+        `${toDateOnly(row.startDate)} to ${toDateOnly(row.endDate)}`,
+      );
+    }
+  }
+
+  return roles.map((role) => {
+    const qualified = memberships.filter((m) =>
+      m.volunteerRoles.includes(role),
+    );
+
+    const ranked: { candidate: RoleCandidate; rate: number; joined: number }[] =
+      [];
+    const excluded: RoleExclusion[] = [];
+
+    for (const m of qualified) {
+      const name = `${m.user.firstName} ${m.user.lastName}`;
+
+      const conflict = conflictBy.get(m.user.id);
+      if (conflict) {
+        excluded.push({
+          userId: m.user.id,
+          name,
+          reason: "conflict",
+          detail: conflict,
+        });
+        continue;
+      }
+
+      const blockout = blockoutBy.get(m.user.id);
+      if (blockout) {
+        excluded.push({
+          userId: m.user.id,
+          name,
+          reason: "blockout",
+          detail: blockout,
+        });
+        continue;
+      }
+
+      const { accepted, declined } = acceptance.get(m.user.id) ?? {
+        accepted: 0,
+        declined: 0,
+      };
+      const responded = accepted + declined;
+      // Laplace smoothing: no-history members sit at 0.5.
+      const rate = (accepted + 1) / (responded + 2);
+      const serve = recent.get(m.user.id);
+
+      ranked.push({
+        rate,
+        joined: m.createdAt.getTime(),
+        candidate: {
+          userId: m.user.id,
+          name,
+          // Rounded for display only — the sort below uses full precision, so
+          // this stays consistent with findBestReplacement's ordering.
+          reliability: Math.round(rate * 100) / 100,
+          responded,
+          recentServes: serve?.count ?? 0,
+          lastServedOn: serve?.lastServedOn
+            ? toDateOnly(serve.lastServedOn)
+            : null,
+        },
+      });
+    }
+
+    ranked.sort((a, b) => {
+      if (b.rate !== a.rate) return b.rate - a.rate;
+      if (b.candidate.responded !== a.candidate.responded) {
+        return b.candidate.responded - a.candidate.responded;
+      }
+      if (a.candidate.recentServes !== b.candidate.recentServes) {
+        return a.candidate.recentServes - b.candidate.recentServes;
+      }
+      return a.joined - b.joined;
+    });
+
+    return {
+      role,
+      eligible: ranked.slice(0, maxPerRole).map((r) => r.candidate),
+      excluded,
+      totalQualified: qualified.length,
+    };
+  });
 }

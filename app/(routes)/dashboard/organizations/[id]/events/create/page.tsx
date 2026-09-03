@@ -8,6 +8,7 @@ import {
 } from "@/lib/services/organization";
 import { getOrgServiceTypes } from "@/lib/services/service-types";
 import { getOrgEventTemplates } from "@/lib/services/event-templates";
+import { getAiProAccess } from "@/lib/billing/entitlements";
 
 
 export default async function CreateEventPage({
@@ -25,11 +26,12 @@ export default async function CreateEventPage({
 
   if (!user) redirect("/sign-in");
 
-  const [membership, members, serviceTypes, templates] = await Promise.all([
+  const [membership, members, serviceTypes, templates, hasAiPro] = await Promise.all([
     getUserMembershipWithOrg(user.id, orgId),
     getOrgMembersWithUser(orgId),
     getOrgServiceTypes(orgId),
-    getOrgEventTemplates(orgId)
+    getOrgEventTemplates(orgId),
+    getAiProAccess({ userId: user.id, orgId })
   ])
 
   const organizationName = membership?.organization.name || '';
@@ -48,6 +50,7 @@ export default async function CreateEventPage({
       serviceTypes={serviceTypes}
       templates={templates}
       initialTemplateId={templateId}
+      canDraftWithAi={hasAiPro}
     />
   )
 }

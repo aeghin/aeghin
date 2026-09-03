@@ -148,3 +148,39 @@ export type EventTemplateWithServiceType = {
     color: string
   }
 }
+
+
+/**
+ * Per-role scheduling picture for a set of candidate event days. Produced by
+ * `getEligibilityByRole` and handed to the event-draft agent as tool output, so
+ * this lives here rather than in the service — the agent module must stay free
+ * of `server-only` imports.
+ */
+export type RoleCandidate = {
+  userId: string
+  name: string
+  /** Laplace-smoothed acceptance rate, 0–1. No-history members sit at 0.5. */
+  reliability: number
+  /** Accepted + declined invitations this member has actually answered. */
+  responded: number
+  /** Accepted assignments whose event fell inside the recent window. */
+  recentServes: number
+  /** Date-only (YYYY-MM-DD) of their most recent served event, or null. */
+  lastServedOn: string | null
+}
+
+export type RoleExclusion = {
+  userId: string
+  name: string
+  reason: "conflict" | "blockout"
+  /** Human-readable cause: the clashing event's name, or the blockout range. */
+  detail: string
+}
+
+export type RoleEligibility = {
+  role: VolunteerRole
+  /** Ranked best-first, capped. `totalQualified` reports the untruncated size. */
+  eligible: RoleCandidate[]
+  excluded: RoleExclusion[]
+  totalQualified: number
+}
