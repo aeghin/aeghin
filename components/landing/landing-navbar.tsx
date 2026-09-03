@@ -33,7 +33,7 @@ export function LandingNavbar() {
                 alt=""
                 className="h-10 w-10 rounded-xl shadow-lg shadow-primary/25 group-hover:shadow-primary/40 transition-shadow"
               />
-              <span className="text-2xl font-bold tracking-tight">Aeghin</span>
+              <span className="font-brand text-2xl font-bold tracking-tight">aeghin</span>
             </Link>
 
             <div className="hidden lg:flex items-center gap-8">

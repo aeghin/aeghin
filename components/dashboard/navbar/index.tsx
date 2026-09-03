@@ -15,7 +15,7 @@ export function Navbar() {
               alt=""
               className="h-9 w-9 rounded-xl shadow-lg shadow-primary/20 transition-transform duration-200 group-hover:scale-105"
             />
-            <span className="text-sm font-semibold tracking-tight">Aeghin</span>
+            <span className="font-brand text-sm font-semibold tracking-tight">aeghin</span>
           </Link>
           <NavLinks />
         </div>

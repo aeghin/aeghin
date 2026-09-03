@@ -30,7 +30,7 @@ const Header = () => (
           alt=""
           className="h-8 w-8 rounded-lg shadow-lg shadow-primary/25"
         />
-        <span className="text-lg font-semibold">Aeghin</span>
+        <span className="font-brand text-lg font-semibold">aeghin</span>
       </Link>
     </div>
   </header>

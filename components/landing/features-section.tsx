@@ -3,9 +3,9 @@ import { Calendar, Users, Music, Mail, CalendarOff, Sparkles, MessageSquare, Rep
 const features = [
   {
     icon: Sparkles,
-    title: "AI Setlist Generation",
+    title: "AI Setlists & Events",
     description:
-      "Describe the service and get an ordered setlist back — built from your own catalog, with key compatibility and a sensible tempo arc.",
+      "Describe the service and get an ordered setlist from your own catalog — or a whole event drafted, with dates, roles, and volunteers who are actually free.",
   },
   {
     icon: Music,

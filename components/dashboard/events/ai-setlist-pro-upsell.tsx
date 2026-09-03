@@ -10,9 +10,14 @@ import { startAiSetlistProCheckout } from "@/lib/actions/billing";
 export function AiSetlistProUpsell({
   orgId,
   canSubscribe,
+  title = "Do more with Pro",
+  description = "A smarter model that researches beyond your catalog, plus an AI assistant that drafts whole events, volunteers included.",
 }: {
   orgId: string;
   canSubscribe: boolean;
+  /** Lead with whichever Pro feature the surrounding screen is about. */
+  title?: string;
+  description?: string;
 }) {
   const [isPending, startTransition] = useTransition();
 
@@ -35,11 +40,8 @@ export function AiSetlistProUpsell({
           <Sparkles className="h-4 w-4 text-violet-600 dark:text-violet-400" />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="text-xs font-semibold">Want sharper setlists?</p>
-          <p className="text-xs text-muted-foreground">
-            Pro uses a smarter model and can pull ideas from the web, beyond your
-            catalog.
-          </p>
+          <p className="text-xs font-semibold">{title}</p>
+          <p className="text-xs text-muted-foreground">{description}</p>
           {!canSubscribe && (
             <p className="mt-1 text-xs text-muted-foreground">
               Ask an organization owner to upgrade.

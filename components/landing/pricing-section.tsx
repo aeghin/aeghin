@@ -21,7 +21,7 @@ const plans = [
   },
   {
     name: "AI Setlist Premium",
-    price: "$29.99",
+    price: "$39.99",
     period: "/month",
     description: "Let AI build the setlist from your catalog",
     features: [
@@ -37,11 +37,12 @@ const plans = [
   },
   {
     name: "AI Setlist Pro",
-    price: "$39.99",
+    price: "$49.99",
     period: "/month",
-    description: "A stronger model that can research beyond your catalog",
+    description: "Drafts whole events, and researches beyond your catalog",
     features: [
       "Everything in Premium",
+      "AI event drafting with volunteer picks",
       "Upgraded, more capable AI model",
       "Web search for songs and artists",
       "Suggests songs you don't own yet",
@@ -61,7 +62,8 @@ export function PricingSection() {
           <p className="text-sm font-semibold text-primary mb-4 tracking-wide uppercase">Pricing</p>
           <h2 className="text-4xl font-bold tracking-tight sm:text-5xl text-balance">Simple, transparent pricing</h2>
           <p className="mt-6 text-lg text-muted-foreground">
-            Every scheduling feature is free. AI setlists are the only paid add-on.
+            Every scheduling feature is free. The AI plans add setlist generation
+            and event drafting on top.
           </p>
         </div>
 

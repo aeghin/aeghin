@@ -43,7 +43,7 @@ export function Footer() {
                 alt=""
                 className="h-10 w-10 rounded-xl shadow-lg shadow-primary/25"
               />
-              <span className="text-2xl font-bold tracking-tight">Aeghin</span>
+              <span className="font-brand text-2xl font-bold tracking-tight">aeghin</span>
             </Link>
             <p className="text-sm text-muted-foreground max-w-xs leading-relaxed">
               The modern platform for volunteer coordination. Built for worship teams, churches, and community

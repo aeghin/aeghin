@@ -83,6 +83,7 @@ import { checkMemberAvailability } from "@/lib/actions/event";
 import { createServiceType } from "@/lib/actions/service-type";
 import { createEvent } from "@/lib/actions/event";
 import { AiEventPanel } from "@/components/dashboard/events/ai-event-panel";
+import { AiSetlistProUpsell } from "@/components/dashboard/events/ai-setlist-pro-upsell";
 import type { EventDraft } from "@/lib/agents/event/agent";
 
 import { Switch } from "@/components/ui/switch";
@@ -235,6 +236,7 @@ interface CreateEventPageContentProps {
   templates: EventTemplateWithServiceType[];
   initialTemplateId?: string;
   canDraftWithAi: boolean;
+  canSubscribe: boolean;
 }
 
 export function CreateEventPageContent({
@@ -245,6 +247,7 @@ export function CreateEventPageContent({
   templates,
   initialTemplateId,
   canDraftWithAi,
+  canSubscribe,
 }: CreateEventPageContentProps) {
   const router = useRouter();
 
@@ -857,7 +860,7 @@ export function CreateEventPageContent({
             </m.div>
           )}
 
-          {canDraftWithAi && (
+          {canDraftWithAi ? (
             // Hidden rather than unmounted: AnimatePresence drops the step-1
             // subtree, which would throw away the conversation the moment
             // someone stepped through the manual form and came back.
@@ -868,6 +871,19 @@ export function CreateEventPageContent({
                 onRefine={applyDraft}
               />
             </div>
+          ) : (
+            // Without Pro the panel never renders, so this is the only place
+            // the assistant is mentioned to the person who can pay for it.
+            step === 1 && (
+              <div className="mb-2">
+                <AiSetlistProUpsell
+                  orgId={organizationId}
+                  canSubscribe={canSubscribe}
+                  title="Draft this event with AI"
+                  description="Describe it in a sentence and Pro drafts the dates, roles, and volunteers who are actually free."
+                />
+              </div>
+            )
           )}
 
           <div ref={formTopRef} className="scroll-mt-6" />

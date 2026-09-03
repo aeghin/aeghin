@@ -82,8 +82,8 @@ export function AiSetlistUpgrade({
               <Sparkles className="h-3.5 w-3.5 text-violet-600 dark:text-violet-400" />
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
-              A smarter model that can pull ideas from the web, beyond your
-              catalog.
+              A smarter model that researches beyond your catalog, plus AI event
+              drafting with volunteer picks.
             </p>
             <Button
               size="sm"

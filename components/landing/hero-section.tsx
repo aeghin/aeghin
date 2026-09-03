@@ -17,7 +17,7 @@ export function HeroSection() {
           {/* Badge */}
           <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-5 py-2 mb-8">
             <Sparkles className="h-4 w-4 text-primary" />
-            <span className="text-sm font-medium text-foreground">Now with AI setlist generation</span>
+            <span className="text-sm font-medium text-foreground">Now with AI event and setlist drafting</span>
           </div>
 
           {/* Headline */}

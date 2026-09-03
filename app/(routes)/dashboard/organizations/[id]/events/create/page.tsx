@@ -51,6 +51,7 @@ export default async function CreateEventPage({
       templates={templates}
       initialTemplateId={templateId}
       canDraftWithAi={hasAiPro}
+      canSubscribe={membership?.role === OrgRole.OWNER}
     />
   )
 }

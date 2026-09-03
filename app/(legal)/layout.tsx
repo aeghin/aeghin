@@ -16,7 +16,7 @@ export default function LegalLayout({
               alt=""
               className="h-8 w-8 rounded-lg shadow-lg shadow-primary/25"
             />
-            <span className="text-lg font-bold tracking-tight">Aeghin</span>
+            <span className="font-brand text-lg font-bold tracking-tight">aeghin</span>
           </Link>
         </div>
       </header>
