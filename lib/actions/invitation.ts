@@ -14,6 +14,14 @@ import { after } from "next/server";
 import { updateTag } from "next/cache";
 import { currentUser } from "../services/user";
 
+/**
+ * How a caller expires cache tags. `updateTag` throws inside a Route Handler,
+ * so the mobile routes pass `revalidateTag`; every web call site keeps the
+ * default. Not exported: a "use server" module may only export async functions.
+ */
+type TagInvalidator = (tag: string) => void;
+
+
 // import twilio from 'twilio';
 
 // const twilioClient = twilio(
@@ -27,7 +35,7 @@ type ActionResponse =
   | { success: true; orgId?: string }
   | { success: false; error: string }
 
-export async function inviteMember(data: OrgInvitationInput): Promise<ActionResponse> {
+export async function inviteMember(data: OrgInvitationInput, touch: TagInvalidator = updateTag): Promise<ActionResponse> {
     
     try {
 
@@ -96,8 +104,8 @@ export async function inviteMember(data: OrgInvitationInput): Promise<ActionResp
                 : undefined,
         });
 
-        updateTag(`invitations-${orgId}-list`);
-        updateTag(`org-${orgId}-activity`);
+        touch(`invitations-${orgId}-list`);
+        touch(`org-${orgId}-activity`);
 
         after(async () => {await resend.emails.send({
             from: `${membership.organization.name} <support@aeghin.com>`,
@@ -126,7 +134,7 @@ export async function inviteMember(data: OrgInvitationInput): Promise<ActionResp
 };
 
 
-export async function acceptOrgInvite(token: string): Promise<ActionResponse> {
+export async function acceptOrgInvite(token: string, touch: TagInvalidator = updateTag): Promise<ActionResponse> {
 
     try {
 
@@ -182,12 +190,12 @@ export async function acceptOrgInvite(token: string): Promise<ActionResponse> {
             actorName: `${user.firstName} ${user.lastName}`,
          });
 
-         updateTag(`invitations-${acceptedInvitation.organizationId}-list`);
-         updateTag(`user-${user.id}-orgs`);
-         updateTag(`org-${acceptedInvitation.organizationId}-member-count`);
-         updateTag(`org-${acceptedInvitation.organizationId}-members-list`);
-         updateTag(`user-${user.id}-memberships`);
-         updateTag(`org-${acceptedInvitation.organizationId}-activity`);
+         touch(`invitations-${acceptedInvitation.organizationId}-list`);
+         touch(`user-${user.id}-orgs`);
+         touch(`org-${acceptedInvitation.organizationId}-member-count`);
+         touch(`org-${acceptedInvitation.organizationId}-members-list`);
+         touch(`user-${user.id}-memberships`);
+         touch(`org-${acceptedInvitation.organizationId}-activity`);
 
          return { success: true, orgId: acceptedInvitation.organizationId }
 
@@ -197,7 +205,7 @@ export async function acceptOrgInvite(token: string): Promise<ActionResponse> {
     };
 };
 
-export async function declineOrgInvite(token: string): Promise<ActionResponse> {
+export async function declineOrgInvite(token: string, touch: TagInvalidator = updateTag): Promise<ActionResponse> {
 
     try {
 
@@ -238,8 +246,8 @@ export async function declineOrgInvite(token: string): Promise<ActionResponse> {
         actorName: `${user.firstName} ${user.lastName}`,
     });
 
-    updateTag(`invitations-${invitation.organizationId}-list`);
-    updateTag(`org-${invitation.organizationId}-activity`);
+    touch(`invitations-${invitation.organizationId}-list`);
+    touch(`org-${invitation.organizationId}-activity`);
 
     return { success: true };
 
@@ -250,7 +258,7 @@ export async function declineOrgInvite(token: string): Promise<ActionResponse> {
     };
 };
 
-export const cancelOrgInvite = async (organizationId: string, userEmail: string): Promise<ActionResponse> => {
+export const cancelOrgInvite = async (organizationId: string, userEmail: string, touch: TagInvalidator = updateTag): Promise<ActionResponse> => {
 
     try {
 
@@ -305,8 +313,8 @@ export const cancelOrgInvite = async (organizationId: string, userEmail: string)
             targetName: userEmail,
         });
 
-        updateTag(`invitations-${organizationId}-list`);
-        updateTag(`org-${organizationId}-activity`);
+        touch(`invitations-${organizationId}-list`);
+        touch(`org-${organizationId}-activity`);
 
         return { success: true };
 

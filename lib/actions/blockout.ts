@@ -9,10 +9,19 @@ import {
   createBlockoutSchema,
 } from "@/lib/validations/blockout";
 
+/**
+ * How a caller expires cache tags. `updateTag` throws inside a Route Handler,
+ * so the mobile routes pass `revalidateTag`; every web call site keeps the
+ * default. Not exported: a "use server" module may only export async functions.
+ */
+type TagInvalidator = (tag: string) => void;
+
+
 type ActionResponse = { success: true } | { success: false; error: string };
 
 export const createBlockoutDate = async (
   input: CreateBlockoutInput,
+  touch: TagInvalidator = updateTag,
 ): Promise<ActionResponse> => {
   try {
     const user = await currentUser();
@@ -50,7 +59,7 @@ export const createBlockoutDate = async (
       },
     });
 
-    updateTag(`user-${user.id}-blockouts-${organizationId}`);
+    touch(`user-${user.id}-blockouts-${organizationId}`);
     revalidatePath(`/dashboard/organizations/${organizationId}`);
 
     return { success: true };
@@ -62,6 +71,7 @@ export const createBlockoutDate = async (
 export const deleteBlockoutDate = async (
   blockoutId: string,
   organizationId: string,
+  touch: TagInvalidator = updateTag,
 ): Promise<ActionResponse> => {
   try {
     const user = await currentUser();
@@ -84,7 +94,7 @@ export const deleteBlockoutDate = async (
       return { success: false, error: "Unable to locate blockout" };
     }
 
-    updateTag(`user-${user.id}-blockouts-${organizationId}`);
+    touch(`user-${user.id}-blockouts-${organizationId}`);
     revalidatePath(`/dashboard/organizations/${organizationId}`);
 
     return { success: true };

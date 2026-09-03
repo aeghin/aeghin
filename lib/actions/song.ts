@@ -178,7 +178,10 @@ export const addSongToLibrary = async (
   }
 }
 
-export const addSongAttachments = async (input: songAttachmentsInput): Promise<ActionResponse> => {
+export const addSongAttachments = async (
+    input: songAttachmentsInput,
+    touch: TagInvalidator = updateTag,
+): Promise<ActionResponse> => {
 
     try {
 
@@ -223,7 +226,7 @@ export const addSongAttachments = async (input: songAttachmentsInput): Promise<A
             skipDuplicates: true
         });
 
-        updateTag(`org-${organizationId}-songs`);
+        touch(`org-${organizationId}-songs`);
         revalidatePath(`/dashboard/organizations/${organizationId}/songs`);
 
         return { success: true };
@@ -234,7 +237,11 @@ export const addSongAttachments = async (input: songAttachmentsInput): Promise<A
     }
 }
 
-export const deleteSongAttachment = async (attachmentId: string, organizationId: string): Promise<ActionResponse> => {
+export const deleteSongAttachment = async (
+    attachmentId: string,
+    organizationId: string,
+    touch: TagInvalidator = updateTag,
+): Promise<ActionResponse> => {
 
     try {
 
@@ -269,7 +276,7 @@ export const deleteSongAttachment = async (attachmentId: string, organizationId:
 
         await prisma.songAttachment.delete({ where: { id: attachmentId } });
 
-        updateTag(`org-${organizationId}-songs`);
+        touch(`org-${organizationId}-songs`);
         revalidatePath(`/dashboard/organizations/${organizationId}/songs`);
 
         return { success: true };

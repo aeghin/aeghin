@@ -149,6 +149,7 @@ export const checkMemberAvailability = async ({
 export async function createEvent(
   input: CreateEventInput,
   organizationId: string,
+  touch: TagInvalidator = updateTag,
 ): Promise<ActionResponse> {
   try {
     
@@ -325,7 +326,7 @@ export async function createEvent(
       });
 
       for (const uid of new Set(assignedUserIds)) {
-        updateTag(`user-${uid}-events-${organizationId}`)
+        touch(`user-${uid}-events-${organizationId}`)
       };
 
       after(async () => {await Promise.allSettled(
@@ -367,9 +368,9 @@ export async function createEvent(
       });
     }
 
-    updateTag(`org-${organizationId}-events`);
-    updateTag(`org-${organizationId}-activity`);
-    updateTag(`event-${newEventId}-org-${organizationId}-activity`);
+    touch(`org-${organizationId}-events`);
+    touch(`org-${organizationId}-activity`);
+    touch(`event-${newEventId}-org-${organizationId}-activity`);
 
     revalidatePath(`/dashboard/organizations/${organizationId}`);
 
@@ -625,7 +626,7 @@ export const declineEventInvitation = async (
   };
 };
 
-export const cancelUserEventAssignment = async (userId: string, organizationId: string, eventId: string): Promise<ActionResponse> => {
+export const cancelUserEventAssignment = async (userId: string, organizationId: string, eventId: string, touch: TagInvalidator = updateTag): Promise<ActionResponse> => {
   
   try {
 
@@ -662,8 +663,8 @@ export const cancelUserEventAssignment = async (userId: string, organizationId: 
       }
     }); 
 
-    updateTag(`user-${userId}-events-${organizationId}`);
-    updateTag(`event-${eventId}-org-${organizationId}-details`);
+    touch(`user-${userId}-events-${organizationId}`);
+    touch(`event-${eventId}-org-${organizationId}-details`);
 
     return { success: true };
 
@@ -681,6 +682,7 @@ export const setEventSmartScheduling = async (
   organizationId: string,
   eventId: string,
   enabled: boolean,
+  touch: TagInvalidator = updateTag,
 ): Promise<ActionResponse> => {
 
   try {
@@ -728,9 +730,9 @@ export const setEventSmartScheduling = async (
       actorName: `${user.firstName} ${user.lastName}`,
     });
 
-    updateTag(`event-${eventId}-org-${organizationId}-details`);
-    updateTag(`org-${organizationId}-activity`);
-    updateTag(`event-${eventId}-org-${organizationId}-activity`);
+    touch(`event-${eventId}-org-${organizationId}-details`);
+    touch(`org-${organizationId}-activity`);
+    touch(`event-${eventId}-org-${organizationId}-activity`);
 
     return { success: true };
 
@@ -748,6 +750,7 @@ export const addEventRoles = async (
   organizationId: string,
   eventId: string,
   input: AddEventRolesInput,
+  touch: TagInvalidator = updateTag,
 ): Promise<ActionResponse> => {
 
   try {
@@ -792,8 +795,8 @@ export const addEventRoles = async (
       data: { rolesNeeded: merged },
     });
 
-    updateTag(`event-${eventId}-org-${organizationId}-details`);
-    updateTag(`org-${organizationId}-events`);
+    touch(`event-${eventId}-org-${organizationId}-details`);
+    touch(`org-${organizationId}-events`);
 
     return { success: true };
 
@@ -813,6 +816,7 @@ export const removeEventRole = async (
   organizationId: string,
   eventId: string,
   input: RemoveEventRoleInput,
+  touch: TagInvalidator = updateTag,
 ): Promise<ActionResponse> => {
 
   try {
@@ -893,16 +897,16 @@ export const removeEventRole = async (
       }),
     ]);
 
-    updateTag(`event-${eventId}-org-${organizationId}-details`);
-    updateTag(`org-${organizationId}-events`);
+    touch(`event-${eventId}-org-${organizationId}-details`);
+    touch(`org-${organizationId}-events`);
 
     for (const { userId } of event.assignments) {
-      updateTag(`user-${userId}-events-${organizationId}`);
+      touch(`user-${userId}-events-${organizationId}`);
     };
 
     // Dropping declined rows moves the denominator the acceptance rate counts from.
     if (event.assignments.some((a) => a.status === InvitationStatus.DECLINED)) {
-      updateTag(`org-${organizationId}-acceptance-stats`);
+      touch(`org-${organizationId}-acceptance-stats`);
     }
 
     return { success: true };
@@ -926,6 +930,7 @@ export const inviteMembersToEvent = async (
   organizationId: string,
   eventId: string,
   input: InviteToEventInput,
+  touch: TagInvalidator = updateTag,
 ): Promise<InviteToEventResult> => {
 
   try {
@@ -1155,17 +1160,17 @@ export const inviteMembersToEvent = async (
     });
 
     for (const uid of invitedUserIds) {
-      updateTag(`user-${uid}-events-${organizationId}`);
+      touch(`user-${uid}-events-${organizationId}`);
     };
 
-    updateTag(`event-${eventId}-org-${organizationId}-details`);
-    updateTag(`org-${organizationId}-events`);
-    updateTag(`org-${organizationId}-activity`);
+    touch(`event-${eventId}-org-${organizationId}-details`);
+    touch(`org-${organizationId}-events`);
+    touch(`org-${organizationId}-activity`);
 
     // Reusing a row drops whatever ACCEPTED/DECLINED it held, which moves the
     // acceptance numbers those stats are counted from.
     if (toReactivate.length > 0) {
-      updateTag(`org-${organizationId}-acceptance-stats`);
+      touch(`org-${organizationId}-acceptance-stats`);
     }
 
     return { success: true, invitedCount: invitedUserIds.length, skippedNames };
@@ -1178,7 +1183,7 @@ export const inviteMembersToEvent = async (
 };
 
 
-export const deleteEvent = async (organizationId: string, eventId: string): Promise<ActionResponse> => {
+export const deleteEvent = async (organizationId: string, eventId: string, touch: TagInvalidator = updateTag): Promise<ActionResponse> => {
 
   try {
 
@@ -1240,13 +1245,13 @@ export const deleteEvent = async (organizationId: string, eventId: string): Prom
       detail: event.serviceType.name,
     });
 
-    updateTag(`org-${organizationId}-events`);
-    updateTag(`event-${eventId}-org-${organizationId}-details`);
-    updateTag(`event-${eventId}-org-${organizationId}-activity`);
-    updateTag(`org-${organizationId}-activity`);
+    touch(`org-${organizationId}-events`);
+    touch(`event-${eventId}-org-${organizationId}-details`);
+    touch(`event-${eventId}-org-${organizationId}-activity`);
+    touch(`org-${organizationId}-activity`);
 
     for (const { userId } of event.assignments) {
-      updateTag(`user-${userId}-events-${organizationId}`);
+      touch(`user-${userId}-events-${organizationId}`);
     };
 
     const setlistUserIds = new Set(
@@ -1256,7 +1261,7 @@ export const deleteEvent = async (organizationId: string, eventId: string): Prom
     );
 
     for (const userId of setlistUserIds) {
-      updateTag(`user-${userId}-songs-${organizationId}`);
+      touch(`user-${userId}-songs-${organizationId}`);
     };
 
     const affectsAcceptanceStats = event.assignments.some(
@@ -1266,7 +1271,7 @@ export const deleteEvent = async (organizationId: string, eventId: string): Prom
     );
 
     if (affectsAcceptanceStats) {
-      updateTag(`org-${organizationId}-acceptance-stats`);
+      touch(`org-${organizationId}-acceptance-stats`);
     };
 
     return { success: true };
@@ -1376,7 +1381,10 @@ export const emailAcceptedVolunteers = async (
   };
 };
 
-export const editEventDetails = async (data: EditEventDetailsInput): Promise<ActionResponse> => {
+export const editEventDetails = async (
+  data: EditEventDetailsInput,
+  touch: TagInvalidator = updateTag,
+): Promise<ActionResponse> => {
     
     try {
 
@@ -1476,11 +1484,11 @@ export const editEventDetails = async (data: EditEventDetailsInput): Promise<Act
         });
       });
 
-      updateTag(`event-${eventId}-org-${organizationId}-details`);
-      updateTag(`org-${organizationId}-events`);
+      touch(`event-${eventId}-org-${organizationId}-details`);
+      touch(`org-${organizationId}-events`);
 
       for (const { userId } of event.assignments) {
-        updateTag(`user-${userId}-events-${organizationId}`);
+        touch(`user-${userId}-events-${organizationId}`);
       };
 
       return { success: true };

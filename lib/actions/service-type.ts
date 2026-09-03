@@ -6,6 +6,14 @@ import { currentUser } from "@/lib/services/user";
 import { revalidatePath, updateTag } from "next/cache";
 import { editServiceTypeSchema, type EditServiceTypeInput } from "@/lib/validations/service-types";
 
+/**
+ * How a caller expires cache tags. `updateTag` throws inside a Route Handler,
+ * so the mobile routes pass `revalidateTag`; every web call site keeps the
+ * default. Not exported: a "use server" module may only export async functions.
+ */
+type TagInvalidator = (tag: string) => void;
+
+
 
 
 type ActionResponse = 
@@ -13,7 +21,7 @@ type ActionResponse =
   | { success: false; error: string };
 
 
-export async function createServiceType(name: string, color: string, organizationId: string): Promise<ActionResponse> {
+export async function createServiceType(name: string, color: string, organizationId: string, touch: TagInvalidator = updateTag): Promise<ActionResponse> {
     try {
 
         if (!name || !color || !organizationId) return { success: false, error: "no data received, try again"};
@@ -71,7 +79,7 @@ export async function createServiceType(name: string, color: string, organizatio
             });
         };
 
-        updateTag(`org-${organizationId}-st`);
+        touch(`org-${organizationId}-st`);
         revalidatePath(`/dashboard/organizations/${organizationId}/events/create`);
 
         return { success: true, serviceType: serviceType };
@@ -83,7 +91,7 @@ export async function createServiceType(name: string, color: string, organizatio
 };
 
 
-export const deleteServiceType = async (organizationId: string, serviceTypeId: string): Promise<ActionResponse> => {
+export const deleteServiceType = async (organizationId: string, serviceTypeId: string, touch: TagInvalidator = updateTag): Promise<ActionResponse> => {
 
     try {
 
@@ -129,7 +137,7 @@ export const deleteServiceType = async (organizationId: string, serviceTypeId: s
         }
     });
 
-    updateTag(`org-${organizationId}-st`);
+    touch(`org-${organizationId}-st`);
     revalidatePath(`/dashboard/organizations/${organizationId}/events/create`);
 
     return { success: true }
@@ -142,7 +150,7 @@ export const deleteServiceType = async (organizationId: string, serviceTypeId: s
 }
 
 
-export const editServiceType = async (input: EditServiceTypeInput): Promise<ActionResponse> => {
+export const editServiceType = async (input: EditServiceTypeInput, touch: TagInvalidator = updateTag): Promise<ActionResponse> => {
 
     try {
 
@@ -217,7 +225,7 @@ export const editServiceType = async (input: EditServiceTypeInput): Promise<Acti
             }
         });
 
-        updateTag(`org-${organizationId}-st`);
+        touch(`org-${organizationId}-st`);
         revalidatePath(`/dashboard/organizations/${organizationId}`);
         revalidatePath(`/dashboard/organizations/${organizationId}/events/create`);
 

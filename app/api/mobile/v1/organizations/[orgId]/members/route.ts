@@ -2,9 +2,13 @@ import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 
 import prisma from "@/lib/prisma";
-import { type OrgRole } from "@/generated/prisma/enums";
+import { type OrgRole, type VolunteerRole } from "@/generated/prisma/enums";
 
 
+/**
+ * Wire contract for the roster. Mirrors `OrganizationMember` in the Expo app
+ * (`src/types/organization.ts`) — keep the two in sync, additive-only.
+ */
 type OrganizationMember = {
     id: string;
     firstName: string;
@@ -13,6 +17,9 @@ type OrganizationMember = {
     phoneNumber: string;
     imageUrl: string | null;
     role: OrgRole;
+    /** What they can be scheduled for — the event invite picker filters on it. */
+    volunteerRoles: VolunteerRole[];
+    joinedAt: string;
 };
 
 
@@ -56,6 +63,8 @@ export async function GET(
             ],
             select: {
                 role: true,
+                volunteerRoles: true,
+                createdAt: true,
                 user: {
                     select: {
                         id: true,
@@ -77,7 +86,7 @@ export async function GET(
             );
         };
 
-        const members: OrganizationMember[] = memberships.map(({ role, user }) => ({
+        const members: OrganizationMember[] = memberships.map(({ role, volunteerRoles, createdAt, user }) => ({
             id: user.id,
             firstName: user.firstName,
             lastName: user.lastName,
@@ -85,6 +94,8 @@ export async function GET(
             phoneNumber: user.phoneNumber,
             imageUrl: user.userImageUrl,
             role,
+            volunteerRoles,
+            joinedAt: createdAt.toISOString(),
         }));
 
         return NextResponse.json({ members }, { headers: NO_STORE });

@@ -9,5 +9,5 @@ export default clerkMiddleware(async (auth, req) => {
 });
 
 export const config = {
-  matcher: ["/dashboard(.*)", "/setup(.*)", "/api/realtime/(.*)", "/api/uploadthing(.*)", "/invite(.*)", "/api/setlist-ai(.*)", "/api/mobile(.*)"],
+  matcher: ["/dashboard(.*)", "/setup(.*)", "/api/realtime/(.*)", "/api/uploadthing(.*)", "/invite(.*)", "/api/setlist-ai(.*)", "/api/event-ai(.*)", "/api/mobile(.*)"],
 };

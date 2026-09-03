@@ -3,6 +3,9 @@ import { NextResponse } from "next/server";
 
 import prisma from "@/lib/prisma";
 import { SERVICE_TYPE_COLORS } from "@/lib/config/service-colors";
+import { createServiceType } from "@/lib/actions/service-type";
+import { serviceTypeSchema } from "@/lib/validations/service-types";
+import { expireTag } from "@/lib/mobile/route";
 
 
 /**
@@ -106,6 +109,95 @@ export async function GET(
 
     } catch (err) {
         console.error("GET /api/mobile/v1/organizations/[orgId]/service-types failed", err);
+        return NextResponse.json(
+            { error: "Internal Server Error" },
+            { status: 500, headers: NO_STORE },
+        );
+    };
+
+};
+
+
+/**
+ * POST /api/mobile/v1/organizations/[orgId]/service-types
+ *
+ * Adds one: `{ name, color }`. Owners and admins only; a soft-deleted type
+ * with the same name is revived rather than duplicated, as on the dashboard.
+ */
+export async function POST(
+    req: Request,
+    { params }: { params: Promise<{ orgId: string }> },
+) {
+
+    try {
+
+        const { userId } = await auth();
+
+        if (!userId) {
+            return NextResponse.json(
+                { error: "Unauthorized" },
+                { status: 401, headers: NO_STORE },
+            );
+        };
+
+        const { orgId } = await params;
+
+        const membership = await prisma.membership.findFirst({
+            where: { organizationId: orgId, user: { clerkId: userId } },
+            select: { id: true },
+        });
+
+        if (!membership) {
+            return NextResponse.json(
+                { error: "Not Found" },
+                { status: 404, headers: NO_STORE },
+            );
+        };
+
+        const body: unknown = await req.json().catch(() => null);
+
+        const parsed = serviceTypeSchema.safeParse(body);
+
+        if (!parsed.success) {
+            return NextResponse.json(
+                { error: parsed.error.issues[0]?.message ?? "Invalid service type." },
+                { status: 400, headers: NO_STORE },
+            );
+        };
+
+        const result = await createServiceType(
+            parsed.data.name,
+            parsed.data.color,
+            orgId,
+            expireTag,
+        );
+
+        if (!result.success) {
+            return NextResponse.json(
+                { error: result.error },
+                {
+                    status: result.error === "Unauthorized" ? 403
+                        : result.error === "Service Type exists" ? 409
+                        : 400,
+                    headers: NO_STORE,
+                },
+            );
+        };
+
+        const created = result.serviceType;
+
+        const serviceType: ServiceType | null = created
+            ? {
+                id: created.id,
+                name: created.name,
+                color: isServiceTypeColor(created.color) ? created.color : "indigo",
+            }
+            : null;
+
+        return NextResponse.json({ serviceType }, { status: 201, headers: NO_STORE });
+
+    } catch (err) {
+        console.error("POST /api/mobile/v1/organizations/[orgId]/service-types failed", err);
         return NextResponse.json(
             { error: "Internal Server Error" },
             { status: 500, headers: NO_STORE },

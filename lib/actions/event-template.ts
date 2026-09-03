@@ -9,7 +9,19 @@ import { Prisma } from "@/generated/prisma/client";
 
 type ActionResponse = { success: true } | { success: false; error: string };
 
-export const createEventTemplate = async (input: EventTemplateInput): Promise<ActionResponse> => {
+/**
+ * How an action expires its cache tags.
+ *
+ * `updateTag` throws outside a Server Action, so the mobile route handlers that
+ * reuse these pass `revalidateTag` instead. The default keeps every dashboard
+ * call site untouched.
+ */
+type TagInvalidator = (tag: string) => void;
+
+export const createEventTemplate = async (
+    input: EventTemplateInput,
+    touch: TagInvalidator = updateTag,
+): Promise<ActionResponse> => {
 
     try {
 
@@ -67,7 +79,7 @@ export const createEventTemplate = async (input: EventTemplateInput): Promise<Ac
             }
         });
 
-        updateTag(`org-${organizationId}-templates`);
+        touch(`org-${organizationId}-templates`);
         revalidatePath(`/dashboard/organizations/${organizationId}`);
         revalidatePath(`/dashboard/organizations/${organizationId}/events/create`);
 
@@ -82,7 +94,11 @@ export const createEventTemplate = async (input: EventTemplateInput): Promise<Ac
     }
 };
 
-export const updateEventTemplate = async (templateId: string, input: EventTemplateInput): Promise<ActionResponse> => {
+export const updateEventTemplate = async (
+    templateId: string,
+    input: EventTemplateInput,
+    touch: TagInvalidator = updateTag,
+): Promise<ActionResponse> => {
 
     try {
 
@@ -151,7 +167,7 @@ export const updateEventTemplate = async (templateId: string, input: EventTempla
             }
         });
 
-        updateTag(`org-${organizationId}-templates`);
+        touch(`org-${organizationId}-templates`);
         revalidatePath(`/dashboard/organizations/${organizationId}`);
         revalidatePath(`/dashboard/organizations/${organizationId}/events/create`);
 
@@ -166,7 +182,11 @@ export const updateEventTemplate = async (templateId: string, input: EventTempla
     }
 };
 
-export const deleteEventTemplate = async (templateId: string, organizationId: string): Promise<ActionResponse> => {
+export const deleteEventTemplate = async (
+    templateId: string,
+    organizationId: string,
+    touch: TagInvalidator = updateTag,
+): Promise<ActionResponse> => {
 
     try {
 
@@ -202,7 +222,7 @@ export const deleteEventTemplate = async (templateId: string, organizationId: st
             where: { id: templateId }
         });
 
-        updateTag(`org-${organizationId}-templates`);
+        touch(`org-${organizationId}-templates`);
         revalidatePath(`/dashboard/organizations/${organizationId}`);
         revalidatePath(`/dashboard/organizations/${organizationId}/events/create`);
 

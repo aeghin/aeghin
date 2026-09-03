@@ -9,6 +9,13 @@ import type { SetlistSong } from "@/lib/types";
 
 type ActionResponse = { success: true } | { success: false; error: string };
 
+/**
+ * How a caller expires cache tags. `updateTag` throws inside a Route Handler,
+ * so the mobile routes pass `revalidateTag`; every web call site keeps the
+ * default. Not exported: a "use server" module may only export async functions.
+ */
+type TagInvalidator = (tag: string) => void;
+
 // The per-row columns a setlist save writes, shared by inserts and updates.
 type SetlistRowData = {
   position: number;
@@ -21,6 +28,7 @@ type SetlistRowData = {
 export const saveSetlist = async (
   eventId: string,
   songs: SetlistSong[],
+  touch: TagInvalidator = updateTag,
 ): Promise<ActionResponse> => {
   try {
     const user = await currentUser();
@@ -114,7 +122,7 @@ export const saveSetlist = async (
       );
     });
 
-    updateTag(`event-${eventId}-org-${organizationId}-details`);
+    touch(`event-${eventId}-org-${organizationId}-details`);
     revalidatePath(`/dashboard/organizations/${organizationId}/events/${eventId}`);
     revalidatePath(`/dashboard/organizations/${organizationId}/events/${eventId}/setlist/editor`);
 
@@ -158,6 +166,7 @@ const authorizeSetlistSong = async (
 export const assignSongVocalist = async (
   setlistSongId: string,
   userId: string,
+  touch: TagInvalidator = updateTag,
 ): Promise<ActionResponse> => {
   try {
     const user = await currentUser();
@@ -193,8 +202,8 @@ export const assignSongVocalist = async (
       update: {},
     });
 
-    updateTag(`event-${eventId}-org-${organizationId}-details`);
-    updateTag(`user-${userId}-songs-${organizationId}`);
+    touch(`event-${eventId}-org-${organizationId}-details`);
+    touch(`user-${userId}-songs-${organizationId}`);
     revalidatePath(`/dashboard/organizations/${organizationId}/events/${eventId}`);
 
     return { success: true };
@@ -206,6 +215,7 @@ export const assignSongVocalist = async (
 export const unassignSongVocalist = async (
   setlistSongId: string,
   userId: string,
+  touch: TagInvalidator = updateTag,
 ): Promise<ActionResponse> => {
   try {
     const user = await currentUser();
@@ -221,8 +231,8 @@ export const unassignSongVocalist = async (
       where: { setlistSongId, userId },
     });
 
-    updateTag(`event-${eventId}-org-${organizationId}-details`);
-    updateTag(`user-${userId}-songs-${organizationId}`);
+    touch(`event-${eventId}-org-${organizationId}-details`);
+    touch(`user-${userId}-songs-${organizationId}`);
     revalidatePath(`/dashboard/organizations/${organizationId}/events/${eventId}`);
 
     return { success: true };

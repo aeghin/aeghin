@@ -7,11 +7,19 @@ import { revalidatePath, updateTag } from "next/cache";
 import { logActivity, orgRoleLabels } from "@/lib/activity";
 import { userRoleSchema, UserRoleInput, assignOwnerSchema, AssignOwnerInput } from "../validations/roles";
 
+/**
+ * How a caller expires cache tags. `updateTag` throws inside a Route Handler,
+ * so the mobile routes pass `revalidateTag`; every web call site keeps the
+ * default. Not exported: a "use server" module may only export async functions.
+ */
+type TagInvalidator = (tag: string) => void;
+
+
 
 type ActionResponse = { success: true, role?: OrgRole } | 
 { success: false, error: string }
 
-export const updateUserRole = async (data: UserRoleInput): Promise<ActionResponse> => {
+export const updateUserRole = async (data: UserRoleInput, touch: TagInvalidator = updateTag): Promise<ActionResponse> => {
     
     try {
 
@@ -81,10 +89,10 @@ export const updateUserRole = async (data: UserRoleInput): Promise<ActionRespons
             detail: orgRoleLabels[newRole.role],
         });
 
-        updateTag(`org-${organizationId}-members-list`);
-        updateTag(`user-${userId}-org-${organizationId}-role`)
-        updateTag(`user-${userId}-orgs`);
-        updateTag(`org-${organizationId}-activity`);
+        touch(`org-${organizationId}-members-list`);
+        touch(`user-${userId}-org-${organizationId}-role`)
+        touch(`user-${userId}-orgs`);
+        touch(`org-${organizationId}-activity`);
         revalidatePath(`/dashboard/organizations/${organizationId}`);
 
         return { success: true, role: newRole.role };
@@ -95,7 +103,7 @@ export const updateUserRole = async (data: UserRoleInput): Promise<ActionRespons
     }
 }
 
-export const removeMember = async (userId: string, organizationId: string): Promise<ActionResponse> => {
+export const removeMember = async (userId: string, organizationId: string, touch: TagInvalidator = updateTag): Promise<ActionResponse> => {
 
     try {
 
@@ -175,18 +183,18 @@ export const removeMember = async (userId: string, organizationId: string): Prom
         });
 
         for (const { eventId } of upcoming) {
-            updateTag(`event-${eventId}-org-${organizationId}-details`);
+            touch(`event-${eventId}-org-${organizationId}-details`);
         };
-        updateTag(`user-${userId}-roles`);
-        updateTag(`user-${userId}-orgs`);
-        updateTag(`user-${userId}-events-${organizationId}`);
-        updateTag(`user-${userId}-blockouts-${organizationId}`);
-        updateTag(`org-${organizationId}-members-list`);
-        updateTag(`org-${organizationId}-member-count`);
-        updateTag(`user-${userId}-org-${organizationId}-role`);
-        updateTag(`user-${userId}-memberships`);
-        updateTag(`invitations-${organizationId}-list`);
-        updateTag(`org-${organizationId}-activity`);
+        touch(`user-${userId}-roles`);
+        touch(`user-${userId}-orgs`);
+        touch(`user-${userId}-events-${organizationId}`);
+        touch(`user-${userId}-blockouts-${organizationId}`);
+        touch(`org-${organizationId}-members-list`);
+        touch(`org-${organizationId}-member-count`);
+        touch(`user-${userId}-org-${organizationId}-role`);
+        touch(`user-${userId}-memberships`);
+        touch(`invitations-${organizationId}-list`);
+        touch(`org-${organizationId}-activity`);
 
         revalidatePath(`/dashboard/organizations/${organizationId}`);
 
@@ -200,7 +208,7 @@ export const removeMember = async (userId: string, organizationId: string): Prom
 };
 
 
-export const updateVolunteerRoles = async (userId: string, organizationId: string, role: VolunteerRole): Promise<ActionResponse> => {
+export const updateVolunteerRoles = async (userId: string, organizationId: string, role: VolunteerRole, touch: TagInvalidator = updateTag): Promise<ActionResponse> => {
 
     try {
 
@@ -256,9 +264,9 @@ export const updateVolunteerRoles = async (userId: string, organizationId: strin
                 : [...assignee.volunteerRoles, role]
         }
     });
-    updateTag(`user-${userId}-roles`);
-    updateTag(`user-${userId}-orgs`);
-    updateTag(`org-${organizationId}-members-list`);
+    touch(`user-${userId}-roles`);
+    touch(`user-${userId}-orgs`);
+    touch(`org-${organizationId}-members-list`);
     revalidatePath(`/dashboard/organizations/${organizationId}`);
 
     return { success: true };
@@ -269,7 +277,7 @@ export const updateVolunteerRoles = async (userId: string, organizationId: strin
 
 };
 
-export const leaveOrganization = async (organizationId: string): Promise<ActionResponse> => {
+export const leaveOrganization = async (organizationId: string, touch: TagInvalidator = updateTag): Promise<ActionResponse> => {
     try {
 
         const user = await currentUser();
@@ -343,17 +351,17 @@ export const leaveOrganization = async (organizationId: string): Promise<ActionR
         });
 
         for (const { eventId } of upcoming) {
-            updateTag(`event-${eventId}-org-${organizationId}-details`);
+            touch(`event-${eventId}-org-${organizationId}-details`);
         }
-          updateTag(`user-${user.id}-roles`);
-          updateTag(`user-${user.id}-orgs`);
-          updateTag(`user-${user.id}-events-${organizationId}`);
-          updateTag(`user-${user.id}-blockouts-${organizationId}`);
-          updateTag(`org-${organizationId}-members-list`);
-          updateTag(`org-${organizationId}-member-count`);
-          updateTag(`user-${user.id}-org-${organizationId}-role`);
-          updateTag(`user-${user.id}-memberships`);
-          updateTag(`org-${organizationId}-activity`);
+          touch(`user-${user.id}-roles`);
+          touch(`user-${user.id}-orgs`);
+          touch(`user-${user.id}-events-${organizationId}`);
+          touch(`user-${user.id}-blockouts-${organizationId}`);
+          touch(`org-${organizationId}-members-list`);
+          touch(`org-${organizationId}-member-count`);
+          touch(`user-${user.id}-org-${organizationId}-role`);
+          touch(`user-${user.id}-memberships`);
+          touch(`org-${organizationId}-activity`);
           revalidatePath(`/dashboard/organizations/${organizationId}`);
 
         return { success: true }
@@ -364,7 +372,7 @@ export const leaveOrganization = async (organizationId: string): Promise<ActionR
     };
 };   
 
-export const assignOwnerRole = async (data: AssignOwnerInput): Promise<ActionResponse> => {
+export const assignOwnerRole = async (data: AssignOwnerInput, touch: TagInvalidator = updateTag): Promise<ActionResponse> => {
     
     try {
 
@@ -423,10 +431,10 @@ export const assignOwnerRole = async (data: AssignOwnerInput): Promise<ActionRes
             detail: orgRoleLabels[OrgRole.OWNER],
         });
 
-        updateTag(`org-${organizationId}-members-list`);
-        updateTag(`user-${userId}-org-${organizationId}-role`);
-        updateTag(`user-${userId}-orgs`);
-        updateTag(`org-${organizationId}-activity`);
+        touch(`org-${organizationId}-members-list`);
+        touch(`user-${userId}-org-${organizationId}-role`);
+        touch(`user-${userId}-orgs`);
+        touch(`org-${organizationId}-activity`);
         revalidatePath(`/dashboard/organizations/${organizationId}`);
 
         return { success: true }

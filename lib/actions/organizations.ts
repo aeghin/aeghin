@@ -11,6 +11,14 @@ import { currentUser } from "../services/user";
 import { Resend } from "resend";
 import OrganizationMessageEmail from "@/components/email/organization-message-template";
 
+/**
+ * How a caller expires cache tags. `updateTag` throws inside a Route Handler,
+ * so the mobile routes pass `revalidateTag`; every web call site keeps the
+ * default. Not exported: a "use server" module may only export async functions.
+ */
+type TagInvalidator = (tag: string) => void;
+
+
 
 const resend = new Resend(process.env.RESEND_EMAIL_API_KEY);
 
@@ -20,7 +28,7 @@ type ActionResponse =
   | { success: false; error: string }
 
 
-export async function createOrganization(data: OrganizationInput): Promise<ActionResponse> {
+export async function createOrganization(data: OrganizationInput, touch: TagInvalidator = updateTag): Promise<ActionResponse> {
 
     try {
         
@@ -71,8 +79,8 @@ export async function createOrganization(data: OrganizationInput): Promise<Actio
             return org;
         });
 
-        updateTag(`user-${user.id}-orgs`);
-        updateTag(`user-${user.id}-memberships`);
+        touch(`user-${user.id}-orgs`);
+        touch(`user-${user.id}-memberships`);
         revalidatePath('/dashboard');
         
         return { success: true, orgId: organization.id }
@@ -86,7 +94,7 @@ export async function createOrganization(data: OrganizationInput): Promise<Actio
 };
 
 
-export const updateOrganizationDetails = async (organizationId: string, values: OrganizationInput): Promise<ActionResponse> => {
+export const updateOrganizationDetails = async (organizationId: string, values: OrganizationInput, touch: TagInvalidator = updateTag): Promise<ActionResponse> => {
 
     try {
 
@@ -125,9 +133,9 @@ export const updateOrganizationDetails = async (organizationId: string, values: 
             }
         });
 
-        updateTag(`org-${organizationId}-details`);
-        updateTag(`org-${organizationId}-setting-details`);
-        updateTag(`org-${organizationId}-list-entry`);
+        touch(`org-${organizationId}-details`);
+        touch(`org-${organizationId}-setting-details`);
+        touch(`org-${organizationId}-list-entry`);
 
         
         return { success: true };
@@ -138,7 +146,11 @@ export const updateOrganizationDetails = async (organizationId: string, values: 
 }
 
 
-export const updateOrganizationLogo = async (organizationId: string, logo: OrganizationLogoInput): Promise<ActionResponse> => {
+export const updateOrganizationLogo = async (
+    organizationId: string,
+    logo: OrganizationLogoInput,
+    touch: TagInvalidator = updateTag,
+): Promise<ActionResponse> => {
 
     try {
 
@@ -192,9 +204,9 @@ export const updateOrganizationLogo = async (organizationId: string, logo: Organ
             }
         }
 
-        updateTag(`org-${organizationId}-details`);
-        updateTag(`org-${organizationId}-setting-details`);
-        updateTag(`org-${organizationId}-list-entry`);
+        touch(`org-${organizationId}-details`);
+        touch(`org-${organizationId}-setting-details`);
+        touch(`org-${organizationId}-list-entry`);
 
         return { success: true };
 
@@ -205,7 +217,10 @@ export const updateOrganizationLogo = async (organizationId: string, logo: Organ
 }
 
 
-export const removeOrganizationLogo = async (organizationId: string): Promise<ActionResponse> => {
+export const removeOrganizationLogo = async (
+    organizationId: string,
+    touch: TagInvalidator = updateTag,
+): Promise<ActionResponse> => {
 
     try {
 
@@ -257,9 +272,9 @@ export const removeOrganizationLogo = async (organizationId: string): Promise<Ac
             }
         }
 
-        updateTag(`org-${organizationId}-details`);
-        updateTag(`org-${organizationId}-setting-details`);
-        updateTag(`org-${organizationId}-list-entry`);
+        touch(`org-${organizationId}-details`);
+        touch(`org-${organizationId}-setting-details`);
+        touch(`org-${organizationId}-list-entry`);
 
         return { success: true };
 
@@ -270,7 +285,7 @@ export const removeOrganizationLogo = async (organizationId: string): Promise<Ac
 }
 
 
-export const deleteOrganization = async (organizationId: string): Promise<ActionResponse> => {
+export const deleteOrganization = async (organizationId: string, touch: TagInvalidator = updateTag): Promise<ActionResponse> => {
 
     try {
 
@@ -305,19 +320,19 @@ export const deleteOrganization = async (organizationId: string): Promise<Action
         ]);
 
         for (const { userId: memberId } of members) {
-            updateTag(`user-${memberId}-orgs`);
-            updateTag(`user-${memberId}-memberships`);
+            touch(`user-${memberId}-orgs`);
+            touch(`user-${memberId}-memberships`);
         }
 
-        updateTag(`org-${organizationId}-details`);
-        updateTag(`org-${organizationId}-setting-details`);
-        updateTag(`org-${organizationId}-list-entry`);
-        updateTag(`org-${organizationId}-member-count`);
-        updateTag(`org-${organizationId}-members-list`);
-        updateTag(`org-${organizationId}-st`);
-        updateTag(`org-${organizationId}-songs`);
-        updateTag(`org-${organizationId}-templates`);
-        updateTag(`invitations-${organizationId}-list`);
+        touch(`org-${organizationId}-details`);
+        touch(`org-${organizationId}-setting-details`);
+        touch(`org-${organizationId}-list-entry`);
+        touch(`org-${organizationId}-member-count`);
+        touch(`org-${organizationId}-members-list`);
+        touch(`org-${organizationId}-st`);
+        touch(`org-${organizationId}-songs`);
+        touch(`org-${organizationId}-templates`);
+        touch(`invitations-${organizationId}-list`);
 
         revalidatePath('/dashboard');
         

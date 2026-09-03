@@ -17,6 +17,7 @@ import {
 import { auth } from "@clerk/nextjs/server";
 import { verifyInvitationByToken } from "@/lib/services/invitation";
 import { InviteActions } from "@/components/invites/org-invite-buttons";
+import { OpenInApp } from "@/components/invites/open-in-app";
 import { AcceptedCountdown } from "@/components/invites/accept-countdown";
 import { InvitationStatus } from "@/generated/prisma/enums";
 
@@ -262,6 +263,7 @@ return (
         roles={roles}
         email={email}
       />
+      <OpenInApp token={token} />
     </PageWrapper>
   );
 };

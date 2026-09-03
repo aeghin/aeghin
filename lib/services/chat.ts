@@ -42,6 +42,26 @@ export async function getChatAccess(eventId: string) {
   const user = await currentUser();
   if (!user) return null;
 
+  return getChatAccessForUser(user, eventId);
+}
+
+/** The user fields the chat reads — a `User` row, or the part of one that matters. */
+export type ChatUser = {
+  id: string;
+  firstName: string;
+  lastName: string;
+  userImageUrl: string | null;
+};
+
+/**
+ * The same gate for a caller already resolved to a `User` row. The mobile
+ * routes use this: `currentUser()` redirects to the sign-in page when there is
+ * no session, which a JSON client cannot follow.
+ */
+export async function getChatAccessForUser<U extends ChatUser>(
+  user: U,
+  eventId: string,
+) {
   const event = await prisma.event.findUnique({
     where: { id: eventId },
     select: {

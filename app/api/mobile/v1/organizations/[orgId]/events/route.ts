@@ -5,8 +5,17 @@ import prisma from "@/lib/prisma";
 import {
     InvitationStatus,
     OrgRole,
-    type VolunteerRole,
+    VolunteerRole,
 } from "@/generated/prisma/enums";
+import { createEvent } from "@/lib/actions/event";
+import type { CreateEventInput } from "@/lib/validations/event";
+import {
+    clerkIdOf,
+    expireTag,
+    isObject,
+    membershipFor,
+    readJson,
+} from "@/lib/mobile/route";
 
 
 /**
@@ -203,6 +212,165 @@ export async function GET(
 
     } catch (err) {
         console.error("GET /api/mobile/v1/organizations/[orgId]/events failed", err);
+        return NextResponse.json(
+            { error: "Internal Server Error" },
+            { status: 500, headers: NO_STORE },
+        );
+    };
+
+};
+
+
+/**
+ * What the phone sends to create an event.
+ *
+ * Deliberately not the dashboard form's own shape. The web carries a
+ * `dateRange` its action never reads and a `dayTimes` record keyed by date
+ * whose values are full ISO instants, both of which are artefacts of a
+ * react-hook-form wizard. The phone sends the thing itself: one entry per day
+ * the event runs, with wall-clock times. This route assembles what the action
+ * wants. Mirrors `NewEvent` in the Expo app (`src/types/event.ts`).
+ */
+type NewEventDay = {
+    /** `"2026-09-27"`. */
+    date: string;
+    /** `"10:00"`, read in UTC like every other time in this app. */
+    startTime: string;
+    endTime: string;
+};
+
+type NewEvent = {
+    serviceTypeId: string;
+    name: string;
+    description?: string;
+    location: string;
+    days: NewEventDay[];
+    rolesNeeded: VolunteerRole[];
+    /** Days an invitee has to answer. */
+    expiresAt: number;
+    smartSchedulingEnabled: boolean;
+    /** Who to invite, per role. Every role optional. */
+    roleAssignments: Record<string, string[]>;
+};
+
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
+const CLOCK = /^\d{2}:\d{2}$/;
+
+const isNewEventDay = (value: unknown): value is NewEventDay =>
+    isObject(value) &&
+    typeof value.date === "string" && DAY.test(value.date) &&
+    typeof value.startTime === "string" && CLOCK.test(value.startTime) &&
+    typeof value.endTime === "string" && CLOCK.test(value.endTime);
+
+const isNewEvent = (value: unknown): value is NewEvent =>
+    isObject(value) &&
+    typeof value.serviceTypeId === "string" &&
+    typeof value.name === "string" &&
+    (value.description === undefined || typeof value.description === "string") &&
+    typeof value.location === "string" &&
+    Array.isArray(value.days) && value.days.length > 0 && value.days.every(isNewEventDay) &&
+    Array.isArray(value.rolesNeeded) &&
+    value.rolesNeeded.every((role) => typeof role === "string" && role in VolunteerRole) &&
+    typeof value.expiresAt === "number" &&
+    typeof value.smartSchedulingEnabled === "boolean" &&
+    isObject(value.roleAssignments);
+
+/** `"2026-09-27"`, `"10:00"` -> the UTC instant the app stores. */
+const instant = (date: string, clock: string) => new Date(`${date}T${clock}:00Z`);
+
+
+/**
+ * POST /api/mobile/v1/organizations/[orgId]/events
+ *
+ * Creates an event. The action behind it is the dashboard's own, so the role
+ * gate, the "assignee doesn't hold that role" and "assignee has a blockout"
+ * refusals, the invitation emails and the two activity entries are all the
+ * same work, worded the same way.
+ */
+export async function POST(
+    req: Request,
+    { params }: { params: Promise<{ orgId: string }> },
+) {
+
+    try {
+
+        const clerkId = await clerkIdOf();
+
+        // `createEvent` reaches for the caller through `currentUser`, which
+        // redirects when there is nobody there — HTML the app would choke on.
+        // The token is checked here first, before the action can.
+        if (!clerkId) {
+            return NextResponse.json(
+                { error: "Unauthorized" },
+                { status: 401, headers: NO_STORE },
+            );
+        };
+
+        const { orgId } = await params;
+
+        const membership = await membershipFor(clerkId, orgId);
+
+        if (!membership) {
+            return NextResponse.json(
+                { error: "Not Found" },
+                { status: 404, headers: NO_STORE },
+            );
+        };
+
+        const body = await readJson(req);
+
+        if (!isNewEvent(body)) {
+            return NextResponse.json(
+                { error: "Expected an event." },
+                { status: 400, headers: NO_STORE },
+            );
+        };
+
+        const days = [...body.days].sort((a, b) => a.date.localeCompare(b.date));
+
+        const result = await createEvent(
+            {
+                serviceTypeId: body.serviceTypeId,
+                name: body.name,
+                description: body.description,
+                location: body.location,
+                // Unused by the action, but its schema still validates the pair.
+                dateRange: {
+                    from: instant(days[0].date, "00:00"),
+                    to: instant(days[days.length - 1].date, "00:00"),
+                },
+                dayTimes: Object.fromEntries(
+                    days.map((day) => [
+                        day.date,
+                        {
+                            startTime: instant(day.date, day.startTime).toISOString(),
+                            endTime: instant(day.date, day.endTime).toISOString(),
+                        },
+                    ]),
+                ),
+                rolesNeeded: body.rolesNeeded,
+                expiresAt: body.expiresAt,
+                smartSchedulingEnabled: body.smartSchedulingEnabled,
+                roleAssignments: body.roleAssignments,
+            } as CreateEventInput,
+            orgId,
+            expireTag,
+        );
+
+        if (!result.success) {
+            return NextResponse.json(
+                { error: result.error },
+                {
+                    status: /unauthorized/i.test(result.error) ? 403 : 400,
+                    headers: NO_STORE,
+                },
+            );
+        };
+
+        return NextResponse.json({ success: true }, { status: 201, headers: NO_STORE });
+
+    } catch (err) {
+        console.error("POST /api/mobile/v1/organizations/[orgId]/events failed", err);
         return NextResponse.json(
             { error: "Internal Server Error" },
             { status: 500, headers: NO_STORE },
