@@ -18,9 +18,21 @@ export async function POST(req: NextRequest) {
     const phoneNumber = event.data.phone_numbers[0].phone_number;
     const userImageUrl = event.data.image_url;
 
+    // Keyed on email, not clerkId: accounts predating the production instance
+    // still carry their development-instance clerkId, and Clerk cannot transfer
+    // users between instances. Re-pointing the existing row keeps memberships,
+    // assignments and orgs attached. Safe because email is verified at sign-up.
+    const existing = await prisma.user.findUnique({ where: { email } });
+
     await prisma.user.upsert({
-      where: { clerkId: userId },
-      update: {},
+      where: { email },
+      update: {
+        clerkId: userId,
+        firstName,
+        lastName,
+        phoneNumber,
+        userImageUrl,
+      },
       create: {
         clerkId: userId,
         email,
@@ -31,7 +43,11 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    after(() => notifyNewSignup({ email, firstName, lastName }));
+    // The sign-up redirect can land before this webhook does, caching a null
+    // user for the cacheLife("hours") window. Clear it either way.
+    revalidateTag(`user-${userId}`, { expire: 0 });
+
+    if (!existing) after(() => notifyNewSignup({ email, firstName, lastName }));
   }
 
   if (event.type === "user.updated") {
