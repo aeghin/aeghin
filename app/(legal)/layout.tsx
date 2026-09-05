@@ -37,6 +37,9 @@ export default function LegalLayout({
             <Link href="/terms" className="transition-colors hover:text-foreground">
               Terms &amp; Conditions
             </Link>
+            <Link href="/support" className="transition-colors hover:text-foreground">
+              Support
+            </Link>
           </div>
         </div>
       </footer>
