@@ -527,10 +527,18 @@ export function CreateEventPageContent({
 
   const handleRoleToggle = (role: VolunteerRole) => {
     const current = form.getValues("rolesNeeded");
-    const updated = current.includes(role)
+    const dropping = current.includes(role);
+    const updated = dropping
       ? current.filter((r) => r !== role)
       : [...current, role];
     setValue("rolesNeeded", updated, { shouldValidate: true });
+
+    // Step two only lists the roles still needed, so anyone already assigned to
+    // a role dropped here would go invisible on the way back — and be created
+    // into a role this event no longer has.
+    if (dropping) {
+      setRoleAssignments((prev) => ({ ...prev, [role]: [] }));
+    }
   };
 
   const handleAssignMember = (

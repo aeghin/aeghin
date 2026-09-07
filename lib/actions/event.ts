@@ -203,6 +203,26 @@ export async function createEvent(
     if (assignedUserIds.length > 0) {
       const assignedUserIdSet = new Set(assignedUserIds);
 
+      // Every assignment has to land in a role the event declared. Zod fills
+      // roleAssignments with all twelve keys, so it's the non-empty ones that
+      // count. Catches crafted requests, and a role dropped in step one after
+      // it was already staffed in step two.
+      const offRoster = Object.entries(roleAssignments)
+        .filter(([, userIds]) => userIds.length > 0)
+        .map(([role]) => role as VolunteerRole)
+        .filter((role) => !rolesNeeded.includes(role));
+
+      if (offRoster.length > 0) {
+        const labels = offRoster
+          .map((role) => volunteerRoleLabels[role])
+          .join(", ");
+
+        return {
+          success: false,
+          error: `Unable to assign into ${labels} — not on this event's roster`,
+        };
+      }
+
       const memberships = await prisma.membership.findMany({
         where: {
           organizationId,
@@ -947,7 +967,7 @@ export const inviteMembersToEvent = async (
 
     const uniqueUserIds = [...new Set(userIds)];
 
-    const [membership, event] = await Promise.all([
+    const [membership, event, roleAssigned] = await Promise.all([
       prisma.membership.findUnique({
         where: {
           userId_organizationId: { userId: user.id, organizationId },
@@ -972,6 +992,12 @@ export const inviteMembersToEvent = async (
           },
         },
       }),
+      // The other half of the roster union. The assignments above can't answer
+      // it — they're narrowed to the people being invited.
+      prisma.eventAssignment.findFirst({
+        where: { eventId, organizationId, role },
+        select: { id: true },
+      }),
     ]);
 
     if (!membership) return { success: false, error: "Unable to locate membership" };
@@ -984,6 +1010,14 @@ export const inviteMembersToEvent = async (
     }
 
     if (!event) return { success: false, error: "Unable to locate event" };
+
+    // The role has to be on the roster already — addEventRoles is what opens a
+    // slot, and letting an invite do it quietly is how an event ends up staffed
+    // for a role nobody asked for. Same union removeEventRole draws, so a
+    // legacy event whose roster lives in its assignments still invites fine.
+    if (!event.rolesNeeded.includes(role) && !roleAssigned) {
+      return { success: false, error: "That role isn't on this event" };
+    }
 
     const memberships = await prisma.membership.findMany({
       where: {
@@ -1113,8 +1147,9 @@ export const inviteMembersToEvent = async (
         });
       }
 
-      // Inviting into a role means the event needs it — keep the roster honest
-      // for events created before rolesNeeded was persisted.
+      // Only reachable for a legacy event carrying assignments it never
+      // declared: the guard above already refused anything off the roster.
+      // Persisting the role here is what stops it being legacy twice.
       if (!event.rolesNeeded.includes(role)) {
         await tx.event.update({
           where: { id: eventId },
