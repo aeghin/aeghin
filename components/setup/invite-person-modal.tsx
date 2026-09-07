@@ -183,7 +183,7 @@ export function InvitePersonModal({
                 render={() => (
                   <FormItem>
                     <FormLabel>Volunteer Roles</FormLabel>
-                    <div className="max-h-none space-y-1 overflow-visible rounded-lg border border-border/50 bg-muted/30 p-2 sm:max-h-60 sm:space-y-2 sm:overflow-y-auto sm:p-3">
+                    <div className="space-y-1 rounded-lg border border-border/50 bg-muted/30 p-2 sm:space-y-2 sm:p-3">
                       {Object.values(VolunteerRole).map((role) => {
                         const config = volunteerRoleConfig[role];
                         return (
@@ -209,26 +209,26 @@ export function InvitePersonModal({
                   </FormItem>
                 )}
               />
-
-              {volunteerRoles.length > 0 && (
-                <div className="rounded-lg border border-border/50 bg-muted/50 p-3">
-                  <p className="mb-2 text-xs font-medium text-muted-foreground">
-                    Selected Roles ({volunteerRoles.length}):
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {volunteerRoles.map((r) => {
-                      const role = volunteerRoleConfig[r];
-                      return (
-                        <Badge key={r} variant="outline" className="gap-1">
-                          <span>{role.icon}</span>
-                          <span>{role.label}</span>
-                        </Badge>
-                      )
-                    })}
-                  </div>
-                </div>
-              )}
             </div>
+
+            {volunteerRoles.length > 0 && (
+              <div className="shrink-0 border-t bg-muted/40 px-6 py-3">
+                <p className="mb-2 text-xs font-medium text-muted-foreground">
+                  Selected Roles ({volunteerRoles.length}):
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {volunteerRoles.map((r) => {
+                    const role = volunteerRoleConfig[r];
+                    return (
+                      <Badge key={r} variant="outline" className="gap-1 bg-background">
+                        <span>{role.icon}</span>
+                        <span>{role.label}</span>
+                      </Badge>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
 
             <DialogFooter className="shrink-0 gap-2 border-t bg-background px-6 py-4">
               <Button type="button" variant="outline" onClick={handleClose} disabled={isPending} className="w-full cursor-pointer sm:w-auto">
