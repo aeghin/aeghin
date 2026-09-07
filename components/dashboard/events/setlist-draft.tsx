@@ -82,7 +82,7 @@ export function SetlistDraft({ songs, onChange, serviceColor }: SetlistDraftProp
               <Reorder.Item
                 key={song.id}
                 value={song}
-                className="flex items-center gap-2 rounded-lg border bg-card p-2"
+                className="flex flex-wrap items-center gap-2 rounded-lg border bg-card p-2"
               >
                 <GripVertical className="h-4 w-4 shrink-0 cursor-grab text-muted-foreground/60 active:cursor-grabbing" />
 
@@ -126,62 +126,64 @@ export function SetlistDraft({ songs, onChange, serviceColor }: SetlistDraftProp
                   )}
                 </div>
 
-                <Select
-                  value={
-                    song.pitch && song.keyQuality
-                      ? encodeKey(song.pitch, song.keyQuality)
-                      : undefined
-                  }
-                  onValueChange={(v) => updateKey(song.id, v)}
-                >
-                  <SelectTrigger className="h-7 w-20 font-mono text-xs">
-                    <SelectValue placeholder="Key">
-                      {song.pitch && song.keyQuality
-                        ? formatKey(song.pitch, song.keyQuality)
-                        : null}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {KEY_OPTIONS.map((opt) => (
-                      <SelectItem
-                        key={`${opt.pitch}-${opt.quality}`}
-                        value={encodeKey(opt.pitch, opt.quality)}
-                        className="font-mono text-xs"
-                      >
-                        {opt.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-
-                <Input
-                  type="number"
-                  value={song.bpm || ""}
-                  onChange={(e) =>
-                    updateSong(song.id, "bpm", Number(e.target.value))
-                  }
-                  className="h-7 w-16 text-center font-mono text-xs"
-                  placeholder="BPM"
-                />
-
-                <Input
-                  value={song.timeSignature}
-                  onChange={(e) =>
-                    updateSong(song.id, "timeSignature", e.target.value)
-                  }
-                  className="h-7 w-14 text-center font-mono text-xs"
-                  placeholder="4/4"
-                />
-
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                  className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive sm:order-last sm:h-7 sm:w-7"
                   onClick={() => removeSong(song.id)}
                   aria-label={`Remove ${song.title}`}
                 >
                   <X className="h-4 w-4" />
                 </Button>
+
+                <div className="flex w-full items-center gap-2 pl-8 sm:w-auto sm:pl-0">
+                  <Select
+                    value={
+                      song.pitch && song.keyQuality
+                        ? encodeKey(song.pitch, song.keyQuality)
+                        : undefined
+                    }
+                    onValueChange={(v) => updateKey(song.id, v)}
+                  >
+                    <SelectTrigger className="h-7 w-full min-w-0 flex-1 font-mono text-xs sm:w-20 sm:flex-none">
+                      <SelectValue placeholder="Key">
+                        {song.pitch && song.keyQuality
+                          ? formatKey(song.pitch, song.keyQuality)
+                          : null}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {KEY_OPTIONS.map((opt) => (
+                        <SelectItem
+                          key={`${opt.pitch}-${opt.quality}`}
+                          value={encodeKey(opt.pitch, opt.quality)}
+                          className="font-mono text-xs"
+                        >
+                          {opt.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  <Input
+                    type="number"
+                    value={song.bpm || ""}
+                    onChange={(e) =>
+                      updateSong(song.id, "bpm", Number(e.target.value))
+                    }
+                    className="h-9 w-full flex-1 text-center font-mono text-xs sm:h-7 sm:w-16 sm:flex-none"
+                    placeholder="BPM"
+                  />
+
+                  <Input
+                    value={song.timeSignature}
+                    onChange={(e) =>
+                      updateSong(song.id, "timeSignature", e.target.value)
+                    }
+                    className="h-9 w-full flex-1 text-center font-mono text-xs sm:h-7 sm:w-14 sm:flex-none"
+                    placeholder="4/4"
+                  />
+                </div>
               </Reorder.Item>
             ))}
           </Reorder.Group>
