@@ -53,7 +53,7 @@ export function HeroSection() {
           </div>
 
           <p className="mt-8 text-sm text-muted-foreground">
-            Free to use. No credit card required.
+            Free to get started. No credit card required.
           </p>
         </div>
 

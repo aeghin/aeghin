@@ -11,7 +11,7 @@ const features = [
     icon: Music,
     title: "Song Library",
     description:
-      "Keep every song with its key, BPM, time signature, and themes. Attach charts and audio, and link straight to Spotify or YouTube.",
+      "Keep your songs with their key, BPM, time signature, and themes. Attach charts and audio, and link straight to Spotify or YouTube.",
   },
   {
     icon: Repeat,

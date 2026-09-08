@@ -6,10 +6,10 @@ const plans = [
   {
     name: "Free",
     price: "$0",
-    period: "forever",
-    description: "The whole platform, for every team",
+    period: "/month",
+    description: "Core scheduling for your team",
     features: [
-      "Unlimited organizations, members, and events",
+      "Create organizations, invite members, schedule events",
       "Event templates & service types",
       "Blockout dates & smart scheduling",
       "Song library with charts and audio",
@@ -62,8 +62,8 @@ export function PricingSection() {
           <p className="text-sm font-semibold text-primary mb-4 tracking-wide uppercase">Pricing</p>
           <h2 className="text-4xl font-bold tracking-tight sm:text-5xl text-balance">Simple, transparent pricing</h2>
           <p className="mt-6 text-lg text-muted-foreground">
-            Every scheduling feature is free. The AI plans add setlist generation
-            and event drafting on top.
+            Start free. The AI plans add setlist generation and event drafting
+            on top.
           </p>
         </div>
 
@@ -116,7 +116,7 @@ export function PricingSection() {
 
         <p className="mt-10 text-center text-sm text-muted-foreground">
           Sign up free, then upgrade from your organization&apos;s dashboard. AI plans are per organization and can be
-          started by an owner.
+          started by an owner. AI usage is subject to plan limits.
         </p>
       </div>
     </section>

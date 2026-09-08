@@ -35,7 +35,7 @@ export function CTASection() {
                 </Link>
               </div>
               <p className="mt-6 text-sm text-muted-foreground">
-                No credit card required. Every scheduling feature is free.
+                No credit card required. Free to get started.
               </p>
             </div>
           </div>
