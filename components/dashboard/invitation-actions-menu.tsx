@@ -2,13 +2,12 @@
 
 import { useTransition } from "react";
 import { toast } from "sonner";
-import { MoreHorizontal, RefreshCw, Send, Trash2, Ban } from "lucide-react";
+import { MoreHorizontal, RefreshCw, Send, Ban } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cancelOrgInvite, resendInvitation } from "@/lib/actions/invitation";
@@ -46,6 +45,13 @@ export const InvitationActionsMenu = ({
     });
   };
 
+  const hasActions =
+    status === InvitationStatus.PENDING || status === InvitationStatus.CANCELED;
+
+  if (!hasActions) {
+    return null;
+  }
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -76,26 +82,18 @@ export const InvitationActionsMenu = ({
               <Ban className="mr-2 h-4 w-4" />
               Cancel Invitation
             </DropdownMenuItem>
-            <DropdownMenuSeparator />
           </>
         )}
         {status === InvitationStatus.CANCELED && (
-          <>
-            <DropdownMenuItem
-              className="cursor-pointer"
-              disabled={isResending}
-              onSelect={() => handleResend("Invitation Sent")}
-            >
-              <Send className="mr-2 h-4 w-4" />
-              Send New Invitation
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-          </>
+          <DropdownMenuItem
+            className="cursor-pointer"
+            disabled={isResending}
+            onSelect={() => handleResend("Invitation Sent")}
+          >
+            <Send className="mr-2 h-4 w-4" />
+            Send New Invitation
+          </DropdownMenuItem>
         )}
-        <DropdownMenuItem className="cursor-pointer text-destructive focus:text-destructive">
-          <Trash2 className="mr-2 h-4 w-4" />
-          Remove
-        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );
