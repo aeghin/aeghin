@@ -323,4 +323,82 @@ export const cancelOrgInvite = async (organizationId: string, userEmail: string,
         return { success: false, error: "Something went wrong, please try again" };
 
     }
-}
+};
+
+export const resendInvitation = async (organizationId: string, userEmail: string, touch: TagInvalidator = updateTag): Promise<ActionResponse> => {
+
+    try {
+
+        const user = await currentUser();
+
+        if (!user) return { success: false, error: "User not found" };
+
+        const membership = await prisma.membership.findUnique({
+            where: {
+                userId_organizationId: {
+                    userId: user.id,
+                    organizationId
+                }
+            },
+            select: { role: true, organization: true }
+        });
+
+        if (!membership) return { success: false, error: "Unable to find membership" };
+
+        if (membership.role === OrgRole.MEMBER) return { success: false, error: "Insufficient permissions." };
+
+        const invitation = await prisma.invitation.findUnique({
+            where: {
+                email_organizationId: {
+                    email: userEmail,
+                    organizationId
+                }
+            },
+        });
+
+        if (!invitation) return { success: false, error: "Invitation doesn't exist" };
+
+        const existingMember = await prisma.membership.findFirst({
+            where: {
+                organizationId,
+                user: { email: { equals: userEmail, mode: "insensitive" } }
+            }
+        });
+
+        if (existingMember) return { success: false, error: "User is member" };
+
+        const resentInvitation = await prisma.invitation.update({
+            where: {
+                id: invitation.id
+            },
+            data: {
+                token: crypto.randomUUID(),
+                status: InvitationStatus.PENDING,
+                expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+                invitedById: user.id
+            }
+        });
+
+        touch(`invitations-${organizationId}-list`);
+
+        after(async () => {
+            await resend.emails.send({
+                from: `${membership.organization.name} <support@aeghin.com>`,
+                to: userEmail,
+                subject: `You've been invited to join ${membership.organization.name}`,
+                react: InvitationEmail({
+                    organizationName: membership.organization.name,
+                    logoUrl: membership.organization.logoUrl,
+                    invitedByName: user.firstName,
+                    volunteerRoles: resentInvitation.volunteerRoles,
+                    inviteLink: `${process.env.NEXT_PUBLIC_APP_URL}/invite/${resentInvitation.token}`
+                })
+            });
+        });
+
+        return { success: true }
+
+    } catch (err) {
+        return { success: false, error: "Something went wrong, please try again!" };
+    }
+};
