@@ -9,10 +9,17 @@ import { OrgRole } from "@/generated/prisma/enums";
 const f = createUploadthing();
 
 export const fileRouter = {
-    songAttachment: f({
-        pdf: { maxFileSize: "16MB", maxFileCount: 5 },
-        audio: { maxFileSize: "64MB", maxFileCount: 5 },
-    })
+    songAttachment: f(
+        {
+            pdf: { maxFileSize: "16MB", maxFileCount: 5 },
+            audio: { maxFileSize: "64MB", maxFileCount: 5 },
+        },
+        // Nothing reads `serverData`: both clients write their own rows once the
+        // upload lands. Waiting on `onUploadComplete` would only add latency, and
+        // it would make the phone's upload depend on UploadThing being able to
+        // reach this deployment — which it cannot during local development.
+        { awaitServerData: false },
+    )
         .input(z.object({ songId: z.uuid() }))
         .middleware(async ({ input }) => {
             const { userId: clerkId } = await auth();
@@ -47,9 +54,12 @@ export const fileRouter = {
         .onUploadComplete(async ({ metadata, file }) => {
             console.log(`Upload complete for song ${metadata.songId}: ${file.key}`);
         }),
-    orgLogo: f({
-        image: { maxFileSize: "4MB", maxFileCount: 1 },
-    })
+    orgLogo: f(
+        {
+            image: { maxFileSize: "4MB", maxFileCount: 1 },
+        },
+        { awaitServerData: false },
+    )
         .input(z.object({ organizationId: z.uuid() }))
         .middleware(async ({ input }) => {
             const { userId: clerkId } = await auth();
