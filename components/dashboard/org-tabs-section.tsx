@@ -14,6 +14,8 @@ import { BlockoutsTabContent } from "@/components/dashboard/blockouts-tab-conten
 import { BlockoutsTabSkeleton } from "@/components/dashboard/blockouts-tab-skeleton";
 import { ActivityTabContent } from "@/components/dashboard/activity-tab-content";
 import { ActivityTabSkeleton } from "@/components/dashboard/activity-tab-skeleton";
+import { SongKeysTabContent } from "@/components/dashboard/song-keys-tab-content";
+import { SongKeysTabSkeleton } from "@/components/dashboard/song-keys-tab-skeleton";
 
 import { getOrgMemberCountById } from "@/lib/services/organization";
 import { userEventsTotalCount } from "@/lib/services/events";
@@ -25,6 +27,7 @@ interface OrganizationTabsSectionProps {
   isOwner: boolean;
   userId: string;
   activeTab: string;
+  isVocalist: boolean;
 };
 
 export const OrganizationTabsSection = async ({
@@ -34,13 +37,15 @@ export const OrganizationTabsSection = async ({
   isOwner,
   userId,
   activeTab,
+  isVocalist,
 }: OrganizationTabsSectionProps) => {
-  const validTabs = ["events", "members", "blockouts", "invitations", "templates", "activity", "settings"];
+  const validTabs = ["events", "members", "blockouts", "keys", "invitations", "templates", "activity", "settings"];
   const tab = validTabs.includes(activeTab) ? activeTab : "events";
 
+  const adminTab = tab === "invitations" || tab === "templates" || tab === "activity";
 
   const effectiveTab =
-    (tab === "invitations" || tab === "templates" || tab === "activity") && !canManage ? "events" : tab;
+    (adminTab && !canManage) || (tab === "keys" && !isVocalist) ? "events" : tab;
  
     const [totalEventsCount, totalMembersCount] = await Promise.all([
       userEventsTotalCount(userId, organizationId, canManage),
@@ -57,6 +62,7 @@ export const OrganizationTabsSection = async ({
       <OrgTabNav
         activeTab={effectiveTab}
         canManage={canManage}
+        isVocalist={isVocalist}
         counts={counts}
       />
  
@@ -84,6 +90,15 @@ export const OrganizationTabsSection = async ({
         {effectiveTab === "blockouts" && (
           <Suspense fallback={<BlockoutsTabSkeleton />}>
             <BlockoutsTabContent
+              organizationId={organizationId}
+              userId={userId}
+            />
+          </Suspense>
+        )}
+
+        {effectiveTab === "keys" && isVocalist && (
+          <Suspense fallback={<SongKeysTabSkeleton />}>
+            <SongKeysTabContent
               organizationId={organizationId}
               userId={userId}
             />

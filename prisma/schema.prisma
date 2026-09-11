@@ -103,6 +103,8 @@ model User {
 
   blockoutDates BlockoutDate[]
 
+  songKeys SongKeyEntry[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -128,6 +130,7 @@ model Organization {
   messages Message[]
   blockoutDates BlockoutDate[]
   activityLogs ActivityLog[]
+  songKeys SongKeyEntry[]
 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -404,6 +407,7 @@ model Song {
 
   setlistSongs SetlistSong[]
   attachments SongAttachment[]
+  keyEntries SongKeyEntry[]
 
 
   deletedAt DateTime?
@@ -470,4 +474,42 @@ model SetlistSongAssignment {
 
   @@unique([setlistSongId, userId])
   @@index([userId])
+}
+
+/// A vocalist's record of the key they sing one song in. Scoped per
+/// (user, organization) like BlockoutDate: a singer in two orgs keeps two
+/// journals, and every cache tag here is already shaped user-X-thing-orgY.
+///
+/// Title and artist are snapshotted and `songId` is an optional SetNull link,
+/// so an entry can outlive its song — or name one the library never had. When
+/// the link is live the reader prefers the song's own title; the snapshot is
+/// the durable fallback, not the display value.
+model SongKeyEntry {
+  id         String     @id @default(uuid())
+  title      String
+  artist     String
+  pitch      Pitch
+  keyQuality KeyQuality
+  notes      String?
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  // Nullable by design. deleteOrganization hard-deletes Song rows before the
+  // Organization row, so this goes null a step before the org cascade clears
+  // the entry — neither teardown path needs a new step.
+  songId String?
+  song   Song?   @relation(fields: [songId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Dedups library-linked entries. Postgres treats NULLs as distinct, so
+  // freehand entries are not constrained by it — that is deliberate.
+  @@unique([userId, songId])
+  @@index([userId, organizationId])
+  @@index([songId])
 }

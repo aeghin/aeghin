@@ -9,18 +9,24 @@ import { colorClasses } from "@/lib/config/service-types-config";
 import { formatKey } from "@/lib/constants/key";
 import { InvitationStatus, VolunteerRole } from "@/generated/prisma/enums";
 import { SongVocalistAssign } from "./song-vocalist-assign";
-import type { EventDetails, SetlistSong } from "@/lib/types";
+import { SongKeySaveButton } from "./song-key-save-button";
+import type { EventDetails, SetlistSong, SongKeyEntry } from "@/lib/types";
 
 interface EventSetlistSectionProps {
   event: EventDetails
   orgId: string
   canManage: boolean
+  /** The caller sings on this event, so each row offers a one-tap save. */
+  canSaveKeys: boolean
+  myKeys: SongKeyEntry[]
 }
 
 export function EventSetlistSection({
   event,
   orgId,
   canManage,
+  canSaveKeys,
+  myKeys,
 }: EventSetlistSectionProps) {
   const serviceColors = colorClasses[event.serviceType.color];
 
@@ -39,6 +45,16 @@ export function EventSetlistSection({
     attachments: s.song.attachments,
   }));
   const editorHref = `/dashboard/organizations/${orgId}/events/${event.id}/setlist/editor`;
+
+  // Keyed on the library song, not the setlist row — the journal outlives any
+  // one event. Freehand entries carry no songId and can never match.
+  const myKeyBySongId = new Map(
+    myKeys.flatMap((k) =>
+      k.songId === null
+        ? []
+        : [[k.songId, { pitch: k.pitch, keyQuality: k.keyQuality }] as const],
+    ),
+  );
 
   // Accepted Lead/BGV vocalists for this event — the pool you can assign to songs.
   const vocalistCandidates = event.assignments
@@ -170,6 +186,17 @@ export function EventSetlistSection({
                   canManage={canManage}
                   serviceColor={event.serviceType.color}
                 />
+                {canSaveKeys && (
+                  <SongKeySaveButton
+                    organizationId={orgId}
+                    songId={song.songId}
+                    title={song.title}
+                    artist={song.artist}
+                    pitch={song.pitch}
+                    keyQuality={song.keyQuality}
+                    savedKey={myKeyBySongId.get(song.songId) ?? null}
+                  />
+                )}
                 <div className="flex items-center gap-2 shrink-0">
                   <Badge
                     variant="outline"

@@ -1,29 +1,34 @@
 "use client";
 
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { Activity, Calendar, CalendarOff, Users, Mail, LayoutTemplate, Settings } from "lucide-react";
+import { Activity, Calendar, CalendarOff, Mic2, Users, Mail, LayoutTemplate, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+// `vocalOnly` sits on every entry the way `adminOnly` does — a uniform shape
+// keeps the filter a plain boolean test instead of an `in` narrowing.
 const tabs = [
-  { value: "events", label: "Events", icon: Calendar, adminOnly: false },
-  { value: "members", label: "Members", icon: Users, adminOnly: false },
-  { value: "blockouts", label: "Blockouts", icon: CalendarOff, adminOnly: false },
-  { value: "invitations", label: "Invitations", icon: Mail, adminOnly: true },
-  { value: "templates", label: "Templates", icon: LayoutTemplate, adminOnly: true },
-  { value: "activity", label: "Activity", icon: Activity, adminOnly: true },
-  { value: "settings", label: "Settings", icon: Settings, adminOnly: false },
+  { value: "events", label: "Events", icon: Calendar, adminOnly: false, vocalOnly: false },
+  { value: "members", label: "Members", icon: Users, adminOnly: false, vocalOnly: false },
+  { value: "blockouts", label: "Blockouts", icon: CalendarOff, adminOnly: false, vocalOnly: false },
+  { value: "keys", label: "My Keys", icon: Mic2, adminOnly: false, vocalOnly: true },
+  { value: "invitations", label: "Invitations", icon: Mail, adminOnly: true, vocalOnly: false },
+  { value: "templates", label: "Templates", icon: LayoutTemplate, adminOnly: true, vocalOnly: false },
+  { value: "activity", label: "Activity", icon: Activity, adminOnly: true, vocalOnly: false },
+  { value: "settings", label: "Settings", icon: Settings, adminOnly: false, vocalOnly: false },
 ] as const;
 
 interface OrgTabNavProps {
   activeTab: string;
   canManage: boolean;
+  /** Lead vocalists and BGVs — the only members with a key journal. */
+  isVocalist: boolean;
   counts?: {
     events?: number;
     members?: number;
   };
 }
 
-export const OrgTabNav = ({ activeTab, canManage, counts }: OrgTabNavProps) => {
+export const OrgTabNav = ({ activeTab, canManage, isVocalist, counts }: OrgTabNavProps) => {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -34,7 +39,9 @@ export const OrgTabNav = ({ activeTab, canManage, counts }: OrgTabNavProps) => {
     router.push(`${pathname}?${params.toString()}`, { scroll: false });
   };
 
-  const visibleTabs = tabs.filter((tab) => !tab.adminOnly || canManage);
+  const visibleTabs = tabs.filter(
+    (tab) => (!tab.adminOnly || canManage) && (!tab.vocalOnly || isVocalist),
+  );
 
   return (
     <div className="grid grid-cols-2 sm:inline-flex h-auto gap-1 rounded-xl bg-secondary/50 p-1 sm:flex-wrap">

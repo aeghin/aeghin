@@ -17,13 +17,14 @@ import { SmartSchedulingActivity } from "@/components/dashboard/events/smart-sch
 // import { EventStatusCard } from "@/components/dashboard/events/event-status-card";
 import { currentUser } from "@/lib/services/user";
 import { getEventDetailsById } from "@/lib/services/events";
+import { getUserSongKeys } from "@/lib/services/song-keys";
 import { getEventSmartSchedulingActivity } from "@/lib/services/activity";
 import { getEventMessages } from "@/lib/services/chat";
 import {
   getOrgMembersWithUser,
   getUserMembershipRole,
 } from "@/lib/services/organization";
-import { InvitationStatus, OrgRole } from "@/generated/prisma/enums";
+import { InvitationStatus, OrgRole, VolunteerRole } from "@/generated/prisma/enums";
 
 export default async function EventDetailPage({
   params,
@@ -54,6 +55,19 @@ export default async function EventDetailPage({
   const hasAccess = canManage || hasAssignment;
 
   if (!hasAccess) notFound();
+
+  // Offering the save-to-journal button comes off this event's roster, not off
+  // the membership's volunteer roles — if you're singing here you get it, and
+  // the roster is already loaded. The journal is read under the caller's own
+  // tag, so one singer saving a key never busts the shared event cache.
+  const isEventVocalist = event.assignments.some(
+    (a) =>
+      a.userId === user.id &&
+      a.status === InvitationStatus.ACCEPTED &&
+      (a.role === VolunteerRole.LEAD_VOCALIST || a.role === VolunteerRole.BGVS),
+  );
+
+  const myKeys = isEventVocalist ? await getUserSongKeys(user.id, orgId) : [];
 
   
   // Everyone past the guard above may read the chat; only accepted assignees post.
@@ -105,7 +119,13 @@ export default async function EventDetailPage({
         <div className="grid gap-6 lg:grid-cols-3">
           <div className="space-y-6 lg:col-span-2">
             <EventDetailsCard event={event} serviceType={event.serviceType} />
-            <EventSetlistSection event={event} orgId={orgId} canManage={canManage} />
+            <EventSetlistSection
+              event={event}
+              orgId={orgId}
+              canManage={canManage}
+              canSaveKeys={isEventVocalist}
+              myKeys={myKeys}
+            />
           </div>
           <div className="space-y-6">
             <EventAssignmentsCard

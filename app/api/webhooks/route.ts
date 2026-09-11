@@ -288,6 +288,7 @@ export async function POST(req: NextRequest) {
       revalidateTag(`user-${user.id}-events-${organizationId}`, { expire: 0 });
       revalidateTag(`user-${user.id}-blockouts-${organizationId}`, { expire: 0 });
       revalidateTag(`user-${user.id}-songs-${organizationId}`, { expire: 0 });
+      revalidateTag(`user-${user.id}-keys-${organizationId}`, { expire: 0 });
       revalidateTag(`org-${organizationId}-members-list`, { expire: 0 });
       revalidateTag(`org-${organizationId}-member-count`, { expire: 0 });
       revalidateTag(`org-${organizationId}-list-entry`, { expire: 0 });

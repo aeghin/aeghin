@@ -12,7 +12,7 @@ import { z } from "zod/v4";
 import { Suspense } from "react";
 import { getOrganizationDetailsById } from "@/lib/services/organization";
 import { redirect } from "next/navigation";
-import { OrgRole } from "@/generated/prisma/enums";
+import { OrgRole, VolunteerRole } from "@/generated/prisma/enums";
 import { currentUser, userRoles } from "@/lib/services/user";
 
 
@@ -50,6 +50,14 @@ export default async function OrganizationPage({
   const canManage = userRole === OrgRole.OWNER || userRole === OrgRole.ADMIN;
 
   const isOwner = userRole === OrgRole.OWNER;
+
+  // `roles` is already loaded for the hero, so gating the key journal tab on
+  // volunteer roles costs no extra query.
+  const volunteerRoles = roles?.volunteerRoles ?? [];
+
+  const isVocalist =
+    volunteerRoles.includes(VolunteerRole.LEAD_VOCALIST) ||
+    volunteerRoles.includes(VolunteerRole.BGVS);
 
 
  return (
@@ -91,6 +99,7 @@ export default async function OrganizationPage({
               isOwner={isOwner}
               userId={userId}
               activeTab={tab}
+              isVocalist={isVocalist}
             />
           </Suspense>
         </AnimatedSection>

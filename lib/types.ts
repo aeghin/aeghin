@@ -184,3 +184,25 @@ export type RoleEligibility = {
   excluded: RoleExclusion[]
   totalQualified: number
 }
+
+export type SongKeyEntry = {
+  id: string
+  organizationId: string
+  /** Null when the song isn't in the library, or its row was hard-deleted. */
+  songId: string | null
+  /** Snapshot. Prefer `song.title` for display while the link is live. */
+  title: string
+  artist: string
+  pitch: Pitch
+  keyQuality: KeyQuality
+  notes: string | null
+  updatedAt: Date
+  song: {
+    title: string
+    artist: string
+    defaultPitch: Pitch
+    defaultKeyQuality: KeyQuality
+    spotifyUrl: string | null
+    youtubeUrl: string | null
+  } | null
+}
