@@ -17,10 +17,11 @@ import prisma from "@/lib/prisma";
  * initials avatar; the ones that "somehow" have it are the ones a
  * `user.updated` happened to touch.
  *
- * Clerk always issues an `image_url`: for someone who never uploaded a picture
- * it points at the generated default, which the instance's avatar setting
- * renders as initials. So the repair is to copy whatever `image_url` Clerk
- * holds today onto every user we know about.
+ * Clerk issues an `image_url` for everyone: for someone who never uploaded a
+ * picture it points at the generated default, which the instance's avatar
+ * setting renders as initials, and which changes if they later upload their
+ * own. So the repair is to copy whatever `image_url` Clerk holds today onto
+ * every user we know about — one avatar per person, Clerk's own.
  *
  * Guarded by a shared secret rather than a session — it is an operator task,
  * and `proxy.ts` deliberately does not run Clerk middleware over `/api/admin`:
@@ -58,11 +59,7 @@ export async function POST(req: NextRequest) {
   const dryRun = req.nextUrl.searchParams.get("dryRun") === "1";
   const client = await clerkClient();
 
-  // Keyed both ways: accounts predating the production instance still carry a
-  // development-instance clerkId (same reason `user.created` upserts on email),
-  // and those rows would never match on id alone.
   const imageByClerkId = new Map<string, string>();
-  const imageByEmail = new Map<string, string>();
 
   let clerkTotal = Infinity;
 
@@ -78,19 +75,7 @@ export async function POST(req: NextRequest) {
     if (data.length === 0) break;
 
     for (const clerkUser of data) {
-      if (!clerkUser.imageUrl) continue;
-
-      imageByClerkId.set(clerkUser.id, clerkUser.imageUrl);
-
-      // Primary address only: a secondary address on one Clerk account can be
-      // the primary on another, and that would hand a row the wrong avatar.
-      const primaryEmail = clerkUser.emailAddresses.find(
-        (address) => address.id === clerkUser.primaryEmailAddressId,
-      )?.emailAddress;
-
-      if (primaryEmail) {
-        imageByEmail.set(primaryEmail.toLowerCase(), clerkUser.imageUrl);
-      }
+      if (clerkUser.imageUrl) imageByClerkId.set(clerkUser.id, clerkUser.imageUrl);
     }
   }
 
@@ -111,15 +96,13 @@ export async function POST(req: NextRequest) {
     organizationIds: string[];
   }[] = [];
 
-  // Rows Clerk no longer knows about — deleted accounts, or a dev-instance
-  // holdover whose email also changed. Reported rather than guessed at.
+  // Rows whose clerkId Clerk no longer resolves — a deleted account. Reported
+  // back rather than guessed at from anything else on the row.
   const unmatched: string[] = [];
   let alreadyCurrent = 0;
 
   for (const user of users) {
-    const imageUrl =
-      imageByClerkId.get(user.clerkId) ??
-      imageByEmail.get(user.email.toLowerCase());
+    const imageUrl = imageByClerkId.get(user.clerkId);
 
     if (!imageUrl) {
       unmatched.push(user.email);
