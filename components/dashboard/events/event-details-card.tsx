@@ -111,7 +111,7 @@ export function EventDetailsCard({ event, serviceType }: EventDetailsCardProps) 
               <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                 {label}
               </p>
-              <p className="truncate text-sm font-medium text-foreground">{value}</p>
+              <p className="break-words text-sm font-medium text-foreground sm:truncate">{value}</p>
             </div>
           </li>
         ))}

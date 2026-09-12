@@ -15,9 +15,15 @@ import type { KeyQuality, Pitch } from "@/generated/prisma/enums";
 
 /**
  * Wire contract for one journal entry. Mirrors `SongKey` in the Expo app
- * (`src/types/organization.ts`). `title` and `artist` are already resolved —
- * the live song's when it still exists, the snapshot's otherwise — so the
- * phone renders them without knowing which.
+ * (`src/types/song.ts`). `title` and `artist` are already resolved — the live
+ * song's when it still exists, the snapshot's otherwise — so the phone renders
+ * them without knowing which.
+ *
+ * The `library*` fields and the links are flattened off the song the entry
+ * points at, the way the web row reads them off `entry.song`. They are null
+ * for a freehand entry and for one whose song row is gone. The phone cannot
+ * join these itself: its library list drops retired songs, and the journal
+ * deliberately keeps them.
  */
 type SongKey = {
     id: string;
@@ -28,6 +34,11 @@ type SongKey = {
     keyQuality: string;
     notes: string | null;
     updatedAt: string;
+    /** The library's own key, for the "library Bb" line under a differing entry. */
+    libraryPitch: string | null;
+    libraryKeyQuality: string | null;
+    spotifyUrl: string | null;
+    youtubeUrl: string | null;
 };
 
 type Params = { orgId: string };
@@ -60,6 +71,10 @@ export const GET = route<Params>("GET .../song-keys", async (_req, { params }) =
         keyQuality: row.keyQuality,
         notes: row.notes,
         updatedAt: row.updatedAt.toISOString(),
+        libraryPitch: row.song?.defaultPitch ?? null,
+        libraryKeyQuality: row.song?.defaultKeyQuality ?? null,
+        spotifyUrl: row.song?.spotifyUrl ?? null,
+        youtubeUrl: row.song?.youtubeUrl ?? null,
     }));
 
     return json({ songKeys });

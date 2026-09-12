@@ -2,7 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 
 import prisma from "@/lib/prisma";
-import { InvitationStatus, type OrgRole } from "@/generated/prisma/enums";
+import { InvitationStatus, type OrgRole, type VolunteerRole } from "@/generated/prisma/enums";
 import {
     deleteOrganization,
     updateOrganizationDetails,
@@ -17,6 +17,8 @@ type OrganizationDetail = {
     description: string;
     logoUrl: string | null;
     role: OrgRole;
+    /** The caller's own volunteer roles here, as the summary carries them. */
+    volunteerRoles: VolunteerRole[];
     memberCount: number;
     createdAt: string;
     upcomingEventCount: number;
@@ -73,6 +75,7 @@ export async function GET(
                     },
                     select: {
                         role: true,
+                        volunteerRoles: true,
                     },
                 },
                 _count: {
@@ -99,6 +102,7 @@ export async function GET(
         const organizationDetail: OrganizationDetail = {
             ...organization,
             role: memberships[0].role,
+            volunteerRoles: memberships[0].volunteerRoles,
             memberCount: _count.memberships,
             createdAt: createdAt.toISOString(),
             upcomingEventCount: _count.events,

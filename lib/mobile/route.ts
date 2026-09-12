@@ -16,9 +16,21 @@ import { OrgRole } from "@/generated/prisma/enums";
  */
 export const NO_STORE = { "Cache-Control": "private, no-store" };
 
-/** Route-handler-safe cache expiry, for the server actions the routes reuse. */
+/**
+ * Route-handler-safe cache expiry, for the server actions the routes reuse.
+ *
+ * `{ expire: 0 }`, not `"max"`. Every mobile write is followed within
+ * milliseconds by the phone refetching the thing it just changed, and `"max"`
+ * is a one-year stale window — so that refetch was *always* served the
+ * pre-write cache entry while the revalidation ran behind it. The write landed
+ * and the screen redrew as though it had not, which read as the write being
+ * rejected. `updateTag` is the read-your-own-writes answer but throws outside
+ * a Server Action, and `{ expire: 0 }` is what the docs point at for exactly
+ * that case: the next read blocks on a real query instead of taking the stale
+ * one. That read is ~25ms against Neon; a wrong answer is worse.
+ */
 export const expireTag = (tag: string) => {
-    revalidateTag(tag, "max");
+    revalidateTag(tag, { expire: 0 });
 };
 
 export const json = <T>(body: T, status = 200) =>

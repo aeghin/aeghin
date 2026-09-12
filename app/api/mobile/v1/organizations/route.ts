@@ -2,7 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 
 import prisma from "@/lib/prisma";
-import type { OrgRole } from "@/generated/prisma/enums";
+import type { OrgRole, VolunteerRole } from "@/generated/prisma/enums";
 import { createOrganization } from "@/lib/actions/organizations";
 import { organizationSchema } from "@/lib/validations/organization";
 import { expireTag } from "@/lib/mobile/route";
@@ -18,6 +18,8 @@ type OrganizationSummary = {
     logoUrl: string | null;
     role: OrgRole;
     memberCount: number;
+    /** The caller's own volunteer roles here — what the phone gates My Keys on. */
+    volunteerRoles: VolunteerRole[];
 };
 
 /**
@@ -42,6 +44,7 @@ export async function GET() {
             },
             select: {
                 role: true,
+                volunteerRoles: true,
                 organization: {
                     select: {
                         id: true,
@@ -57,13 +60,14 @@ export async function GET() {
             },
         });
 
-        const organizations: OrganizationSummary[] = memberships.map(({ role, organization }) => ({
+        const organizations: OrganizationSummary[] = memberships.map(({ role, volunteerRoles, organization }) => ({
             id: organization.id,
             name: organization.name,
             description: organization.description,
             logoUrl: organization.logoUrl,
             role,
             memberCount: organization._count.memberships,
+            volunteerRoles,
         }));
 
         return NextResponse.json(

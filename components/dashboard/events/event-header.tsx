@@ -60,7 +60,7 @@ export function EventHeader({
   return (
     <div
       className={cn(
-        "relative overflow-hidden rounded-2xl border border-border/40 border-l-[3px] bg-linear-to-br from-card via-card p-8",
+        "relative overflow-hidden rounded-2xl border border-border/40 border-l-[3px] bg-linear-to-br from-card via-card p-5 sm:p-8",
         serviceColors.border,
         serviceColors.gradientTo,
       )}
@@ -100,12 +100,18 @@ export function EventHeader({
         />
       }
 
-      <div className="relative flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
-        <div className="flex items-start gap-5">
+      <div
+        className={cn(
+          "relative flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between",
+          // The ⋮ menu is absolutely placed at right-4; keep the title out from under it.
+          canManage && "pr-10 sm:pr-0",
+        )}
+      >
+        <div className="flex items-start gap-4 sm:gap-5">
           {dateParts && (
             <div
               className={cn(
-                "flex h-16 w-16 flex-col items-center justify-center rounded-2xl border border-border/40 bg-muted/30 shadow-lg",
+                "flex h-14 w-14 shrink-0 flex-col items-center justify-center rounded-2xl border border-border/40 bg-muted/30 shadow-lg sm:h-16 sm:w-16",
                 serviceColors.shadow,
               )}
             >
@@ -119,7 +125,7 @@ export function EventHeader({
             </div>
           )}
 
-          <div className="space-y-3">
+          <div className="min-w-0 space-y-3">
             {serviceType && (
               <Badge
                 className={cn(
@@ -132,7 +138,7 @@ export function EventHeader({
                 {serviceType.name}
               </Badge>
             )}
-            <h1 className="text-3xl font-bold tracking-tight text-balance">{event.name}</h1>
+            <h1 className="text-2xl font-bold tracking-tight text-balance sm:text-3xl">{event.name}</h1>
             {event.description && (
               <p className="max-w-lg text-muted-foreground">{event.description}</p>
             )}

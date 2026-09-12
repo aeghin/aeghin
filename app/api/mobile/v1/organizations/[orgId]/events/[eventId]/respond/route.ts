@@ -26,9 +26,15 @@ const NO_STORE = { "Cache-Control": "private, no-store" };
 const isRespondAction = (value: unknown): value is RespondAction =>
     value === "accept" || value === "decline";
 
-/** Route-handler-safe cache expiry, for the actions called below. */
+/**
+ * Route-handler-safe cache expiry, for the actions called below.
+ *
+ * `{ expire: 0 }` rather than `"max"`, for the reason `lib/mobile/route.ts`
+ * spells out: the phone refetches immediately, and a stale window means that
+ * refetch is served the pre-write state.
+ */
 const expireTag = (tag: string) => {
-    revalidateTag(tag, "max");
+    revalidateTag(tag, { expire: 0 });
 };
 
 

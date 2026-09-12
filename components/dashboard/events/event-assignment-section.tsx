@@ -183,23 +183,25 @@ export function EventAssignmentsCard({
       </div>
 
       <CardHeader className="relative pb-4">
-        <div className="flex items-center justify-between">
-          <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-            <Users className="h-4 w-4 text-muted-foreground" />
-            Team
-          </CardTitle>
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground tabular-nums">
+        {/* This card lives in the narrow lg column, so the three actions get
+            their own line rather than fighting the title for ~430px. */}
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center justify-between gap-2">
+            <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+              <Users className="h-4 w-4 text-muted-foreground" />
+              Team
+            </CardTitle>
+            <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
               {acceptedCount}/{total} confirmed
             </span>
-            {canManage && (
+          </div>
+          {canManage && (
+            <div className="flex flex-wrap items-center gap-2">
               <EventSmartSchedulingToggle
                 organizationId={event.organizationId}
                 eventId={event.id}
                 enabled={event.smartSchedulingEnabled}
               />
-            )}
-            {canManage && (
               <AddEventRolesDialog
                 organizationId={event.organizationId}
                 eventId={event.id}
@@ -207,17 +209,17 @@ export function EventAssignmentsCard({
                 memberCountByRole={memberCountByRole}
                 serviceColor={event.serviceType.color}
               />
-            )}
-            {canManage && acceptedCount > 0 && (
-              <EmailTeamDialog
-                organizationId={event.organizationId}
-                eventId={event.id}
-                eventName={event.name}
-                recipientCount={acceptedCount}
-                serviceColor={event.serviceType.color}
-              />
-            )}
-          </div>
+              {acceptedCount > 0 && (
+                <EmailTeamDialog
+                  organizationId={event.organizationId}
+                  eventId={event.id}
+                  eventName={event.name}
+                  recipientCount={acceptedCount}
+                  serviceColor={event.serviceType.color}
+                />
+              )}
+            </div>
+          )}
         </div>
       </CardHeader>
 

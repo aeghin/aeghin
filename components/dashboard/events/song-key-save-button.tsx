@@ -69,7 +69,9 @@ export function SongKeySaveButton({
 
       result.success
         ? toast.success(
-            isStale ? `Updated to ${setlistKey}` : `Saved ${setlistKey} to your keys`,
+            isStale
+              ? `Updated to ${setlistKey} — was ${journalKey}`
+              : `Saved ${setlistKey} to your keys`,
             { position: "top-center" },
           )
         : toast.error(result.error, { position: "top-center" });
@@ -87,7 +89,7 @@ export function SongKeySaveButton({
           onClick={handleClick}
           disabled={isPending || isSaved}
           className={cn(
-            "h-6 w-6 shrink-0 rounded-full transition-all disabled:opacity-100",
+            "h-9 w-9 shrink-0 rounded-full transition-all disabled:opacity-100",
             isSaved
               ? "text-primary"
               : isStale
@@ -96,11 +98,11 @@ export function SongKeySaveButton({
           )}
         >
           {isPending ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            <Loader2 className="size-4.5 animate-spin" />
           ) : isSaved ? (
-            <BookmarkCheck className="h-3.5 w-3.5" />
+            <BookmarkCheck className="size-4.5" />
           ) : (
-            <BookmarkPlus className="h-3.5 w-3.5" />
+            <BookmarkPlus className="size-4.5" />
           )}
         </Button>
       </TooltipTrigger>

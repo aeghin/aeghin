@@ -89,8 +89,8 @@ export default async function EventDetailPage({
     : 0;
 
   return (
-    <main className="mx-auto max-w-screen-2xl px-6 py-8">
-      <div className="space-y-8">
+    <main className="mx-auto max-w-screen-2xl px-4 py-6 sm:px-6 sm:py-8">
+      <div className="space-y-6 sm:space-y-8">
         <AnimatedSection delay={0.05}>
           <BackLink
             href={`/dashboard/organizations/${orgId}`}
