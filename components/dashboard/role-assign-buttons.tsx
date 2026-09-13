@@ -109,7 +109,7 @@ export const RoleAssignButtons = ({ currentRole, userId, organizationId, memberN
                 <Button
                     variant="ghost"
                     size="icon"
-                    className="h-8 w-8 cursor-pointer opacity-0 transition-opacity group-hover:opacity-100 hover:bg-transparent focus-visible:ring-0 focus-visible:border-transparent"
+                    className="h-8 w-8 cursor-pointer opacity-0 transition-opacity group-hover:opacity-100 pointer-coarse:opacity-100 hover:bg-transparent focus-visible:ring-0 focus-visible:border-transparent"
                 >
                     <MoreVertical className="h-4 w-4" />
                 </Button>

@@ -236,7 +236,7 @@ export function MembersList({ members, currentUserId, viewerRole }: MembersListP
                 asChild
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8 text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100"
+                className="h-8 w-8 text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100 pointer-coarse:opacity-100"
                 title={`View ${member.user.firstName}'s profile`}
               >
                 <Link href={`/dashboard/organizations/${member.organizationId}/profile/${member.user.id}`}>
