@@ -104,12 +104,16 @@ export const RoleAssignButtons = ({ currentRole, userId, organizationId, memberN
 
     return (
     <>
-        <DropdownMenu>
+        {/* Radix opens this menu on pointerdown — on a touch screen that fires before
+            the browser can tell a tap from a swipe. A modal menu mounts react-remove-scroll,
+            which preventDefaults touchmove, so an accidental open freezes the page
+            mid-scroll; non-modal keeps the row menu without the scroll lock. */}
+        <DropdownMenu modal={false}>
             <DropdownMenuTrigger asChild>
                 <Button
                     variant="ghost"
                     size="icon"
-                    className="h-8 w-8 cursor-pointer opacity-0 transition-opacity group-hover:opacity-100 hover:bg-transparent focus-visible:ring-0 focus-visible:border-transparent"
+                    className="h-8 w-8 cursor-pointer opacity-0 transition-opacity group-hover:opacity-100 pointer-coarse:opacity-100 hover:bg-transparent focus-visible:ring-0 focus-visible:border-transparent"
                 >
                     <MoreVertical className="h-4 w-4" />
                 </Button>

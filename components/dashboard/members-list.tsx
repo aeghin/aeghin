@@ -232,11 +232,15 @@ export function MembersList({ members, currentUserId, viewerRole }: MembersListP
               <span className="hidden whitespace-nowrap text-xs tabular-nums text-muted-foreground sm:inline-block">
                 Joined {joinedDate}
               </span>
+              {/* Tailwind compiles `group-hover` inside `@media (hover: hover)`, so on a
+                  touch screen it never resolves and the row actions stay at opacity 0 —
+                  invisible, yet still the hit-test target down the right edge of every
+                  row. Coarse pointers get them outright instead. */}
               <Button
                 asChild
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8 text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100"
+                className="h-8 w-8 text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100 pointer-coarse:opacity-100"
                 title={`View ${member.user.firstName}'s profile`}
               >
                 <Link href={`/dashboard/organizations/${member.organizationId}/profile/${member.user.id}`}>
