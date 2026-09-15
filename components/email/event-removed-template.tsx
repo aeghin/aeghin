@@ -13,27 +13,37 @@ import {
 
 import { organizationInitial } from "@/lib/email/organization";
 
-interface EventAssignmentEmailProps {
+interface EventRemovedEmailProps {
   recipientName: string;
   eventName: string;
   organizationName: string;
   logoUrl: string | null;
+  removedByName: string;
+  roleLabel: string;
+  // Preformatted by `formatEventWhen`, which pins UTC. Null when the event
+  // carried no dates.
+  eventDate: string | null;
+  eventTime: string | null;
   viewLink: string;
 }
 
-export default function EventAssignmentEmail({
+export default function EventRemovedEmail({
   recipientName,
   eventName,
   organizationName,
   logoUrl,
+  removedByName,
+  roleLabel,
+  eventDate,
+  eventTime,
   viewLink,
-}: EventAssignmentEmailProps) {
+}: EventRemovedEmailProps) {
   return (
     <Tailwind>
       <Html>
         <Head />
         <Preview>
-          You&apos;ve been assigned to {eventName} — {organizationName}
+          You&apos;re no longer on {eventName} — {organizationName}
         </Preview>
         <Body className="bg-gray-100 font-sans">
           <Container className="mx-auto my-10 max-w-120 rounded-2xl bg-white shadow-sm overflow-hidden">
@@ -55,17 +65,18 @@ export default function EventAssignmentEmail({
                 </Section>
               )}
               <Text className="text-2xl font-bold tracking-tight text-gray-900 m-0">
-                You&apos;re Assigned
+                Roster Change
               </Text>
               <Text className="mt-2 text-sm text-gray-500 m-0">
-                You&apos;ve been assigned to an upcoming event
+                You&apos;ve been taken off an event
               </Text>
             </Section>
 
             <Section className="px-8 py-6 text-center">
 
               <Text className="text-sm text-gray-600 m-0 mb-6">
-                Hi {recipientName}, you&apos;ve been assigned to an event.
+                Hi {recipientName}, {removedByName} took you off the team for
+                this event. You don&apos;t need to do anything.
               </Text>
 
               <Section className="rounded-xl border border-gray-200 p-4 mb-4">
@@ -76,6 +87,31 @@ export default function EventAssignmentEmail({
                   {eventName}
                 </Text>
               </Section>
+
+              <Section className="rounded-xl border border-gray-200 p-4 mb-4">
+                <Text className="text-xs text-gray-500 m-0 mb-1">
+                  You were on as
+                </Text>
+                <Text className="text-sm font-medium text-gray-900 m-0">
+                  {roleLabel}
+                </Text>
+              </Section>
+
+              {eventDate ? (
+                <Section className="rounded-xl border border-gray-200 p-4 mb-4">
+                  <Text className="text-xs text-gray-500 m-0 mb-1">
+                    Scheduled for
+                  </Text>
+                  <Text className="text-sm font-medium text-gray-900 m-0">
+                    {eventDate}
+                  </Text>
+                  {eventTime ? (
+                    <Text className="mt-1 text-sm text-gray-500 m-0">
+                      {eventTime}
+                    </Text>
+                  ) : null}
+                </Section>
+              ) : null}
 
               <Section className="rounded-xl border border-gray-200 p-4 mb-6">
                 <Text className="text-xs text-gray-500 m-0 mb-1">
@@ -90,14 +126,15 @@ export default function EventAssignmentEmail({
                 href={viewLink}
                 className="rounded-lg bg-black px-6 py-3 text-sm font-semibold text-white no-underline"
               >
-                View Invitation
+                View Schedule
               </Button>
 
             </Section>
 
             <Section className="border-t border-gray-200 px-8 py-6">
               <Text className="text-center text-xs text-gray-400 m-0">
-                If you didn&apos;t expect this assignment, please contact your
+                You&apos;re receiving this because you were on the team for this
+                event at {organizationName}. If this looks wrong, contact your
                 organization admin.
               </Text>
             </Section>

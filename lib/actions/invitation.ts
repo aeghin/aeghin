@@ -8,6 +8,7 @@ import { logActivity, volunteerRoleLabels } from "@/lib/activity";
 
 import { Resend } from "resend";
 import InvitationEmail from "@/components/email/email-template";
+import { organizationSender } from "@/lib/email/organization";
 import { verifyInvitationByToken } from "../services/invitation";
 
 import { after } from "next/server";
@@ -108,7 +109,7 @@ export async function inviteMember(data: OrgInvitationInput, touch: TagInvalidat
         touch(`org-${orgId}-activity`);
 
         after(async () => {await resend.emails.send({
-            from: `${membership.organization.name} <support@aeghin.com>`,
+            from: organizationSender(membership.organization.name),
             to: email,
             subject: `You've been invited to join ${membership.organization.name}`,
             react: InvitationEmail({
@@ -383,7 +384,7 @@ export const resendInvitation = async (organizationId: string, userEmail: string
 
         after(async () => {
             await resend.emails.send({
-                from: `${membership.organization.name} <support@aeghin.com>`,
+                from: organizationSender(membership.organization.name),
                 to: userEmail,
                 subject: `You've been invited to join ${membership.organization.name}`,
                 react: InvitationEmail({

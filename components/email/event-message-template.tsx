@@ -11,6 +11,8 @@ import {
   Tailwind,
 } from "@react-email/components";
 
+import { organizationInitial } from "@/lib/email/organization";
+
 interface EventMessageEmailProps {
   recipientName: string;
   senderName: string;
@@ -51,7 +53,9 @@ export default function EventMessageEmail({
                 />
               ) : (
                 <Section className="mx-auto mb-4 w-16 h-16 rounded-2xl bg-black text-center leading-16">
-                  <Text className="text-2xl font-bold text-white m-0">N</Text>
+                  <Text className="text-2xl font-bold text-white m-0">
+                    {organizationInitial(organizationName)}
+                  </Text>
                 </Section>
               )}
               <Text className="text-2xl font-bold tracking-tight text-gray-900 m-0">

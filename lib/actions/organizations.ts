@@ -10,6 +10,7 @@ import { UTApi } from "uploadthing/server";
 import { currentUser } from "../services/user";
 import { Resend } from "resend";
 import OrganizationMessageEmail from "@/components/email/organization-message-template";
+import { organizationSender } from "@/lib/email/organization";
 
 /**
  * How a caller expires cache tags. `updateTag` throws inside a Route Handler,
@@ -412,7 +413,7 @@ export const emailEntireOrganization = async (
         const viewLink = `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/organizations/${organizationId}`;
 
         const emails = membersInfo.map(({ user: recipient }) => ({
-            from: `${organizationName} <support@aeghin.com>`,
+            from: organizationSender(organizationName),
             to: recipient.email,
             replyTo: user.email,
             subject,

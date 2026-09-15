@@ -13,27 +13,44 @@ import {
 
 import { organizationInitial } from "@/lib/email/organization";
 
-interface EventAssignmentEmailProps {
+/** One field that moved, as the email states it. */
+export type EventChange = {
+  label: string;
+  /**
+   * The previous value, struck through above the new one. Null for a field
+   * where showing the before is noise rather than context — a rewritten
+   * description reads as two walls of prose, not as a diff.
+   */
+  from: string | null;
+  to: string;
+};
+
+interface EventUpdatedEmailProps {
   recipientName: string;
+  /** The name the event carries *now*; a rename shows up in `changes`. */
   eventName: string;
   organizationName: string;
   logoUrl: string | null;
+  updatedByName: string;
+  changes: EventChange[];
   viewLink: string;
 }
 
-export default function EventAssignmentEmail({
+export default function EventUpdatedEmail({
   recipientName,
   eventName,
   organizationName,
   logoUrl,
+  updatedByName,
+  changes,
   viewLink,
-}: EventAssignmentEmailProps) {
+}: EventUpdatedEmailProps) {
   return (
     <Tailwind>
       <Html>
         <Head />
         <Preview>
-          You&apos;ve been assigned to {eventName} — {organizationName}
+          {eventName} has been updated — {organizationName}
         </Preview>
         <Body className="bg-gray-100 font-sans">
           <Container className="mx-auto my-10 max-w-120 rounded-2xl bg-white shadow-sm overflow-hidden">
@@ -55,17 +72,18 @@ export default function EventAssignmentEmail({
                 </Section>
               )}
               <Text className="text-2xl font-bold tracking-tight text-gray-900 m-0">
-                You&apos;re Assigned
+                Event Updated
               </Text>
               <Text className="mt-2 text-sm text-gray-500 m-0">
-                You&apos;ve been assigned to an upcoming event
+                Something changed on an event you&apos;re on
               </Text>
             </Section>
 
             <Section className="px-8 py-6 text-center">
 
               <Text className="text-sm text-gray-600 m-0 mb-6">
-                Hi {recipientName}, you&apos;ve been assigned to an event.
+                Hi {recipientName}, {updatedByName} updated an event you&apos;re
+                scheduled for. Here&apos;s what changed.
               </Text>
 
               <Section className="rounded-xl border border-gray-200 p-4 mb-4">
@@ -77,28 +95,41 @@ export default function EventAssignmentEmail({
                 </Text>
               </Section>
 
-              <Section className="rounded-xl border border-gray-200 p-4 mb-6">
-                <Text className="text-xs text-gray-500 m-0 mb-1">
-                  Organization
-                </Text>
-                <Text className="text-sm font-medium text-gray-900 m-0">
-                  {organizationName}
-                </Text>
-              </Section>
+              {changes.map((change, index) => (
+                <Section
+                  key={change.label}
+                  className={`rounded-xl border border-gray-200 p-4 text-left ${
+                    index === changes.length - 1 ? "mb-6" : "mb-4"
+                  }`}
+                >
+                  <Text className="text-xs text-gray-500 m-0 mb-1">
+                    {change.label}
+                  </Text>
+                  {change.from ? (
+                    <Text className="text-sm text-gray-400 line-through m-0 mb-1">
+                      {change.from}
+                    </Text>
+                  ) : null}
+                  <Text className="text-sm font-semibold text-gray-900 m-0 whitespace-pre-wrap">
+                    {change.to}
+                  </Text>
+                </Section>
+              ))}
 
               <Button
                 href={viewLink}
                 className="rounded-lg bg-black px-6 py-3 text-sm font-semibold text-white no-underline"
               >
-                View Invitation
+                View Event
               </Button>
 
             </Section>
 
             <Section className="border-t border-gray-200 px-8 py-6">
               <Text className="text-center text-xs text-gray-400 m-0">
-                If you didn&apos;t expect this assignment, please contact your
-                organization admin.
+                You&apos;re receiving this because you&apos;re on the team for
+                this event at {organizationName}. Your spot hasn&apos;t changed
+                — only the details above.
               </Text>
             </Section>
           </Container>

@@ -100,7 +100,14 @@ const describeActivity = (item: ActivityItem): ReactNode => {
         </>
       );
     case ActivityType.INVITE_ACCEPTED:
-      return (
+      // Same eventName test as INVITE_SENT above, for the same reason: with one
+      // set this is an event assignment being accepted, without it an org invite.
+      return item.eventName ? (
+        <>
+          <Name>{item.actorName}</Name> accepted <Name>{item.targetName}</Name> on{" "}
+          <Name>{item.eventName}</Name>
+        </>
+      ) : (
         <>
           <Name>{item.actorName}</Name> accepted their invitation and joined
         </>

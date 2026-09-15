@@ -29,7 +29,16 @@ import {
 } from "@/lib/validations/event-email";
 
 import EventAssignmentEmail from "@/components/email/event-email-template";
+import EventCanceledEmail from "@/components/email/event-canceled-template";
 import EventMessageEmail from "@/components/email/event-message-template";
+import EventRemovedEmail from "@/components/email/event-removed-template";
+import EventShortageEmail from "@/components/email/event-shortage-template";
+import EventUpdatedEmail, { type EventChange } from "@/components/email/event-updated-template";
+
+import { formatEventWhen, sameSchedule } from "@/lib/email/event-when";
+import { organizationSender } from "@/lib/email/organization";
+import { eventStaffingRecipients } from "@/lib/email/recipients";
+import { sendEmailBatches } from "@/lib/email/send";
 
 import {
   findBestReplacement,
@@ -349,10 +358,11 @@ export async function createEvent(
         touch(`user-${uid}-events-${organizationId}`)
       };
 
-      after(async () => {await Promise.allSettled(
-        assignedUsers.map((user) =>
-          resend.emails.send({
-            from: "Aeghin <support@aeghin.com>",
+      after(async () => {
+        await sendEmailBatches(
+          "createEvent assignment",
+          assignedUsers.map((user) => ({
+            from: organizationSender(organizationName),
             to: user.email,
             subject: `You've been assigned to ${name}`,
             react: EventAssignmentEmail({
@@ -362,10 +372,9 @@ export async function createEvent(
               logoUrl,
               viewLink: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/organizations/${organizationId}`,
             }),
-          }),
-        ),
-      );
-  });
+          })),
+        );
+      });
 };
 
     await logActivity({
@@ -434,7 +443,8 @@ export const acceptEventInvitation = async (
         organizationId,
         status: InvitationStatus.PENDING,
         expiresAt: { gt: new Date() }
-      }
+      },
+      include: { event: { select: { name: true } } },
     });
 
     if (!event) return { success: false, error: "Unable to find this event" };
@@ -449,9 +459,23 @@ export const acceptEventInvitation = async (
       }
     });
 
+    // The feed recorded every decline and no accept, which made a roster read
+    // worse than it was. INVITE_ACCEPTED carries an eventName here to mean the
+    // event kind, exactly as INVITE_SENT already distinguishes the two.
+    await logActivity({
+      organizationId,
+      eventId,
+      eventName: event.event.name,
+      type: ActivityType.INVITE_ACCEPTED,
+      actorName: `${user.firstName} ${user.lastName}`,
+      targetName: volunteerRoleLabels[event.role],
+    });
+
     touch(`user-${user.id}-events-${organizationId}`);
     touch(`event-${eventId}-org-${organizationId}-details`);
     touch(`org-${organizationId}-acceptance-stats`);
+    touch(`org-${organizationId}-activity`);
+    touch(`event-${eventId}-org-${organizationId}-activity`);
 
     return { success: true };
 
@@ -486,7 +510,14 @@ export const declineEventInvitation = async (
         role: true,
         assignedById: true,
         expiresAt: true,
-        event: { select: { name: true, smartSchedulingEnabled: true } },
+        event: {
+          select: {
+            name: true,
+            smartSchedulingEnabled: true,
+            createdById: true,
+            dates: { select: { startTime: true, endTime: true } },
+          },
+        },
         organization: { select: { name: true, logoUrl: true } },
       },
     });
@@ -511,6 +542,48 @@ export const declineEventInvitation = async (
     const roleLabel = volunteerRoleLabels[assignment.role];
     const eventName = assignment.event.name;
 
+    /**
+     * Tells whoever manages this event that the role is still open.
+     *
+     * Called from every branch that leaves a hole, and from none that fills
+     * one — so receiving this always means somebody has to go and staff
+     * something. Scheduled rather than awaited: the decline has committed and
+     * the volunteer is owed their answer now.
+     */
+    const notifyShortage = (reason: string) => {
+      after(async () => {
+        const recipients = await eventStaffingRecipients(
+          organizationId,
+          assignment.event.createdById,
+        );
+
+        if (recipients.length === 0) return;
+
+        const when = formatEventWhen(assignment.event.dates);
+
+        await sendEmailBatches(
+          "declineEventInvitation shortage",
+          recipients.map((recipient) => ({
+            from: organizationSender(assignment.organization.name),
+            to: recipient.email,
+            subject: `Needs a ${roleLabel}: ${eventName}`,
+            react: EventShortageEmail({
+              recipientName: recipient.firstName,
+              eventName,
+              organizationName: assignment.organization.name,
+              logoUrl: assignment.organization.logoUrl,
+              declinedByName: declinerName,
+              roleLabel,
+              reason,
+              eventDate: when?.date ?? null,
+              eventTime: when?.time ?? null,
+              viewLink: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/organizations/${organizationId}/events/${eventId}`,
+            }),
+          })),
+        );
+      });
+    };
+
     if (!assignment.event.smartSchedulingEnabled) {
       await logActivity({
         organizationId,
@@ -520,6 +593,10 @@ export const declineEventInvitation = async (
         actorName: declinerName,
         targetName: roleLabel,
       });
+
+      notifyShortage(
+        "Auto-fill is off for this event, so no replacement was invited.",
+      );
 
       touch(`org-${organizationId}-activity`);
       touch(`event-${eventId}-org-${organizationId}-activity`);
@@ -573,7 +650,7 @@ export const declineEventInvitation = async (
 
         after(async () => {
           await resend.emails.send({
-            from: "Aeghin <support@aeghin.com>",
+            from: organizationSender(assignment.organization.name),
             to: replacement.email,
             subject: `You've been assigned to ${assignment.event.name}`,
             react: EventAssignmentEmail({
@@ -594,6 +671,10 @@ export const declineEventInvitation = async (
           actorName: declinerName,
           targetName: roleLabel,
         });
+
+        notifyShortage(
+          `Nobody in ${assignment.organization.name} has the ${roleLabel} role, so there was no one to invite.`,
+        );
       } else if (outcome.status === "ALL_UNAVAILABLE") {
         const breakdown = [
           `${outcome.qualified} qualified`,
@@ -612,6 +693,10 @@ export const declineEventInvitation = async (
           targetName: roleLabel,
           detail: breakdown.join(" · "),
         });
+
+        notifyShortage(
+          `Everyone qualified is unavailable — ${breakdown.join(", ")}.`,
+        );
       } else {
         await logActivity({
           organizationId,
@@ -621,6 +706,10 @@ export const declineEventInvitation = async (
           actorName: declinerName,
           targetName: roleLabel,
         });
+
+        notifyShortage(
+          "Smart Scheduling could not look for a replacement. The role needs filling by hand.",
+        );
       }
     } catch {
       // Swallow: smart-fill is best-effort; the decline already committed.
@@ -632,6 +721,10 @@ export const declineEventInvitation = async (
         actorName: declinerName,
         targetName: roleLabel,
       });
+
+      notifyShortage(
+        "Smart Scheduling hit an error looking for a replacement. The role needs filling by hand.",
+      );
     }
 
     touch(`org-${organizationId}-activity`);
@@ -662,13 +755,35 @@ export const cancelUserEventAssignment = async (userId: string, organizationId: 
         }
       },
       select: {
-        role: true
+        role: true,
+        organization: { select: { name: true, logoUrl: true } },
       }
     });
 
     if (!userMembership) return { success: false, error: "Unable to locate membership" };
 
     if (userMembership.role === OrgRole.MEMBER) return { success: false, error: "Unauthorized" };
+
+    // Read before the write. The notice depends on what the assignment was,
+    // and the update is about to overwrite exactly that — so a blind update
+    // would leave no way to tell "took a volunteer off the team" apart from
+    // "tidied up a row that was already dead".
+    const assignment = await prisma.eventAssignment.findFirst({
+      where: { eventId, userId, organizationId },
+      select: {
+        status: true,
+        role: true,
+        user: { select: { email: true, firstName: true } },
+        event: {
+          select: {
+            name: true,
+            dates: { select: { startTime: true, endTime: true } },
+          },
+        },
+      },
+    });
+
+    if (!assignment) return { success: false, error: "Unable to find this assignment" };
 
     await prisma.eventAssignment.update({
       where: {
@@ -685,6 +800,36 @@ export const cancelUserEventAssignment = async (userId: string, organizationId: 
 
     touch(`user-${userId}-events-${organizationId}`);
     touch(`event-${eventId}-org-${organizationId}-details`);
+
+    // Only someone who still held the spot has lost anything. A volunteer who
+    // already declined, or who was taken off once already, is told nothing.
+    const heldTheSpot =
+      assignment.status === InvitationStatus.ACCEPTED ||
+      assignment.status === InvitationStatus.PENDING;
+
+    if (heldTheSpot) {
+      const { name: organizationName, logoUrl } = userMembership.organization;
+      const when = formatEventWhen(assignment.event.dates);
+
+      after(async () => {
+        await resend.emails.send({
+          from: organizationSender(organizationName),
+          to: assignment.user.email,
+          subject: `Removed: ${assignment.event.name}`,
+          react: EventRemovedEmail({
+            recipientName: assignment.user.firstName,
+            eventName: assignment.event.name,
+            organizationName,
+            logoUrl,
+            removedByName: `${user.firstName} ${user.lastName}`,
+            roleLabel: volunteerRoleLabels[assignment.role],
+            eventDate: when?.date ?? null,
+            eventTime: when?.time ?? null,
+            viewLink: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/organizations/${organizationId}`,
+          }),
+        });
+      });
+    }
 
     return { success: true };
 
@@ -1166,21 +1311,20 @@ export const inviteMembersToEvent = async (
     const { name: organizationName, logoUrl } = membership.organization;
 
     after(async () => {
-      await Promise.allSettled(
-        invitedUsers.map((invitee) =>
-          resend.emails.send({
-            from: "Aeghin <support@aeghin.com>",
-            to: invitee.email,
-            subject: `You've been assigned to ${event.name}`,
-            react: EventAssignmentEmail({
-              recipientName: invitee.firstName,
-              eventName: event.name,
-              organizationName: organizationName || "",
-              logoUrl,
-              viewLink: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/organizations/${organizationId}`,
-            }),
+      await sendEmailBatches(
+        "inviteMembersToEvent assignment",
+        invitedUsers.map((invitee) => ({
+          from: organizationSender(organizationName),
+          to: invitee.email,
+          subject: `You've been assigned to ${event.name}`,
+          react: EventAssignmentEmail({
+            recipientName: invitee.firstName,
+            eventName: event.name,
+            organizationName: organizationName || "",
+            logoUrl,
+            viewLink: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/organizations/${organizationId}`,
           }),
-        ),
+        })),
       );
     });
 
@@ -1237,7 +1381,8 @@ export const deleteEvent = async (organizationId: string, eventId: string, touch
         }
       },
       select: {
-        role: true
+        role: true,
+        organization: { select: { name: true, logoUrl: true } },
       }
     });
 
@@ -1253,9 +1398,16 @@ export const deleteEvent = async (organizationId: string, eventId: string, touch
       select: {
         name: true,
         serviceType: { select: { name: true } },
+        // Addresses included: this roster is who the cancellation notice goes
+        // to, and the delete below takes it with the event.
         assignments: {
-          select: { userId: true, status: true },
+          select: {
+            userId: true,
+            status: true,
+            user: { select: { email: true, firstName: true } },
+          },
         },
+        dates: { select: { startTime: true, endTime: true } },
         // Deleting the event cascades these away, which changes each of those
         // members' top-songs tally — read them while they still exist.
         setlistSongs: {
@@ -1266,11 +1418,52 @@ export const deleteEvent = async (organizationId: string, eventId: string, touch
 
     if (!event) return { success: false, error: "Unable to locate event" };
 
+    // Only people who were counted on hear about it: someone who declined or
+    // was removed is not on this event, and telling them it vanished is noise.
+    //
+    // The deleter is NOT filtered out, even though they just pressed the
+    // button. An admin who staffed themselves is on the roster like anyone
+    // else, and createEvent already mails them "You've been assigned" for
+    // their own assignment — suppressing only the cancellation would be the
+    // odd half of that pair.
+    const strandedTeam = event.assignments.filter(
+      (assignment) =>
+        assignment.status === InvitationStatus.ACCEPTED ||
+        assignment.status === InvitationStatus.PENDING,
+    );
+
     await prisma.event.delete({
       where: {
         id: eventId
       }
     });
+
+    if (strandedTeam.length > 0) {
+      const { name: organizationName, logoUrl } = userMembership.organization;
+      const canceledByName = `${user.firstName} ${user.lastName}`;
+      const when = formatEventWhen(event.dates);
+
+      after(async () => {
+        await sendEmailBatches(
+          "deleteEvent cancellation",
+          strandedTeam.map((assignment) => ({
+            from: organizationSender(organizationName),
+            to: assignment.user.email,
+            subject: `Canceled: ${event.name}`,
+            react: EventCanceledEmail({
+              recipientName: assignment.user.firstName,
+              eventName: event.name,
+              organizationName,
+              logoUrl,
+              canceledByName,
+              eventDate: when?.date ?? null,
+              eventTime: when?.time ?? null,
+              viewLink: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/organizations/${organizationId}`,
+            }),
+          })),
+        );
+      });
+    }
 
     await logActivity({
       organizationId,
@@ -1382,7 +1575,7 @@ export const emailAcceptedVolunteers = async (
     const viewLink = `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/organizations/${organizationId}/events/${eventId}`;
 
     const emails = recipients.map(({ user: recipient }) => ({
-      from: `${organizationName} <support@aeghin.com>`,
+      from: organizationSender(organizationName),
       to: recipient.email,
       replyTo: user.email,
       subject,
@@ -1442,12 +1635,27 @@ export const editEventDetails = async (
             }
           },
           select: {
-            role: true
+            role: true,
+            organization: { select: { name: true, logoUrl: true } },
           }
         }),
         prisma.event.findFirst({
           where: { id: eventId, organizationId },
-          select: { assignments: { select: { userId: true, status: true } } },
+          // Read before the update lands, so this doubles as the "before" half
+          // of the change list, and carries who that list is mailed to.
+          select: {
+            name: true,
+            location: true,
+            description: true,
+            dates: { select: { startTime: true, endTime: true } },
+            assignments: {
+              select: {
+                userId: true,
+                status: true,
+                user: { select: { email: true, firstName: true } },
+              },
+            },
+          },
         }),
       ]);
 
@@ -1497,6 +1705,11 @@ export const editEventDetails = async (
         }
       }
 
+      const nextDates = Object.values(dayTimes).map((times) => ({
+        startTime: new Date(times.startTime),
+        endTime: new Date(times.endTime),
+      }));
+
       await prisma.$transaction(async (tx) => {
         await tx.event.update({
           where: { id: eventId },
@@ -1511,11 +1724,7 @@ export const editEventDetails = async (
         await tx.eventDate.deleteMany({ where: { eventId } });
 
         await tx.eventDate.createMany({
-          data: Object.values(dayTimes).map((times) => ({
-            eventId,
-            startTime: new Date(times.startTime),
-            endTime: new Date(times.endTime),
-          })),
+          data: nextDates.map((date) => ({ eventId, ...date })),
         });
       });
 
@@ -1525,6 +1734,74 @@ export const editEventDetails = async (
       for (const { userId } of event.assignments) {
         touch(`user-${userId}-events-${organizationId}`);
       };
+
+      // Against the pre-update snapshot, so this is what actually moved rather
+      // than everything the form submitted.
+      const changes: EventChange[] = [];
+
+      if (event.name !== name) {
+        changes.push({ label: "Name", from: event.name, to: name });
+      }
+
+      if (!sameSchedule(event.dates, nextDates)) {
+        const previousWhen = formatEventWhen(event.dates);
+        const nextWhen = formatEventWhen(nextDates);
+
+        changes.push({
+          label: "When",
+          from: previousWhen ? `${previousWhen.date} · ${previousWhen.time}` : null,
+          to: nextWhen ? `${nextWhen.date} · ${nextWhen.time}` : "",
+        });
+      }
+
+      if (event.location !== location) {
+        changes.push({ label: "Where", from: event.location, to: location });
+      }
+
+      // Shown without its before: a rewritten description reads as two walls of
+      // prose rather than as a diff.
+      const nextDescription = description ?? "";
+
+      if (event.description !== nextDescription) {
+        changes.push({
+          label: "Details",
+          from: null,
+          to: nextDescription || "(removed)",
+        });
+      }
+
+      const roster = event.assignments.filter(
+        (assignment) =>
+          assignment.status === InvitationStatus.ACCEPTED ||
+          assignment.status === InvitationStatus.PENDING,
+      );
+
+      // A save that moved nothing mails nobody — opening the form and pressing
+      // save is not news.
+      if (changes.length > 0 && roster.length > 0) {
+        const { name: organizationName, logoUrl } = membership.organization;
+        const updatedByName = `${user.firstName} ${user.lastName}`;
+
+        after(async () => {
+          await sendEmailBatches(
+            "editEventDetails update",
+            roster.map((assignment) => ({
+              from: organizationSender(organizationName),
+              to: assignment.user.email,
+              subject: `Updated: ${name}`,
+              react: EventUpdatedEmail({
+                recipientName: assignment.user.firstName,
+                eventName: name,
+                organizationName,
+                logoUrl,
+                updatedByName,
+                changes,
+                viewLink: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/organizations/${organizationId}/events/${eventId}`,
+              }),
+            })),
+          );
+        });
+      }
 
       return { success: true };
 
