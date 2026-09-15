@@ -32,8 +32,13 @@ interface UpNextEvent {
   assignments: EventAssignment[];
 }
 
+export interface UpNextSelection {
+  event: UpNextEvent;
+  date: EventDate;
+}
+
 interface UpNextBannerProps {
-  events: UpNextEvent[];
+  upNext: UpNextSelection | null;
   serviceTypes: ServiceType[];
   organizationId: string;
 }
@@ -77,14 +82,13 @@ function countdownLabel(days: number): string {
   return `In ${days} days`;
 }
 
-export function UpNextBanner({
-  events,
-  serviceTypes,
-  organizationId,
-}: UpNextBannerProps) {
-  const now = new Date();
-
-  // Next accepted commitment: earliest upcoming date block across accepted events.
+// Next accepted commitment: earliest upcoming date block across accepted events.
+// Exported so the caller picks it once and the schedule list can drop the same
+// event instead of repeating it — see events-tab-content.tsx.
+export function findUpNext(
+  events: UpNextEvent[],
+  now: Date,
+): UpNextSelection | null {
   let nextEvent: UpNextEvent | null = null;
   let nextDate: EventDate | null = null;
 
@@ -103,17 +107,26 @@ export function UpNextBanner({
     }
   }
 
-  // Banners have to earn their row — render nothing when there is no commitment.
   if (!nextEvent || !nextDate) return null;
+  return { event: nextEvent, date: nextDate };
+}
 
-  // Re-bind as consts so the narrowed types survive inside callbacks below.
-  const upNext = nextEvent;
-  const upNextDate = nextDate;
+export function UpNextBanner({
+  upNext,
+  serviceTypes,
+  organizationId,
+}: UpNextBannerProps) {
+  // Banners have to earn their row — render nothing when there is no commitment.
+  if (!upNext) return null;
 
-  const service = serviceTypes.find((s) => s.id === upNext.serviceTypeId);
+  const now = new Date();
+  const upNextEvent = upNext.event;
+  const upNextDate = upNext.date;
+
+  const service = serviceTypes.find((s) => s.id === upNextEvent.serviceTypeId);
   const colors = getServiceColors(service?.color || "indigo");
 
-  const role = upNext.assignments.find(
+  const role = upNextEvent.assignments.find(
     (a) => a.status === InvitationStatus.ACCEPTED,
   )?.role;
   const roleConfig = role
@@ -127,7 +140,7 @@ export function UpNextBanner({
   return (
     <AnimatedSection delay={0.05}>
       <Link
-        href={`/dashboard/organizations/${organizationId}/events/${upNext.id}`}
+        href={`/dashboard/organizations/${organizationId}/events/${upNextEvent.id}`}
         className="group block"
       >
         <div className="relative overflow-hidden rounded-xl border border-border/40 bg-linear-to-r from-primary/10 via-card to-card p-4 transition-all duration-300 hover:border-primary/30 hover:shadow-lg hover:shadow-primary/5 sm:p-5">
@@ -141,7 +154,7 @@ export function UpNextBanner({
               </div>
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Up Next
+                  Upcoming
                 </p>
                 <p
                   className={cn(
@@ -160,7 +173,7 @@ export function UpNextBanner({
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                 <p className="truncate text-base font-semibold tracking-tight">
-                  {upNext.name}
+                  {upNextEvent.name}
                 </p>
                 <span
                   className={cn(
@@ -185,7 +198,7 @@ export function UpNextBanner({
                 </span>
                 <span className="flex min-w-0 items-center gap-1.5">
                   <MapPin className="h-3.5 w-3.5 shrink-0" />
-                  <span className="truncate">{upNext.location}</span>
+                  <span className="truncate">{upNextEvent.location}</span>
                 </span>
               </div>
             </div>

@@ -274,6 +274,8 @@ interface MemberEventsDashboardProps {
   serviceTypes: ServiceType[];
   organizationId: string;
   canManage: boolean;
+  /** Event already shown in the Upcoming banner — kept out of My Schedule rows. */
+  upNextEventId?: string | null;
 }
 
 // Motion only scale-corrects borderRadius when it's a number or a px string —
@@ -293,6 +295,7 @@ export function MemberEventsDashboard({
   serviceTypes,
   organizationId,
   canManage,
+  upNextEventId = null,
 }: MemberEventsDashboardProps) {
   const [activeTab, setActiveTab] = useState<TabType>(() =>
     events.some((e) =>
@@ -385,10 +388,18 @@ export function MemberEventsDashboard({
       );
   }, [acceptedEvents, timeScope, currentMonth, selectedServiceType, today]);
 
+  // The Upcoming banner above already renders this one — drop it from the rows.
+  // Kept as its own layer so the empty state can tell "nothing matches" apart
+  // from "the banner took the only match".
+  const scheduleEvents = useMemo(
+    () => filteredAcceptedEvents.filter((e) => e.id !== upNextEventId),
+    [filteredAcceptedEvents, upNextEventId],
+  );
+
   const groupedAcceptedEvents = useMemo(() => {
     const groups: Record<string, Event[]> = {};
 
-    filteredAcceptedEvents.forEach((event) => {
+    scheduleEvents.forEach((event) => {
       const anchorDate = getAnchorDateInScope(
         event.dates,
         timeScope,
@@ -406,7 +417,7 @@ export function MemberEventsDashboard({
     return Object.entries(groups).sort(
       ([a], [b]) => new Date(a).getTime() - new Date(b).getTime(),
     );
-  }, [filteredAcceptedEvents, timeScope, currentMonth, today]);
+  }, [scheduleEvents, timeScope, currentMonth, today]);
 
   // ── All-events derivations (managers only) ──────────────────
 
@@ -471,9 +482,23 @@ export function MemberEventsDashboard({
   const groupedSchedule =
     activeTab === "all" ? groupedAllEvents : groupedAcceptedEvents;
 
-  const nextUpcomingDate = groupedSchedule.find(
-    ([dateStr]) => new Date(dateStr) >= today,
-  )?.[0];
+  // Whether the banner actually took an event out of *this* view — false when
+  // the scope or service filter had already excluded it anyway.
+  const bannerInThisView =
+    scheduleEvents.length !== filteredAcceptedEvents.length;
+
+  // The banner is holding the only event this view would have shown, so the
+  // list is empty while an event is plainly visible right above it.
+  const bannerHoldsSchedule =
+    activeTab !== "all" && bannerInThisView && scheduleEvents.length === 0;
+
+  // The banner is the "soonest" marker for the events it took, so a second pill
+  // on the next group down would only compete with it. All Events is a
+  // different set (the whole org), so it keeps its own marker.
+  const nextUpcomingDate =
+    activeTab !== "all" && bannerInThisView
+      ? undefined
+      : groupedSchedule.find(([dateStr]) => new Date(dateStr) >= today)?.[0];
 
   // ── JSX ─────────────────────────────────────────────────────
 
@@ -776,14 +801,20 @@ export function MemberEventsDashboard({
                   <Calendar className="h-6 w-6 text-muted-foreground" />
                 </div>
                 <p className="text-sm font-medium text-foreground">
-                  {activeTab === "all" ? "No events" : "No scheduled events"}
+                  {activeTab === "all"
+                    ? "No events"
+                    : bannerHoldsSchedule
+                      ? "Nothing else scheduled"
+                      : "No scheduled events"}
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   {timeScope === "past"
                     ? "No past events found"
                     : activeTab === "all"
                       ? "No events in this period"
-                      : "Check back later for new assignments"}
+                      : bannerHoldsSchedule
+                        ? "Your next event is shown above"
+                        : "Check back later for new assignments"}
                 </p>
               </m.div>
             ) : (
