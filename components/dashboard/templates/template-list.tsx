@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import {
   Calendar,
+  CalendarClock,
   CalendarPlus,
   Clock,
   EllipsisVertical,
@@ -136,6 +137,21 @@ const TemplateCard = ({
             {formatDayTime(day.startTime)} – {formatDayTime(day.endTime)}
           </div>
         ))}
+        {template.rehearsalStartTime && template.rehearsalEndTime && (
+          <div className="flex items-center gap-2">
+            <CalendarClock className="h-4 w-4 shrink-0" />
+            <span>
+              Rehearsal{" "}
+              {WEEKDAY_LABELS[
+                (((template.dayOfWeek + (template.rehearsalDayOffset ?? 0)) % 7) +
+                  7) %
+                  7
+              ].slice(0, 3)}{" "}
+              {formatDayTime(template.rehearsalStartTime)} –{" "}
+              {formatDayTime(template.rehearsalEndTime)}
+            </span>
+          </div>
+        )}
         <div className="flex items-center gap-2">
           <MapPin className="h-4 w-4 shrink-0" />
           {template.location}

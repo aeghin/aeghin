@@ -1,4 +1,4 @@
-import { Calendar, Clock, MapPin } from "lucide-react";
+import { Calendar, CalendarClock, Clock, MapPin } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { colorClasses } from "@/lib/config/service-types-config";
@@ -17,6 +17,8 @@ type Event = {
         startTime: Date;
         endTime: Date;
   }[],
+  rehearsalStart: Date | null,
+  rehearsalEnd: Date | null,
 };
 
 interface EventDetailsCardProps {
@@ -72,6 +74,17 @@ export function EventDetailsCard({ event, serviceType }: EventDetailsCardProps) 
       label: isMultiDay ? formatShortDate(date.startTime) : "Time",
       value: `${formatTime(date.startTime)} – ${formatTime(date.endTime)}`,
     })),
+    ...(event.rehearsalStart
+      ? [
+          {
+            icon: CalendarClock,
+            label: "Rehearsal",
+            value: event.rehearsalEnd
+              ? `${formatShortDate(event.rehearsalStart)} · ${formatTime(event.rehearsalStart)} – ${formatTime(event.rehearsalEnd)}`
+              : `${formatShortDate(event.rehearsalStart)} · ${formatTime(event.rehearsalStart)}`,
+          },
+        ]
+      : []),
     {
       icon: MapPin,
       label: "Where",

@@ -21,6 +21,10 @@ export type AgentTemplate = {
   rolesNeeded: VolunteerRole[];
   expiresInDays: number;
   smartSchedulingEnabled: boolean;
+  /** Offset from the template's first day: 0 same day, negative before it. */
+  rehearsalDayOffset: number | null;
+  rehearsalStartTime: string | null;
+  rehearsalEndTime: string | null;
   serviceTypeId: string;
 };
 
@@ -66,6 +70,8 @@ export type EventDraft = {
   assignments: DraftAssignment[];
   expiresInDays: 3 | 5 | 7;
   smartSchedulingEnabled: boolean;
+  /** Resolved to a real date, unlike the template's offset. Null = none. */
+  rehearsal: DraftDay | null;
   summary: string;
   warnings: DraftWarning[];
   unfilledRoles: VolunteerRole[];
@@ -122,7 +128,13 @@ function buildInstructions(opts: {
           (t) =>
             `- "${t.name}" | every ${WEEKDAYS[t.dayOfWeek]} | ${t.location} | serviceTypeId ${t.serviceTypeId} | ${t.days
               .map((d) => `day+${d.dayOffset} ${d.startTime}-${d.endTime}`)
-              .join(", ")} | roles: ${t.rolesNeeded.join(", ")} | expires ${t.expiresInDays}d | smartScheduling ${t.smartSchedulingEnabled}`,
+              .join(", ")} | roles: ${t.rolesNeeded.join(", ")} | expires ${t.expiresInDays}d | smartScheduling ${t.smartSchedulingEnabled}${
+              t.rehearsalDayOffset !== null &&
+              t.rehearsalStartTime &&
+              t.rehearsalEndTime
+                ? ` | rehearsal day${t.rehearsalDayOffset >= 0 ? "+" : ""}${t.rehearsalDayOffset} ${t.rehearsalStartTime}-${t.rehearsalEndTime}`
+                : " | no rehearsal"
+            }`,
         )
         .join("\n")
     : "(none)";
@@ -145,12 +157,17 @@ ${templateRows}
 WHAT THEY ASKED FOR WINS
 Anything they state is settled — the day, the date, the time, the location, the roles. Never replace it with a template's usual value, or with whatever this organization normally does. A template's weekday is a default for when they named no day; if they named one, that is the day, and no template overrides it. Where their request and a template disagree, follow them and say so in your summary.
 
+REHEARSALS
+Most events have one, and "rehearsal" on proposeEvent is where it goes: a single block with one date and a start and end clock time, in the same formats as the event days. Set it when they mention a rehearsal, or when a template you are using carries one — a template's rehearsal comes along with its times and roles, so dropping it would quietly lose something the org set up. Otherwise leave it out. Never invent a rehearsal they did not ask for.
+A template's rehearsal is written as an offset from its FIRST day, so "rehearsal day-3 19:00-21:00" on a Sunday service falling on 2026-09-20 resolves to 2026-09-17 19:00-21:00. Resolve it against the dates you actually drafted, not the template's usual weekday.
+A rehearsal is informational. It never makes anyone unavailable, it is not part of the days you pass to checkAvailability, and it must not change who you pick.
+
 ROSTER (userId | name | volunteer roles):
 ${rosterRows}
 
 HOW TO WORK
 1. Work out the dates first. "Next Sunday" means the next occurrence AFTER today — if today is Sunday, that's seven days out, not today.
-2. Call checkAvailability with those days and every role the event needs. It returns, per role, who is free and ranked best-first, plus who is excluded and why.
+2. Call checkAvailability with those event days — never the rehearsal — and every role the event needs. It returns, per role, who is free and ranked best-first, plus who is excluded and why.
 3. Pick people. Then call proposeEvent. Always finish with proposeEvent — never write the final plan as prose.
 
 PICKING PEOPLE
@@ -167,7 +184,8 @@ HARD RULES — the server enforces these and will reject the draft
 - One person holds at most ONE role per event. Never assign the same person twice.
 - expiresInDays is exactly 3, 5, or 7.
 - Every assignment's role must also appear in rolesNeeded.
-- Use exact userIds and serviceTypeIds from the lists above. Never invent one, never pass a name where an id belongs.`;
+- Use exact userIds and serviceTypeIds from the lists above. Never invent one, never pass a name where an id belongs.
+- A rehearsal, if you send one, must be a real date, not in the past, on or before the event's last day, and end after it starts.`;
 }
 
 export function createEventDraftAgent(opts: {
@@ -245,6 +263,39 @@ export function createEventDraftAgent(opts: {
             error: `Event days must be consecutive, but ${days[i - 1].date} is followed by ${days[i].date}. Draft one event for the first block and tell the user the rest need separate events.`,
           };
         }
+      }
+
+      let rehearsal: DraftDay | null = null;
+
+      if (input.rehearsal) {
+        const { date, startTime, endTime } = input.rehearsal;
+
+        if (dayNumber(date) === null) {
+          return { ok: false, error: `The rehearsal date "${date}" is not a real date.` };
+        }
+        if (date < today) {
+          return {
+            ok: false,
+            error: `The rehearsal on ${date} is in the past. Today is ${today}.`,
+          };
+        }
+        if (endTime <= startTime) {
+          return {
+            ok: false,
+            error: `The rehearsal's end time (${endTime}) must be after its start time (${startTime}).`,
+          };
+        }
+
+        const lastDay = days[days.length - 1].date;
+
+        if (date > lastDay) {
+          return {
+            ok: false,
+            error: `The rehearsal on ${date} falls after the event's last day (${lastDay}). A rehearsal runs on or before the event.`,
+          };
+        }
+
+        rehearsal = { date, startTime, endTime };
       }
 
       const rolesNeeded = [...new Set(input.rolesNeeded)];
@@ -358,6 +409,7 @@ export function createEventDraftAgent(opts: {
           assignments,
           expiresInDays: input.expiresInDays,
           smartSchedulingEnabled: input.smartSchedulingEnabled,
+          rehearsal,
           summary: input.summary,
           warnings,
           unfilledRoles: rolesNeeded.filter((r) => !filled.has(r)),

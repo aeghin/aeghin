@@ -17,6 +17,8 @@ type Event = {
         startTime: Date;
         endTime: Date;
   }[],
+  rehearsalStart: Date | null,
+  rehearsalEnd: Date | null,
   assignments: {
     userId: string;
     status: InvitationStatus;
@@ -89,6 +91,8 @@ export function EventHeader({
           description: event.description,
           location: event.location,
           dates: event.dates,
+          rehearsalStart: event.rehearsalStart,
+          rehearsalEnd: event.rehearsalEnd,
           assignees: event.assignments
             .filter((a) => a.status !== InvitationStatus.DECLINED)
             .map((a) => ({

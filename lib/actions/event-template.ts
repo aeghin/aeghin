@@ -33,7 +33,7 @@ export const createEventTemplate = async (
 
         if (!parsed.success) return { success: false, error: parsed.error.issues[0].message };
 
-        const { organizationId, serviceTypeId, name, description, location, dayOfWeek, days, rolesNeeded, expiresInDays, smartSchedulingEnabled } = parsed.data;
+        const { organizationId, serviceTypeId, name, description, location, dayOfWeek, days, rolesNeeded, expiresInDays, smartSchedulingEnabled, rehearsal } = parsed.data;
 
         const membership = await prisma.membership.findUnique({
             where: {
@@ -67,6 +67,9 @@ export const createEventTemplate = async (
                 rolesNeeded,
                 expiresInDays,
                 smartSchedulingEnabled,
+                rehearsalDayOffset: rehearsal?.dayOffset ?? null,
+                rehearsalStartTime: rehearsal?.startTime ?? null,
+                rehearsalEndTime: rehearsal?.endTime ?? null,
                 serviceTypeId,
                 organizationId,
                 days: {
@@ -110,7 +113,7 @@ export const updateEventTemplate = async (
 
         if (!parsed.success) return { success: false, error: parsed.error.issues[0].message };
 
-        const { organizationId, serviceTypeId, name, description, location, dayOfWeek, days, rolesNeeded, expiresInDays, smartSchedulingEnabled } = parsed.data;
+        const { organizationId, serviceTypeId, name, description, location, dayOfWeek, days, rolesNeeded, expiresInDays, smartSchedulingEnabled, rehearsal } = parsed.data;
 
         const membership = await prisma.membership.findUnique({
             where: {
@@ -155,6 +158,13 @@ export const updateEventTemplate = async (
                 rolesNeeded,
                 expiresInDays,
                 smartSchedulingEnabled,
+                ...(rehearsal !== undefined
+                    ? {
+                        rehearsalDayOffset: rehearsal?.dayOffset ?? null,
+                        rehearsalStartTime: rehearsal?.startTime ?? null,
+                        rehearsalEndTime: rehearsal?.endTime ?? null,
+                    }
+                    : {}),
                 serviceTypeId,
                 days: {
                     deleteMany: {},

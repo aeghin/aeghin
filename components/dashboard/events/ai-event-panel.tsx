@@ -7,6 +7,7 @@ import { DefaultChatTransport } from "ai";
 import {
   ArrowUp,
   Check,
+  CalendarClock,
   CalendarDays,
   Loader2,
   MapPin,
@@ -384,6 +385,17 @@ function DraftCard({
             rolesNeeded: draft.rolesNeeded,
             expiresAt: draft.expiresInDays,
             smartSchedulingEnabled: draft.smartSchedulingEnabled,
+            rehearsal: draft.rehearsal
+              ? {
+                  date: draft.rehearsal.date,
+                  startTime: new Date(
+                    `${draft.rehearsal.date}T${draft.rehearsal.startTime}:00Z`,
+                  ).toISOString(),
+                  endTime: new Date(
+                    `${draft.rehearsal.date}T${draft.rehearsal.endTime}:00Z`,
+                  ).toISOString(),
+                }
+              : undefined,
             roleAssignments,
           },
           orgId,
@@ -422,6 +434,14 @@ function DraftCard({
             {formatDraftTime(d.endTime)}
           </p>
         ))}
+        {draft.rehearsal && (
+          <p className="flex items-center gap-1.5">
+            <CalendarClock className="h-3 w-3 shrink-0" />
+            Rehearsal {formatDraftDate(draft.rehearsal.date)} ·{" "}
+            {formatDraftTime(draft.rehearsal.startTime)} –{" "}
+            {formatDraftTime(draft.rehearsal.endTime)}
+          </p>
+        )}
         <p className="flex items-center gap-1.5">
           <MapPin className="h-3 w-3 shrink-0" />
           {draft.location}

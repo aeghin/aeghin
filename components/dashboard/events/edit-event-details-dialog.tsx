@@ -3,7 +3,14 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { format, eachDayOfInterval } from "date-fns";
 import type { DateRange } from "react-day-picker";
-import { AlertTriangle, Calendar, Clock, Loader2, MapPin } from "lucide-react";
+import {
+  AlertTriangle,
+  Calendar,
+  CalendarClock,
+  Clock,
+  Loader2,
+  MapPin,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -28,7 +35,11 @@ import {
 import { cn } from "@/lib/utils";
 import { colorClasses } from "@/lib/config/service-types-config";
 import { checkMemberAvailability, editEventDetails } from "@/lib/actions/event";
-import { editEventDetailsSchema } from "@/lib/validations/event";
+import {
+  editEventDetailsSchema,
+  EMPTY_REHEARSAL,
+  type RehearsalFormValue,
+} from "@/lib/validations/event";
 
 type DayTimes = Record<string, { startTime: string; endTime: string }>;
 
@@ -63,6 +74,12 @@ const getSelectedDates = (range: DateRange | undefined): Date[] => {
   return eachDayOfInterval({ start: range.from, end: range.to });
 };
 
+/** A "YYYY-MM-DD" key as LOCAL midnight, which is what the calendar selects in. */
+const toLocalMidnight = (key: string) => {
+  const [year, month, day] = key.split("-").map(Number);
+  return new Date(year, month - 1, day);
+};
+
 const toFormShape = (dates: EditableEventDates) => {
   const sorted = [...dates].sort(
     (a, b) => a.startTime.getTime() - b.startTime.getTime(),
@@ -80,11 +97,6 @@ const toFormShape = (dates: EditableEventDates) => {
 
   const keys = Object.keys(dayTimes);
 
-  const toLocalMidnight = (key: string) => {
-    const [year, month, day] = key.split("-").map(Number);
-    return new Date(year, month - 1, day);
-  };
-
   const dateRange: DateRange | undefined = keys.length
     ? {
         from: toLocalMidnight(keys[0]),
@@ -93,6 +105,24 @@ const toFormShape = (dates: EditableEventDates) => {
     : undefined;
 
   return { dayTimes, dateRange };
+};
+
+/**
+ * Stored rehearsal columns back into the form's wall-clock strings. Sliced off
+ * the ISO string rather than read with local getters, for the same reason
+ * toFormShape does it: these are floating-UTC times, not instants.
+ */
+const toRehearsalFormShape = (
+  start: Date | null,
+  end: Date | null,
+): RehearsalFormValue => {
+  if (!start) return EMPTY_REHEARSAL;
+
+  return {
+    date: start.toISOString().slice(0, 10),
+    startTime: start.toISOString().slice(11, 16),
+    endTime: end ? end.toISOString().slice(11, 16) : "",
+  };
 };
 
 interface EditEventDetailsDialogProps {
@@ -106,6 +136,8 @@ interface EditEventDetailsDialogProps {
     description: string;
     location: string;
     dates: EditableEventDates;
+    rehearsalStart: Date | null;
+    rehearsalEnd: Date | null;
   };
   assignees: EditableAssignee[];
 }
@@ -126,6 +158,8 @@ export function EditEventDetailsDialog({
   const [location, setLocation] = useState(initial.location);
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
   const [dayTimes, setDayTimes] = useState<DayTimes>({});
+  const [rehearsal, setRehearsal] =
+    useState<RehearsalFormValue>(EMPTY_REHEARSAL);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [affected, setAffected] = useState<AffectedAssignee[]>([]);
   const [isSaving, startSaving] = useTransition();
@@ -144,6 +178,9 @@ export function EditEventDetailsDialog({
     setLocation(current.location);
     setDateRange(seeded.dateRange);
     setDayTimes(seeded.dayTimes);
+    setRehearsal(
+      toRehearsalFormShape(current.rehearsalStart, current.rehearsalEnd),
+    );
     setErrors({});
     setAffected([]);
   }, [open]);
@@ -178,6 +215,13 @@ export function EditEventDetailsDialog({
     }));
   };
 
+  const handleRehearsalChange = (
+    field: keyof RehearsalFormValue,
+    value: string,
+  ) => {
+    setRehearsal((prev) => ({ ...prev, [field]: value }));
+  };
+
   const handleOpenChange = (next: boolean) => {
     if (isSaving) return;
     onOpenChange(next);
@@ -192,6 +236,7 @@ export function EditEventDetailsDialog({
       location,
       dateRange,
       dayTimes,
+      rehearsal,
     });
 
     if (!parsed.success) {
@@ -223,6 +268,21 @@ export function EditEventDetailsDialog({
         },
       ]),
     );
+
+    // Always sent, blank included — the action reads a present-but-blank
+    // rehearsal as "clear it", and a missing one as "leave it alone".
+    const rehearsalISO =
+      rehearsal.date && rehearsal.startTime && rehearsal.endTime
+        ? {
+            date: rehearsal.date,
+            startTime: new Date(
+              `${rehearsal.date}T${rehearsal.startTime}:00Z`,
+            ).toISOString(),
+            endTime: new Date(
+              `${rehearsal.date}T${rehearsal.endTime}:00Z`,
+            ).toISOString(),
+          }
+        : EMPTY_REHEARSAL;
 
     startSaving(async () => {
       if (assignees.length > 0) {
@@ -269,6 +329,7 @@ export function EditEventDetailsDialog({
       const result = await editEventDetails({
         ...parsed.data,
         dayTimes: dayTimesISO,
+        rehearsal: rehearsalISO,
       });
 
       if (!result.success) {
@@ -282,6 +343,15 @@ export function EditEventDetailsDialog({
   };
 
   const dateError = errors["dateRange.from"] || errors.dateRange;
+
+  const hasRehearsal = Boolean(
+    rehearsal.date || rehearsal.startTime || rehearsal.endTime,
+  );
+
+  const rehearsalError =
+    errors["rehearsal.date"] ||
+    errors["rehearsal.startTime"] ||
+    errors["rehearsal.endTime"];
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -480,6 +550,115 @@ export function EditEventDetailsDialog({
               </div>
             </div>
           )}
+
+          {/* Rehearsal — optional, and display-only: it stays out of the
+              availability check that gates saving. */}
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center gap-2">
+              <Label>Rehearsal</Label>
+              <span className="text-xs text-muted-foreground">Optional</span>
+            </div>
+
+            <div
+              className={cn(
+                "flex min-w-0 flex-col gap-2.5 rounded-xl border border-border/40 bg-card/50 p-3",
+                serviceColors.focusBorder,
+              )}
+            >
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      "w-full min-w-0 justify-start text-left font-normal",
+                      !rehearsal.date && "text-muted-foreground",
+                    )}
+                  >
+                    <CalendarClock className="mr-2 h-4 w-4 shrink-0" />
+                    <span className="truncate">
+                      {rehearsal.date
+                        ? format(
+                            toLocalMidnight(rehearsal.date),
+                            "EEE, MMM d, yyyy",
+                          )
+                        : "Pick a rehearsal date"}
+                    </span>
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent
+                  className="w-auto max-w-[calc(100vw-2rem)] p-0"
+                  align="start"
+                >
+                  <CalendarComponent
+                    mode="single"
+                    selected={
+                      rehearsal.date
+                        ? toLocalMidnight(rehearsal.date)
+                        : undefined
+                    }
+                    onSelect={(date) =>
+                      handleRehearsalChange(
+                        "date",
+                        date ? format(date, "yyyy-MM-dd") : "",
+                      )
+                    }
+                    className="max-h-[60vh] overflow-y-auto md:max-h-none"
+                  />
+                </PopoverContent>
+              </Popover>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div className="min-w-0 space-y-1">
+                  <Label
+                    htmlFor="rehearsal-start"
+                    className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground"
+                  >
+                    Start
+                  </Label>
+                  <Input
+                    id="rehearsal-start"
+                    type="time"
+                    className="w-full px-2"
+                    value={rehearsal.startTime}
+                    onChange={(e) =>
+                      handleRehearsalChange("startTime", e.target.value)
+                    }
+                  />
+                </div>
+                <div className="min-w-0 space-y-1">
+                  <Label
+                    htmlFor="rehearsal-end"
+                    className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground"
+                  >
+                    End
+                  </Label>
+                  <Input
+                    id="rehearsal-end"
+                    type="time"
+                    className="w-full px-2"
+                    value={rehearsal.endTime}
+                    onChange={(e) =>
+                      handleRehearsalChange("endTime", e.target.value)
+                    }
+                  />
+                </div>
+              </div>
+
+              {rehearsalError && (
+                <p className="text-xs text-red-500">{rehearsalError}</p>
+              )}
+
+              {hasRehearsal && (
+                <button
+                  type="button"
+                  onClick={() => setRehearsal(EMPTY_REHEARSAL)}
+                  className="self-start text-xs text-muted-foreground transition-all hover:text-foreground"
+                >
+                  Clear rehearsal
+                </button>
+              )}
+            </div>
+          </div>
         </div>
 
         <DialogFooter className="gap-2 sm:gap-0">

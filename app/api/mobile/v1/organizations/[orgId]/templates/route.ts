@@ -53,6 +53,13 @@ type EventTemplate = {
     /** Days an invitee gets to answer on events built from this: 3, 5 or 7. */
     expiresInDays: number;
     smartSchedulingEnabled: boolean;
+    /**
+     * Optional rehearsal, offset from `dayOfWeek` the way `days` positions are:
+     * 0 same day, negative before it. All three are set together, or all null.
+     */
+    rehearsalDayOffset: number | null;
+    rehearsalStartTime: string | null;
+    rehearsalEndTime: string | null;
     serviceTypeId: string;
     serviceType: { id: string; name: string; color: ServiceTypeColor };
 };
@@ -103,6 +110,9 @@ export const GET = route<Params>("GET .../templates", async (_req, { params }) =
             rolesNeeded: true,
             expiresInDays: true,
             smartSchedulingEnabled: true,
+            rehearsalDayOffset: true,
+            rehearsalStartTime: true,
+            rehearsalEndTime: true,
             serviceTypeId: true,
             serviceType: { select: { id: true, name: true, color: true } },
         },

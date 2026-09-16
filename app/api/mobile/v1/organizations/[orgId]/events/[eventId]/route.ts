@@ -101,6 +101,9 @@ type EventDetails = {
         color: string;
     };
     dates: EventDetailsDate[];
+    /** Floating wall clock like `dates`, or null when there's no rehearsal. */
+    rehearsalStart: string | null;
+    rehearsalEnd: string | null;
     /** Everyone on the event, declined and canceled included — as the web shows. */
     assignments: EventDetailsAssignment[];
     setlist: EventDetailsSetlistSong[];
@@ -193,6 +196,8 @@ export async function GET(
                 location: true,
                 rolesNeeded: true,
                 smartSchedulingEnabled: true,
+                rehearsalStart: true,
+                rehearsalEnd: true,
                 organization: {
                     select: {
                         name: true,
@@ -352,6 +357,8 @@ export async function GET(
                 startTime: date.startTime.toISOString(),
                 endTime: date.endTime.toISOString(),
             })),
+            rehearsalStart: event.rehearsalStart?.toISOString() ?? null,
+            rehearsalEnd: event.rehearsalEnd?.toISOString() ?? null,
             assignments: event.assignments.map((assignment) => ({
                 ...assignment,
                 expiresAt: assignment.expiresAt.toISOString(),

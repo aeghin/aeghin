@@ -35,7 +35,7 @@ import EventRemovedEmail from "@/components/email/event-removed-template";
 import EventShortageEmail from "@/components/email/event-shortage-template";
 import EventUpdatedEmail, { type EventChange } from "@/components/email/event-updated-template";
 
-import { formatEventWhen, sameSchedule } from "@/lib/email/event-when";
+import { formatEventWhen, formatRehearsal, sameSchedule } from "@/lib/email/event-when";
 import { organizationSender } from "@/lib/email/organization";
 import { eventStaffingRecipients } from "@/lib/email/recipients";
 import { sendEmailBatches } from "@/lib/email/send";
@@ -181,8 +181,19 @@ export async function createEvent(
       roleAssignments,
       rolesNeeded,
       expiresAt,
-      smartSchedulingEnabled
+      smartSchedulingEnabled,
+      rehearsal,
     } = parsed.data;
+
+    // The form sends all three blank when there is no rehearsal. The times
+    // arrive already composed as floating-UTC instants, like dayTimes.
+    const rehearsalColumns =
+      rehearsal && rehearsal.date && rehearsal.startTime && rehearsal.endTime
+        ? {
+            rehearsalStart: new Date(rehearsal.startTime),
+            rehearsalEnd: new Date(rehearsal.endTime),
+          }
+        : { rehearsalStart: null, rehearsalEnd: null };
 
     const [membership, serviceType] = await Promise.all([
       prisma.membership.findFirst({
@@ -316,6 +327,7 @@ export async function createEvent(
           location,
           rolesNeeded,
           smartSchedulingEnabled,
+          ...rehearsalColumns,
           createdById: id,
           serviceTypeId,
           organizationId,
@@ -1624,7 +1636,20 @@ export const editEventDetails = async (
 
       if (!parsed.success) return { success: false, error: parsed.error.message };
 
-      const { eventId, organizationId, name, dayTimes, location, description } = parsed.data;
+      const { eventId, organizationId, name, dayTimes, location, description, rehearsal } = parsed.data;
+
+      // undefined means the caller never offered the field — the mobile PATCH
+      // body doesn't carry it — so the stored rehearsal is left alone. All-blank
+      // is the dashboard dialog clearing it.
+      const nextRehearsal =
+        rehearsal === undefined
+          ? undefined
+          : rehearsal.date && rehearsal.startTime && rehearsal.endTime
+            ? {
+                rehearsalStart: new Date(rehearsal.startTime),
+                rehearsalEnd: new Date(rehearsal.endTime),
+              }
+            : { rehearsalStart: null, rehearsalEnd: null };
 
       const [membership, event] = await Promise.all([
         prisma.membership.findUnique({
@@ -1648,6 +1673,8 @@ export const editEventDetails = async (
             location: true,
             description: true,
             dates: { select: { startTime: true, endTime: true } },
+            rehearsalStart: true,
+            rehearsalEnd: true,
             assignments: {
               select: {
                 userId: true,
@@ -1717,6 +1744,7 @@ export const editEventDetails = async (
             name,
             location,
             description: description ?? "",
+            ...(nextRehearsal ?? {}),
           },
         });
 
@@ -1752,6 +1780,26 @@ export const editEventDetails = async (
           from: previousWhen ? `${previousWhen.date} · ${previousWhen.time}` : null,
           to: nextWhen ? `${nextWhen.date} · ${nextWhen.time}` : "",
         });
+      }
+
+      if (nextRehearsal) {
+        const previousRehearsal = formatRehearsal(
+          event.rehearsalStart,
+          event.rehearsalEnd,
+        );
+
+        const updatedRehearsal = formatRehearsal(
+          nextRehearsal.rehearsalStart,
+          nextRehearsal.rehearsalEnd,
+        );
+
+        if (previousRehearsal !== updatedRehearsal) {
+          changes.push({
+            label: "Rehearsal",
+            from: previousRehearsal,
+            to: updatedRehearsal ?? "None",
+          });
+        }
       }
 
       if (event.location !== location) {

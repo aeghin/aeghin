@@ -27,7 +27,9 @@ export const checkAvailabilityInputSchema = z.object({
     .array(dayShape)
     .min(1)
     .max(14)
-    .describe("The candidate day(s) for the event."),
+    .describe(
+      "The candidate day(s) for the EVENT ITSELF. Never include a rehearsal here: a rehearsal makes nobody unavailable, and passing one would wrongly exclude people who are free for the event.",
+    ),
   roles: z
     .array(z.enum(VolunteerRole))
     .min(1)
@@ -86,6 +88,11 @@ export const proposeEventInputSchema = z.object({
   smartSchedulingEnabled: z
     .boolean()
     .describe("Auto-invite the next best member when someone declines."),
+  rehearsal: dayShape
+    .nullish()
+    .describe(
+      "Optional single rehearsal block. Omit it unless they asked for one or a template you used carries one. On or before the event's last day, never in the past. Informational only — it does not affect anyone's availability.",
+    ),
   summary: z
     .string()
     .describe("Two or three sentences on the plan and any gaps you left."),

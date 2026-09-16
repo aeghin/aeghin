@@ -216,6 +216,15 @@ model EventTemplate {
   // Prefills the create-event form's smart scheduling switch.
   smartSchedulingEnabled Boolean @default(false)
 
+  // Optional rehearsal, positioned relative to the template's first day the
+  // same way EventTemplateDay.dayOffset is. Negative is the normal case — a
+  // Thursday rehearsal for a Sunday service is -3 — and 0 means same day.
+  // Times are wall clock "HH:mm" like EventTemplateDay, because a template has
+  // no date to anchor an instant to. All three are set or all three are null.
+  rehearsalDayOffset Int?
+  rehearsalStartTime String?
+  rehearsalEndTime   String?
+
   serviceTypeId String
   serviceType   ServiceType @relation(fields: [serviceTypeId], references: [id])
 
@@ -249,6 +258,13 @@ model Event {
   description String
   location String
 
+  // Optional rehearsal block, stored as floating-UTC wall clock like EventDate.
+  // Deliberately not EventDate rows: those are the event's service days, and
+  // they drive conflict checks, the multi-day date range, and the email "when"
+  // line. Display-only — a rehearsal never enters availability or blockout
+  // checks, so nothing in lib/services/scheduling.ts reads these.
+  rehearsalStart DateTime?
+  rehearsalEnd   DateTime?
 
   rolesNeeded VolunteerRole[]
 

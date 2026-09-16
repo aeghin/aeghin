@@ -65,6 +65,23 @@ export function formatEventWhen(dates: EventWhenDate[]): EventWhen | null {
 }
 
 /**
+ * `"Thu, Sep 18 · 7:00 PM – 9:00 PM"`, or null when there is no rehearsal.
+ *
+ * Pinned to UTC for the same reason the rest of this file is: the columns hold
+ * the wall-clock time the admin typed, not an instant.
+ */
+export function formatRehearsal(
+  start: Date | null,
+  end: Date | null,
+): string | null {
+  if (!start) return null;
+
+  const when = `${shortDate(start)} · ${asTime(start)}`;
+
+  return end ? `${when} – ${asTime(end)}` : when;
+}
+
+/**
  * Whether two schedules describe the same blocks.
  *
  * Compared by value and independently of order, because `editEventDetails`

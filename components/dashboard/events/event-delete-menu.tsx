@@ -41,6 +41,8 @@ interface EventDeleteMenuProps {
     description: string;
     location: string;
     dates: EditableEventDates;
+    rehearsalStart: Date | null;
+    rehearsalEnd: Date | null;
     assignees: EditableAssignee[];
   };
 };
@@ -118,6 +120,8 @@ export const EventDeleteMenu = ({
           description: eventDetails.description,
           location: eventDetails.location,
           dates: eventDetails.dates,
+          rehearsalStart: eventDetails.rehearsalStart,
+          rehearsalEnd: eventDetails.rehearsalEnd,
         }}
       />
 

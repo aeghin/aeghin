@@ -64,6 +64,9 @@ const volunteerRoleEntries = Object.entries(volunteerRoleConfig) as [
   { label: string; icon: string },
 ][];
 
+// A rehearsal lands on or before the template's first day, never after it.
+const REHEARSAL_OFFSETS = [0, -1, -2, -3, -4, -5, -6, -7];
+
 const getFormValues = (
   orgId: string,
   template: EventTemplateWithServiceType,
@@ -81,6 +84,18 @@ const getFormValues = (
   rolesNeeded: template.rolesNeeded,
   expiresInDays: template.expiresInDays,
   smartSchedulingEnabled: template.smartSchedulingEnabled,
+  // The three columns are written together, so one being null means no
+  // rehearsal — but all three are checked so the form can never seed a half row.
+  rehearsal:
+    template.rehearsalDayOffset === null ||
+    template.rehearsalStartTime === null ||
+    template.rehearsalEndTime === null
+      ? null
+      : {
+          dayOffset: template.rehearsalDayOffset,
+          startTime: template.rehearsalStartTime,
+          endTime: template.rehearsalEndTime,
+        },
 });
 
 interface TemplateModalProps {
@@ -117,6 +132,7 @@ export function TemplateModal({
       rolesNeeded: [],
       expiresInDays: 3,
       smartSchedulingEnabled: false,
+      rehearsal: null,
     },
     values: template ? getFormValues(organizationId, template) : undefined,
   });
@@ -132,6 +148,28 @@ export function TemplateModal({
   const watchedDayOfWeek = form.watch("dayOfWeek");
   const dayLabel = (index: number) =>
     WEEKDAY_LABELS[(watchedDayOfWeek + index) % 7];
+
+  const watchedRehearsal = form.watch("rehearsal");
+  const hasRehearsal = Boolean(watchedRehearsal);
+
+  // Offsets are negative, so bring the index back into range before indexing.
+  const rehearsalLabel = (offset: number) => {
+    const weekday = WEEKDAY_LABELS[(((watchedDayOfWeek + offset) % 7) + 7) % 7];
+
+    if (offset === 0) return `Same day (${weekday})`;
+
+    const days = Math.abs(offset);
+
+    return `${days} day${days === 1 ? "" : "s"} before (${weekday})`;
+  };
+
+  const toggleRehearsal = (on: boolean) => {
+    form.setValue(
+      "rehearsal",
+      on ? { dayOffset: 0, startTime: "", endTime: "" } : null,
+      { shouldValidate: true, shouldDirty: true },
+    );
+  };
 
   const [internalOpen, setInternalOpen] = useState(false);
   const isControlled = open !== undefined;
@@ -429,6 +467,86 @@ export function TemplateModal({
                     </div>
                   </div>
                 ))}
+              </div>
+
+              <div className="space-y-3 rounded-lg border border-border/40 p-3">
+                <div className="flex flex-row items-center justify-between">
+                  <div className="space-y-0.5 pr-3">
+                    <p className="text-sm font-medium">Rehearsal</p>
+                    <p className="text-xs text-muted-foreground">
+                      Optional — prefills the rehearsal on events built from
+                      this template
+                    </p>
+                  </div>
+                  <Switch
+                    checked={hasRehearsal}
+                    onCheckedChange={toggleRehearsal}
+                    className="cursor-pointer"
+                  />
+                </div>
+
+                {hasRehearsal && (
+                  <div className="space-y-3">
+                    <FormField
+                      control={form.control}
+                      name="rehearsal.dayOffset"
+                      render={({ field }) => (
+                        <FormItem>
+                          <Select
+                            value={String(field.value)}
+                            onValueChange={(v) => field.onChange(Number(v))}
+                          >
+                            <FormControl>
+                              <SelectTrigger className="w-full">
+                                <SelectValue />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {REHEARSAL_OFFSETS.map((offset) => (
+                                <SelectItem
+                                  key={offset}
+                                  value={String(offset)}
+                                >
+                                  {rehearsalLabel(offset)}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <div className="flex items-center gap-2">
+                      <FormField
+                        control={form.control}
+                        name="rehearsal.startTime"
+                        render={({ field }) => (
+                          <FormItem className="flex-1">
+                            <FormControl>
+                              <Input type="time" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <span className="shrink-0 text-sm text-muted-foreground">
+                        to
+                      </span>
+                      <FormField
+                        control={form.control}
+                        name="rehearsal.endTime"
+                        render={({ field }) => (
+                          <FormItem className="flex-1">
+                            <FormControl>
+                              <Input type="time" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
 
               <FormField

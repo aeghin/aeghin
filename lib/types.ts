@@ -141,6 +141,10 @@ export type EventTemplateWithServiceType = {
   rolesNeeded: VolunteerRole[]
   expiresInDays: number
   smartSchedulingEnabled: boolean
+  /** Offset from the first day: 0 same day, negative before. Null = no rehearsal. */
+  rehearsalDayOffset: number | null
+  rehearsalStartTime: string | null
+  rehearsalEndTime: string | null
   serviceTypeId: string
   serviceType: {
     id: string

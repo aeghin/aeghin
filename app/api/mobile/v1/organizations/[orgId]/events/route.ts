@@ -46,6 +46,9 @@ type OrganizationEvent = {
     location: string;
     serviceTypeId: string;
     dates: EventDate[];
+    /** Floating wall clock like `dates`, or null when there's no rehearsal. */
+    rehearsalStart: string | null;
+    rehearsalEnd: string | null;
     assignments: EventAssignment[];
     rolesNeeded: VolunteerRole[];
     smartSchedulingEnabled: boolean;
@@ -135,6 +138,8 @@ export async function GET(
                     serviceTypeId: true,
                     rolesNeeded: true,
                     smartSchedulingEnabled: true,
+                    rehearsalStart: true,
+                    rehearsalEnd: true,
                     dates: {
                         select: {
                             id: true,
@@ -198,6 +203,8 @@ export async function GET(
                     startTime: date.startTime.toISOString(),
                     endTime: date.endTime.toISOString(),
                 })),
+                rehearsalStart: event.rehearsalStart?.toISOString() ?? null,
+                rehearsalEnd: event.rehearsalEnd?.toISOString() ?? null,
                 assignments: event.assignments.map((assignment) => ({
                     ...assignment,
                     expiresAt: assignment.expiresAt.toISOString(),

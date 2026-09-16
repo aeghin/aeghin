@@ -127,6 +127,9 @@ export const POST = route<Params>("POST .../event-ai", async (req, { params }) =
             rolesNeeded: t.rolesNeeded,
             expiresInDays: t.expiresInDays,
             smartSchedulingEnabled: t.smartSchedulingEnabled,
+            rehearsalDayOffset: t.rehearsalDayOffset,
+            rehearsalStartTime: t.rehearsalStartTime,
+            rehearsalEndTime: t.rehearsalEndTime,
             serviceTypeId: t.serviceTypeId,
         })),
         roster: members.map((m) => ({

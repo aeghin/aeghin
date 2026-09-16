@@ -68,6 +68,7 @@ import {
   Search,
   ChevronRight,
   Zap,
+  CalendarClock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { VolunteerRole } from "@/generated/prisma/enums";
@@ -76,7 +77,9 @@ import { WEEKDAY_LABELS } from "@/lib/config/weekdays";
 import type { EventTemplateWithServiceType } from "@/lib/types";
 import {
   createEventSchema,
+  EMPTY_REHEARSAL,
   type CreateEventFormData,
+  type RehearsalFormValue,
 } from "@/lib/validations/event";
 
 import { checkMemberAvailability } from "@/lib/actions/event";
@@ -124,6 +127,7 @@ const EMPTY_EVENT_DEFAULTS = {
   rolesNeeded: [],
   expiresAt: 3,
   smartSchedulingEnabled: false,
+  rehearsal: EMPTY_REHEARSAL,
 };
 
 
@@ -141,6 +145,28 @@ const templateToFormValues = (
     dayTimes[key] = { startTime: day.startTime, endTime: day.endTime };
   }
 
+  // The template's offset is relative to the first day, so a rehearsal can land
+  // before today when the next occurrence is only a day or two out. The picker
+  // disables past days, so seed nothing rather than a date they can't re-pick.
+  const rehearsalDate =
+    template.rehearsalDayOffset !== null &&
+    template.rehearsalStartTime &&
+    template.rehearsalEndTime
+      ? addDays(firstDate, template.rehearsalDayOffset)
+      : null;
+
+  const rehearsal: RehearsalFormValue =
+    rehearsalDate &&
+    !isBefore(rehearsalDate, today) &&
+    template.rehearsalStartTime &&
+    template.rehearsalEndTime
+      ? {
+          date: format(rehearsalDate, "yyyy-MM-dd"),
+          startTime: template.rehearsalStartTime,
+          endTime: template.rehearsalEndTime,
+        }
+      : EMPTY_REHEARSAL;
+
   return {
     serviceTypeId: template.serviceTypeId,
     name: template.name,
@@ -154,6 +180,7 @@ const templateToFormValues = (
     rolesNeeded: template.rolesNeeded,
     expiresAt: template.expiresInDays,
     smartSchedulingEnabled: template.smartSchedulingEnabled,
+    rehearsal,
   };
 };
 
@@ -313,6 +340,18 @@ export function CreateEventPageContent({
   const watchedRolesNeeded = watch("rolesNeeded");
   const watchedExpiresAt = watch("expiresAt");
   const watchedSmartScheduling = watch("smartSchedulingEnabled");
+  const watchedRehearsal = watch("rehearsal");
+
+  const rehearsal = watchedRehearsal ?? EMPTY_REHEARSAL;
+
+  const hasRehearsal = Boolean(
+    rehearsal.date || rehearsal.startTime || rehearsal.endTime,
+  );
+
+  const rehearsalError =
+    errors.rehearsal?.date?.message ||
+    errors.rehearsal?.startTime?.message ||
+    errors.rehearsal?.endTime?.message;
 
   // The role grid tests every known role against this, so keep it keyed.
   const rolesNeededSet = new Set(watchedRolesNeeded);
@@ -419,6 +458,9 @@ export function CreateEventPageContent({
         rolesNeeded: draft.rolesNeeded,
         expiresAt: draft.expiresInDays,
         smartSchedulingEnabled: draft.smartSchedulingEnabled,
+        // Already a resolved date and wall-clock times, which is the shape the
+        // form holds — the submit handler composes the instants.
+        rehearsal: draft.rehearsal ?? EMPTY_REHEARSAL,
       });
 
       const assignments = {} as Record<VolunteerRole, string[]>;
@@ -485,6 +527,16 @@ export function CreateEventPageContent({
     setValue(`dayTimes.${dateKey}`, {
       startTime: current?.startTime || "",
       endTime: time,
+    });
+  };
+
+  const handleRehearsalChange = (
+    field: keyof RehearsalFormValue,
+    value: string,
+  ) => {
+    const current = form.getValues("rehearsal") ?? EMPTY_REHEARSAL;
+    setValue("rehearsal", { ...current, [field]: value }, {
+      shouldValidate: true,
     });
   };
 
@@ -591,6 +643,7 @@ export function CreateEventPageContent({
       "dayTimes",
       "location",
       "rolesNeeded",
+      "rehearsal",
     ]);
 
     if (!valid) return;
@@ -647,10 +700,30 @@ export function CreateEventPageContent({
       ]),
     );
 
+    const rehearsalISO =
+      data.rehearsal?.date &&
+      data.rehearsal.startTime &&
+      data.rehearsal.endTime
+        ? {
+            date: data.rehearsal.date,
+            startTime: new Date(
+              `${data.rehearsal.date}T${data.rehearsal.startTime}:00Z`,
+            ).toISOString(),
+            endTime: new Date(
+              `${data.rehearsal.date}T${data.rehearsal.endTime}:00Z`,
+            ).toISOString(),
+          }
+        : undefined;
+
     startCreateTransition(async () => {
       try {
         const result = await createEvent(
-          { ...data, dayTimes: dayTimesISO, roleAssignments },
+          {
+            ...data,
+            dayTimes: dayTimesISO,
+            rehearsal: rehearsalISO,
+            roleAssignments,
+          },
           organizationId,
         );
 
@@ -1292,6 +1365,117 @@ export function CreateEventPageContent({
                               </div>
                             </div>
                           )}
+
+                          {/* Rehearsal — optional, and display-only: it never
+                              feeds the availability check on Next. */}
+                          <div className="mt-6 flex flex-col gap-3">
+                            <div className="flex items-center gap-2">
+                              <Label>Rehearsal</Label>
+                              <span className="text-xs text-muted-foreground">
+                                Optional
+                              </span>
+                            </div>
+
+                            <div className="rounded-xl border border-border/40 bg-card/50 p-3">
+                              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                                <Popover>
+                                  <PopoverTrigger asChild>
+                                    <Button
+                                      variant="outline"
+                                      className={cn(
+                                        "w-full min-w-0 justify-start text-left font-normal sm:flex-1",
+                                        !rehearsal.date &&
+                                          "text-muted-foreground",
+                                      )}
+                                    >
+                                      <CalendarClock className="mr-2 h-4 w-4 shrink-0" />
+                                      <span className="truncate">
+                                        {rehearsal.date
+                                          ? format(
+                                              parseLocalDate(rehearsal.date),
+                                              "EEE, MMM d",
+                                            )
+                                          : "Pick a rehearsal date"}
+                                      </span>
+                                    </Button>
+                                  </PopoverTrigger>
+                                  <PopoverContent
+                                    className="w-auto max-w-[calc(100vw-2rem)] p-0"
+                                    align="start"
+                                  >
+                                    <CalendarComponent
+                                      mode="single"
+                                      selected={
+                                        rehearsal.date
+                                          ? parseLocalDate(rehearsal.date)
+                                          : undefined
+                                      }
+                                      onSelect={(date) =>
+                                        handleRehearsalChange(
+                                          "date",
+                                          date ? format(date, "yyyy-MM-dd") : "",
+                                        )
+                                      }
+                                      disabled={(date) =>
+                                        isBefore(date, startOfDay(new Date()))
+                                      }
+                                    />
+                                  </PopoverContent>
+                                </Popover>
+
+                                <div className="flex items-center gap-2 sm:flex-1">
+                                  <div className="flex flex-1 items-center gap-1.5">
+                                    <Clock className="h-4 w-4 shrink-0 text-muted-foreground" />
+                                    <Input
+                                      type="time"
+                                      value={rehearsal.startTime}
+                                      onChange={(e) =>
+                                        handleRehearsalChange(
+                                          "startTime",
+                                          e.target.value,
+                                        )
+                                      }
+                                      className="w-full"
+                                    />
+                                  </div>
+                                  <span className="shrink-0 text-sm text-muted-foreground">
+                                    to
+                                  </span>
+                                  <Input
+                                    type="time"
+                                    value={rehearsal.endTime}
+                                    onChange={(e) =>
+                                      handleRehearsalChange(
+                                        "endTime",
+                                        e.target.value,
+                                      )
+                                    }
+                                    className="w-full flex-1"
+                                  />
+                                </div>
+                              </div>
+
+                              {rehearsalError && (
+                                <p className="mt-2 text-xs text-red-500">
+                                  {rehearsalError}
+                                </p>
+                              )}
+
+                              {hasRehearsal && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setValue("rehearsal", EMPTY_REHEARSAL, {
+                                      shouldValidate: true,
+                                    })
+                                  }
+                                  className="mt-2 text-xs text-muted-foreground transition-all hover:text-foreground"
+                                >
+                                  Clear rehearsal
+                                </button>
+                              )}
+                            </div>
+                          </div>
 
                   </section>
 

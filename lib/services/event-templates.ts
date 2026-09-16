@@ -35,6 +35,9 @@ export const getOrgEventTemplates = async (organizationId: string) => {
             rolesNeeded: true,
             expiresInDays: true,
             smartSchedulingEnabled: true,
+            rehearsalDayOffset: true,
+            rehearsalStartTime: true,
+            rehearsalEndTime: true,
             serviceTypeId: true,
             serviceType: {
                 select: {
