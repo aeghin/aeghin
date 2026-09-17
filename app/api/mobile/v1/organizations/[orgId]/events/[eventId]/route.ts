@@ -420,6 +420,11 @@ type EventEdit = {
     description?: string;
     location: string;
     days: EditDay[];
+    /**
+     * Absent leaves the stored rehearsal alone, which is what an app build
+     * older than this field sends. Null clears it.
+     */
+    rehearsal?: EditDay | null;
 };
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
@@ -437,7 +442,8 @@ const isEventEdit = (value: unknown): value is EventEdit =>
     typeof value.name === "string" &&
     (value.description === undefined || typeof value.description === "string") &&
     typeof value.location === "string" &&
-    Array.isArray(value.days) && value.days.length > 0 && value.days.every(isEditDay);
+    Array.isArray(value.days) && value.days.length > 0 && value.days.every(isEditDay) &&
+    (value.rehearsal === undefined || value.rehearsal === null || isEditDay(value.rehearsal));
 
 /** `"2026-09-27"`, `"10:00"` -> the UTC instant the app stores. */
 const instant = (date: string, clock: string) => new Date(`${date}T${clock}:00Z`);
@@ -552,6 +558,19 @@ export async function PATCH(
                         },
                     ]),
                 ),
+                // Omitted entirely when the body carries no rehearsal key, so
+                // the action leaves the stored one untouched. All-blank clears.
+                ...(body.rehearsal === undefined
+                    ? {}
+                    : {
+                        rehearsal: body.rehearsal === null
+                            ? { date: "", startTime: "", endTime: "" }
+                            : {
+                                date: body.rehearsal.date,
+                                startTime: instant(body.rehearsal.date, body.rehearsal.startTime).toISOString(),
+                                endTime: instant(body.rehearsal.date, body.rehearsal.endTime).toISOString(),
+                            },
+                    }),
             } as EditEventDetailsInput,
             expireTag,
         );

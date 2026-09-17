@@ -149,7 +149,7 @@ const templateToFormValues = (
   // before today when the next occurrence is only a day or two out. The picker
   // disables past days, so seed nothing rather than a date they can't re-pick.
   const rehearsalDate =
-    template.rehearsalDayOffset !== null &&
+    template.rehearsalDayOffset != null &&
     template.rehearsalStartTime &&
     template.rehearsalEndTime
       ? addDays(firstDate, template.rehearsalDayOffset)

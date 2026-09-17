@@ -256,6 +256,8 @@ type NewEvent = {
     /** Days an invitee has to answer. */
     expiresAt: number;
     smartSchedulingEnabled: boolean;
+    /** Optional rehearsal, same day-and-clock shape as `days`. */
+    rehearsal?: NewEventDay | null;
     /** Who to invite, per role. Every role optional. */
     roleAssignments: Record<string, string[]>;
 };
@@ -280,6 +282,7 @@ const isNewEvent = (value: unknown): value is NewEvent =>
     value.rolesNeeded.every((role) => typeof role === "string" && role in VolunteerRole) &&
     typeof value.expiresAt === "number" &&
     typeof value.smartSchedulingEnabled === "boolean" &&
+    (value.rehearsal === undefined || value.rehearsal === null || isNewEventDay(value.rehearsal)) &&
     isObject(value.roleAssignments);
 
 /** `"2026-09-27"`, `"10:00"` -> the UTC instant the app stores. */
@@ -358,6 +361,16 @@ export async function POST(
                 rolesNeeded: body.rolesNeeded,
                 expiresAt: body.expiresAt,
                 smartSchedulingEnabled: body.smartSchedulingEnabled,
+                // Composed here like dayTimes; absent or null is "no rehearsal".
+                ...(body.rehearsal
+                    ? {
+                        rehearsal: {
+                            date: body.rehearsal.date,
+                            startTime: instant(body.rehearsal.date, body.rehearsal.startTime).toISOString(),
+                            endTime: instant(body.rehearsal.date, body.rehearsal.endTime).toISOString(),
+                        },
+                    }
+                    : {}),
                 roleAssignments: body.roleAssignments,
             } as CreateEventInput,
             orgId,

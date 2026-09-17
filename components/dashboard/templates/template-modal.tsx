@@ -87,9 +87,9 @@ const getFormValues = (
   // The three columns are written together, so one being null means no
   // rehearsal — but all three are checked so the form can never seed a half row.
   rehearsal:
-    template.rehearsalDayOffset === null ||
-    template.rehearsalStartTime === null ||
-    template.rehearsalEndTime === null
+    template.rehearsalDayOffset == null ||
+    !template.rehearsalStartTime ||
+    !template.rehearsalEndTime
       ? null
       : {
           dayOffset: template.rehearsalDayOffset,
