@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
     const email = event.data.email_addresses[0].email_address;
     const firstName = event.data.first_name!;
     const lastName = event.data.last_name!;
-    const phoneNumber = event.data.phone_numbers[0].phone_number;
+    const phoneNumber = event.data.phone_numbers[0]?.phone_number ?? null;
     const userImageUrl = event.data.image_url;
 
     // Keyed on email, not clerkId: accounts predating the production instance
@@ -30,7 +30,8 @@ export async function POST(req: NextRequest) {
         clerkId: userId,
         firstName,
         lastName,
-        phoneNumber,
+        // Never wipe a stored number when Clerk has none — same guard as user.updated.
+        ...(phoneNumber ? { phoneNumber } : {}),
         userImageUrl,
       },
       create: {

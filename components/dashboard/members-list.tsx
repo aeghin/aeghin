@@ -40,7 +40,7 @@ interface Members {
     firstName: string
     lastName: string
     email: string
-    phoneNumber: string
+    phoneNumber: string | null
     userImageUrl: string | null
     createdAt: Date
   }

@@ -100,7 +100,7 @@ export async function GET(
                 firstName: user.firstName,
                 lastName: user.lastName,
                 email: visible ? user.email : "",
-                phoneNumber: visible ? user.phoneNumber : "",
+                phoneNumber: visible ? (user.phoneNumber ?? "") : "",
                 imageUrl: user.userImageUrl,
                 role,
                 volunteerRoles,
