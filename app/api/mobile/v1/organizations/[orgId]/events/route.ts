@@ -156,6 +156,9 @@ export async function GET(
                             OR: [
                                 { status: InvitationStatus.ACCEPTED },
                                 { status: InvitationStatus.PENDING },
+                                // Keeps the caller's own role badge on an
+                                // event whose invitation to them lapsed.
+                                { status: InvitationStatus.EXPIRED },
                             ],
                         },
                         select: {

@@ -84,6 +84,12 @@ export async function GET(
                         OR: [
                             { status: InvitationStatus.ACCEPTED },
                             { status: InvitationStatus.PENDING },
+                            // The phone renders a lapsed invitation as an
+                            // inert card rather than letting it vanish, which
+                            // read as the invitation never having arrived.
+                            // Anything meaning "still answerable" narrows on
+                            // its own — see isInvitation in the events tab.
+                            { status: InvitationStatus.EXPIRED },
                         ],
                     },
                 },
@@ -111,6 +117,12 @@ export async function GET(
                         OR: [
                             { status: InvitationStatus.ACCEPTED },
                             { status: InvitationStatus.PENDING },
+                            // The phone renders a lapsed invitation as an
+                            // inert card rather than letting it vanish, which
+                            // read as the invitation never having arrived.
+                            // Anything meaning "still answerable" narrows on
+                            // its own — see isInvitation in the events tab.
+                            { status: InvitationStatus.EXPIRED },
                         ],
                     },
                     select: {
