@@ -1,4 +1,4 @@
-import { Mail, CheckCircle2, Clock, XCircle } from "lucide-react";
+import { Mail, CheckCircle2, Clock, XCircle, Hourglass } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { AnimatedInvitationRow } from "@/components/dashboard/animated-invitation-row";
@@ -35,6 +35,13 @@ const getStatusConfig = (status: InvitationStatus) => {
         label: "Pending",
         className:
           "bg-amber-500/10 text-amber-600 border-amber-500/20",
+      };
+    // Lapsed and never answered. Distinct from CANCELED, which somebody chose.
+    case InvitationStatus.EXPIRED:
+      return {
+        icon: Hourglass,
+        label: "Expired",
+        className: "bg-slate-500/10 text-slate-600 border-slate-500/20 dark:text-slate-400",
       };
   }
 };

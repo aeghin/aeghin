@@ -54,4 +54,14 @@ export const statusStyles: Record<
     border: "border-red-500/40",
     bgSoft: "bg-red-500/2",
   },
+  EXPIRED: {
+    label: "Expired",
+    pill: "bg-slate-500/10 text-slate-600 border-slate-500/20 dark:text-slate-400",
+    dot: "bg-slate-500",
+    text: "text-slate-500",
+    ring: "ring-slate-500/50",
+    badgeBg: "bg-slate-500",
+    border: "border-slate-500/40",
+    bgSoft: "bg-slate-500/2",
+  },
 }

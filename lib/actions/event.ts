@@ -437,6 +437,61 @@ export async function createEvent(
  */
 type TagInvalidator = (tag: string) => void;
 
+/**
+ * Why a live-invitation lookup missed, in words the volunteer can act on.
+ *
+ * Both answer actions find their row by `PENDING` + unexpired, so every cause
+ * of a miss collapsed into one "Unable to find this event" — which is wrong
+ * about the most common cause by far. Someone tapping Accept on an invitation
+ * that lapsed an hour ago is not looking at a missing event; they are looking
+ * at a stale screen, and the toast should say so.
+ *
+ * Only ever called on the failure path, so the extra read costs nothing in the
+ * normal case. The mobile respond route returns `result.error` verbatim, so the
+ * phone picks this up without a change.
+ *
+ * Not exported: a "use server" module may only export async functions that are
+ * meant to be callable from the client.
+ */
+const explainInviteMiss = async (
+  organizationId: string,
+  eventId: string,
+  userId: string,
+): Promise<string> => {
+
+  const row = await prisma.eventAssignment.findUnique({
+    where: { eventId_userId: { eventId, userId } },
+    select: { status: true, expiresAt: true, organizationId: true },
+  });
+
+  // No row, or somebody probing another org's event: say nothing specific.
+  if (!row || row.organizationId !== organizationId) {
+    return "Unable to find this event";
+  }
+
+  // EXPIRED once the sweep has run; still PENDING inside the window before it.
+  if (
+    row.status === InvitationStatus.EXPIRED ||
+    (row.status === InvitationStatus.PENDING && row.expiresAt <= new Date())
+  ) {
+    return "This invitation has expired. Ask an admin to send a new one.";
+  }
+
+  if (row.status === InvitationStatus.ACCEPTED) {
+    return "You've already accepted this invitation";
+  }
+
+  if (row.status === InvitationStatus.DECLINED) {
+    return "You've already declined this invitation";
+  }
+
+  if (row.status === InvitationStatus.CANCELED) {
+    return "This invitation was withdrawn";
+  }
+
+  return "Unable to find this event";
+};
+
 export const acceptEventInvitation = async (
   organizationId: string,
   eventId: string,
@@ -459,7 +514,12 @@ export const acceptEventInvitation = async (
       include: { event: { select: { name: true } } },
     });
 
-    if (!event) return { success: false, error: "Unable to find this event" };
+    if (!event) {
+      return {
+        success: false,
+        error: await explainInviteMiss(organizationId, eventId, user.id),
+      };
+    }
 
     await prisma.eventAssignment.update({
       where: {
@@ -516,6 +576,13 @@ export const declineEventInvitation = async (
         eventId_userId: { eventId: eventId, userId: user.id },
         organizationId,
         status: InvitationStatus.PENDING,
+        // Matches the guard acceptEventInvitation already applies. Without it a
+        // lapsed invite could still be declined, which ran the whole smart-fill
+        // path — shortage emails to the admins and a replacement invited — for
+        // a slot that had already closed, and counted the lapse against the
+        // member's acceptance rate. The hourly sweep flips these to EXPIRED, so
+        // this covers the window before the next tick.
+        expiresAt: { gt: new Date() },
       },
       select: {
         id: true,
@@ -534,7 +601,12 @@ export const declineEventInvitation = async (
       },
     });
 
-    if (!assignment) return { success: false, error: "Unable to find this event" };
+    if (!assignment) {
+      return {
+        success: false,
+        error: await explainInviteMiss(organizationId, eventId, user.id),
+      };
+    }
 
     await prisma.eventAssignment.update({
       where: {

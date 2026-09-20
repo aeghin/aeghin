@@ -11,6 +11,7 @@ import {
   ChevronLeft,
   ChevronRight,
   CheckCircle2,
+  Hourglass,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
@@ -214,6 +215,44 @@ function isEventPast(dates: EventDate[], today: Date): boolean {
 }
 
 /**
+ * A pending invitation the member can still answer.
+ *
+ * Takes a real timestamp, never `today`. Expiry is wall-clock — an invite
+ * lapses N days after the moment it was sent, not at a midnight — so comparing
+ * against local midnight left a lapsed invite listed *and* offering Accept for
+ * up to a day after the server had stopped honouring it, which answered with
+ * "Unable to find this event". The hourly sweep flips these rows to EXPIRED;
+ * this covers the window before the next tick.
+ *
+ * Shared by the initial tab choice and the Pending list on purpose: those two
+ * used to carry different predicates, so a member whose only invites had
+ * lapsed landed on a Pending tab that was empty.
+ */
+function hasLiveInvite(event: Event, now: Date): boolean {
+  return event.assignments.some(
+    (a) => a.status === InvitationStatus.PENDING && a.expiresAt > now,
+  );
+}
+
+/**
+ * A pending invitation that lapsed before it was answered.
+ *
+ * Reads the timestamp as well as the status, because the hourly sweep is what
+ * writes EXPIRED — for up to an hour after a lapse the row is still PENDING.
+ *
+ * Paired with hasLiveInvite: an assignment row is unique per event and member,
+ * so between them a pending invite lands in exactly one bucket and can never
+ * show up as answerable and lapsed at the same time.
+ */
+function hasExpiredInvite(event: Event, now: Date): boolean {
+  return event.assignments.some(
+    (a) =>
+      a.status === InvitationStatus.EXPIRED ||
+      (a.status === InvitationStatus.PENDING && a.expiresAt <= now),
+  );
+}
+
+/**
  * For grouping: find the earliest startTime that falls within the current scope.
  * Falls back to the absolute earliest date if none qualify.
  */
@@ -298,11 +337,7 @@ export function MemberEventsDashboard({
   upNextEventId = null,
 }: MemberEventsDashboardProps) {
   const [activeTab, setActiveTab] = useState<TabType>(() =>
-    events.some((e) =>
-      e.assignments.some((a) => a.status === InvitationStatus.PENDING),
-    )
-      ? "pending"
-      : "schedule",
+    events.some((e) => hasLiveInvite(e, new Date())) ? "pending" : "schedule",
   );
   const [timeScope, setTimeScope] = useState<TimeScope>("upcoming");
   const [selectedServiceType, setSelectedServiceType] = useState<string | null>(
@@ -318,6 +353,10 @@ export function MemberEventsDashboard({
   // Compute today once per render, pass to all helpers
   const today = useMemo(() => createToday(), []);
 
+  // `today` is midnight because every date helper above wants a calendar day.
+  // Expiry is a timestamp, so it gets its own clock — see hasLiveInvite.
+  const now = useMemo(() => new Date(), []);
+
   // ── Memoized lookups ────────────────────────────────────────
 
   const serviceTypeMap = useMemo(() => {
@@ -329,10 +368,12 @@ export function MemberEventsDashboard({
   // ── Derived data ────────────────────────────────────────────
 
   const pendingEvents = useMemo(() => {
-    return events.filter((e) =>
-      e.assignments.some((a) => a.status === InvitationStatus.PENDING && a.expiresAt > today),
-    );
-  }, [events, today]);
+    return events.filter((e) => hasLiveInvite(e, now));
+  }, [events, now]);
+
+  const expiredEvents = useMemo(() => {
+    return events.filter((e) => hasExpiredInvite(e, now));
+  }, [events, now]);
 
   const acceptedEvents = useMemo(() => {
     return events.filter((e) =>
@@ -365,6 +406,24 @@ export function MemberEventsDashboard({
       return inScope && matchesService && notPast;
     });
   }, [pendingEvents, timeScope, currentMonth, selectedServiceType, today]);
+
+  // Same scope and service filtering as the live list, so the tab stays
+  // coherent when a month or a service type is selected.
+  const filteredExpiredEvents = useMemo(() => {
+    return expiredEvents.filter((event) => {
+      const inScope = isEventInTimeScope(
+        event.dates,
+        timeScope,
+        currentMonth,
+        today,
+      );
+      const matchesService =
+        !selectedServiceType || event.serviceTypeId === selectedServiceType;
+      const notPast =
+        timeScope === "past" || !isEventPast(event.dates, today);
+      return inScope && matchesService && notPast;
+    });
+  }, [expiredEvents, timeScope, currentMonth, selectedServiceType, today]);
 
   const filteredAcceptedEvents = useMemo(() => {
     return acceptedEvents
@@ -749,7 +808,8 @@ export function MemberEventsDashboard({
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
           >
-            {filteredPendingEvents.length === 0 ? (
+            {filteredPendingEvents.length === 0 &&
+            filteredExpiredEvents.length === 0 ? (
               <m.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -779,6 +839,24 @@ export function MemberEventsDashboard({
                     canManage={canManage}
                   />
                 ))}
+
+                {filteredExpiredEvents.length > 0 && (
+                  <div className="space-y-3 pt-2">
+                    <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      <Hourglass className="h-3.5 w-3.5" />
+                      Expired
+                    </p>
+                    {filteredExpiredEvents.map((event, index) => (
+                      <ExpiredInviteCard
+                        key={event.id}
+                        event={event}
+                        index={index}
+                        isMounted={isMounted}
+                        getServiceType={getServiceType}
+                      />
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </m.div>
@@ -946,6 +1024,75 @@ export function MemberEventsDashboard({
         )}
       </AnimatePresence>
     </div>
+  );
+}
+
+// ─── Expired Invite Card ───────────────────────────────────────
+
+/**
+ * An invitation that lapsed before it was answered.
+ *
+ * Deliberately inert — no Accept, no Decline, no link. These used to drop out
+ * of the tab the moment they lapsed, which read as the invitation never having
+ * arrived; this says what actually happened. Reopening one is the admin's move,
+ * since re-inviting is what resets the window, so there is nothing to press.
+ */
+function ExpiredInviteCard({
+  event,
+  index,
+  isMounted,
+  getServiceType,
+}: {
+  event: Event;
+  index: number;
+  isMounted: boolean;
+  getServiceType: (id: string) => ServiceType | undefined;
+}) {
+  const service = getServiceType(event.serviceTypeId);
+  const colors = getColorClasses(service?.color || "indigo");
+  const assignment = event.assignments[0] ?? null;
+  const roleInfo = assignment
+    ? volunteerRoleConfig[assignment.role as VolunteerRole]
+    : null;
+
+  return (
+    <m.div
+      initial={isMounted ? { opacity: 0, y: 20 } : false}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: isMounted ? index * 0.05 : 0 }}
+      className={`overflow-hidden rounded-lg border border-border border-l-[3px] bg-muted/20 p-4 ${colors.border}`}
+    >
+      <div className="mb-2 flex flex-wrap items-start justify-between gap-2">
+        <span className="rounded-md bg-slate-500/10 px-2 py-0.5 text-[11px] font-medium text-slate-500">
+          Invite expired
+        </span>
+        {roleInfo && (
+          <span className="text-xs text-muted-foreground">
+            {roleInfo.icon} {roleInfo.label}
+          </span>
+        )}
+      </div>
+
+      <p className="truncate text-sm font-medium text-muted-foreground">
+        {event.name}
+      </p>
+
+      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+        <span className="flex items-center gap-1.5">
+          <Calendar className="h-3.5 w-3.5 shrink-0" />
+          {formatDateRange(event.dates)}
+        </span>
+        <span className="flex items-center gap-1.5">
+          <MapPin className="h-3.5 w-3.5 shrink-0" />
+          <span className="truncate">{event.location}</span>
+        </span>
+      </div>
+
+      <p className="mt-2.5 text-xs text-muted-foreground">
+        This invitation ran out before it was answered. Ask an admin to send a
+        new one if you can still serve.
+      </p>
+    </m.div>
   );
 }
 

@@ -69,7 +69,7 @@ PostgreSQL on Neon. Schema in `prisma/schema.prisma` with these core models:
 
 ### Environment Variables
 
-Required: `DATABASE_URL`, `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`, `CLERK_WEBHOOK_SIGNING_SECRET`, `RESEND_EMAIL_API_KEY`, `NEXT_PUBLIC_APP_URL`. Clerk URL vars configure sign-in/sign-up/redirect paths.
+Required: `DATABASE_URL`, `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`, `CLERK_WEBHOOK_SIGNING_SECRET`, `RESEND_EMAIL_API_KEY`, `NEXT_PUBLIC_APP_URL`, `CRON_SECRET`. Clerk URL vars configure sign-in/sign-up/redirect paths.
 
 <!-- BEGIN:nextjs-agent-rules -->
 

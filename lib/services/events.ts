@@ -5,6 +5,12 @@ import { InvitationStatus } from "@/generated/prisma/enums";
 import { cacheLife, cacheTag } from "next/cache";
 
 
+const DASHBOARD_ASSIGNMENT_STATUSES: InvitationStatus[] = [
+  InvitationStatus.ACCEPTED,
+  InvitationStatus.PENDING,
+  InvitationStatus.EXPIRED,
+];
+
 export const userEventsTotalCount = async (userId: string, organizationId: string, canManage: boolean) => {
     "use cache"
 
@@ -61,10 +67,7 @@ export const getUserEvents = async (organizationId: string, userId: string) => {
         assignments: {
           some: {
             userId,
-            OR: [
-              { status: InvitationStatus.ACCEPTED },
-              { status: InvitationStatus.PENDING },
-            ]
+            status: { in: DASHBOARD_ASSIGNMENT_STATUSES }
           }
         }
       },
@@ -73,10 +76,7 @@ export const getUserEvents = async (organizationId: string, userId: string) => {
         assignments: {
           where: {
             userId,
-            OR: [
-              { status: InvitationStatus.ACCEPTED },
-              { status: InvitationStatus.PENDING },
-            ]
+            status: { in: DASHBOARD_ASSIGNMENT_STATUSES }
           },
           select: {
             id: true,
@@ -116,10 +116,7 @@ export const getOrgEvents = async (organizationId: string, userId: string) => {
         assignments: {
           where: {
             userId,
-            OR: [
-              { status: InvitationStatus.ACCEPTED },
-              { status: InvitationStatus.PENDING },
-            ]
+            status: { in: DASHBOARD_ASSIGNMENT_STATUSES }
           },
           select: {
             id: true,

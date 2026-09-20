@@ -80,14 +80,6 @@ export default async function EventDetailPage({
     ? await getEventSmartSchedulingActivity(eventId, orgId)
     : [];
 
-  const now = Date.now();
-  const expiredInviteCount = canManage
-    ? event.assignments.filter(
-        (a) =>
-          a.status === InvitationStatus.PENDING && a.expiresAt.getTime() < now,
-      ).length
-    : 0;
-
   return (
     <main className="mx-auto max-w-screen-2xl px-4 py-6 sm:px-6 sm:py-8">
       <div className="space-y-6 sm:space-y-8">
@@ -111,7 +103,6 @@ export default async function EventDetailPage({
             <SmartSchedulingActivity
               enabled={event.smartSchedulingEnabled}
               items={smartSchedulingActivity}
-              expiredCount={expiredInviteCount}
             />
           </AnimatedSection>
         )}

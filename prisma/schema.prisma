@@ -33,6 +33,7 @@ enum InvitationStatus {
   ACCEPTED
   DECLINED
   CANCELED
+  EXPIRED
 }
 
 enum ActivityType {

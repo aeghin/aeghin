@@ -3,6 +3,7 @@ import {
   Clock,
   Check,
   X,
+  Hourglass,
   LucideIcon,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,7 +15,7 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { cn } from "@/lib/utils";
-import type { EventDetails } from "@/lib/types";
+import type { EventDetails, EventDetailsAssignment } from "@/lib/types";
 import { InvitationStatus, VolunteerRole } from "@/generated/prisma/enums";
 import { statusStyles } from "@/lib/config/status";
 import { colorClasses } from "@/lib/config/service-types-config";
@@ -32,6 +33,7 @@ import { AddEventRolesDialog } from "./add-event-roles-dialog";
 import { InviteToEventDialog } from "./invite-to-event-dialog";
 import { EventRoleRemoveButton } from "./event-role-remove-button";
 import { EventSmartSchedulingToggle } from "./event-smart-scheduling-toggle";
+import { ExpiredInvitesLog } from "./expired-invites-log";
 
 export type TeamMember = {
   userId: string;
@@ -73,7 +75,25 @@ const statusBadgeIcons: Record<InvitationStatus, LucideIcon> = {
   PENDING: Clock,
   DECLINED: X,
   CANCELED: X,
+  EXPIRED: Hourglass,
 };
+
+/**
+ * The status to *show*, which is not always the status stored.
+ *
+ * The hourly sweep is what writes EXPIRED, so for up to an hour after a lapse
+ * the row is still PENDING. Reading through to the timestamp here keeps the
+ * badge, the name treatment and the header count agreeing with each other —
+ * and with the server, which stops honouring a lapsed answer the moment it
+ * lapses rather than when the sweep gets to it.
+ */
+const displayStatus = (
+  assignment: EventDetailsAssignment,
+  now: Date,
+): InvitationStatus =>
+  assignment.status === InvitationStatus.PENDING && assignment.expiresAt <= now
+    ? InvitationStatus.EXPIRED
+    : assignment.status;
 
 export function EventAssignmentsCard({
   event,
@@ -83,8 +103,19 @@ export function EventAssignmentsCard({
 }: EventAssignmentsCardProps) {
   const serviceColors = colorClasses[event.serviceType.color];
 
-  const total = event.assignments.length;
-  const acceptedCount = event.assignments.filter(
+  // One clock for the whole card, so the roster, the counts and the invite
+  // pickers can't disagree about which invitations are still live.
+  const now = new Date();
+
+  // Lapsed invites don't get a row (see roleGroups below), so they must not sit
+  // in the denominator either — "0/1 confirmed" against a row nobody can see is
+  // just a wrong number.
+  const liveRoster = event.assignments.filter(
+    (a) => displayStatus(a, now) !== InvitationStatus.EXPIRED,
+  );
+
+  const total = liveRoster.length;
+  const acceptedCount = liveRoster.filter(
     (e) => e.status === InvitationStatus.ACCEPTED,
   ).length;
 
@@ -98,8 +129,6 @@ export function EventAssignmentsCard({
   // One role per member (unique eventId+userId), so anyone still live on the
   // event can't be invited into another role. A lapsed invite isn't live —
   // it can't be accepted anymore, so re-inviting is what unsticks it.
-  const now = new Date();
-
   const unavailableUserIds = event.assignments
     .filter(
       (a) =>
@@ -107,6 +136,21 @@ export function EventAssignmentsCard({
         (a.status === InvitationStatus.PENDING && a.expiresAt > now),
     )
     .map((a) => a.userId);
+
+  // Sent, never answered, and now unanswerable. Gathered card-wide rather than
+  // per role: this began as a bare number inside the Smart Scheduling strip,
+  // which is a different feature and named nobody, and a marker on each
+  // affected role grew the card in proportion to how bad the problem was.
+  const expiredInvites = event.assignments
+    .filter((a) => displayStatus(a, now) === InvitationStatus.EXPIRED)
+    .map((a) => ({
+      userId: a.userId,
+      firstName: a.user.firstName,
+      lastName: a.user.lastName,
+      userImageUrl: a.user.userImageUrl,
+      roleLabel: volunteerRoleConfig[a.role].label,
+      expiresAt: a.expiresAt,
+    }));
 
   const membersByRole: Record<string, TeamMember[]> = {};
   const memberCountByRole: Record<string, number> = {};
@@ -132,10 +176,20 @@ export function EventAssignmentsCard({
     .map((key) => {
       const roleGroups = roleOrder
         .filter((role) => roleToCategory[role] === key && rosterRoles.has(role))
-        .map((role) => ({
-          role,
-          items: event.assignments.filter((a) => a.role === role),
-        }));
+        .map((role) => {
+          const forRole = event.assignments.filter((a) => a.role === role);
+          const isExpired = (a: EventDetailsAssignment) =>
+            displayStatus(a, now) === InvitationStatus.EXPIRED;
+
+          return {
+            role,
+            // A lapsed invite leaves the roster rather than holding a slot:
+            // nobody is on this role any more, so it should read as needing
+            // someone, and a dead row suppressed its invite CTA. The names are
+            // not lost — ExpiredInvitesLog keeps them in the card header.
+            items: forRole.filter((a) => !isExpired(a)),
+          };
+        });
 
       const items = roleGroups.flatMap((g) => g.items);
       const acceptedCount = items.filter(
@@ -191,9 +245,12 @@ export function EventAssignmentsCard({
               <Users className="h-4 w-4 text-muted-foreground" />
               Team
             </CardTitle>
-            <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-              {acceptedCount}/{total} confirmed
-            </span>
+            <div className="flex shrink-0 items-center gap-2">
+              {canManage && <ExpiredInvitesLog invitees={expiredInvites} />}
+              <span className="text-xs text-muted-foreground tabular-nums">
+                {acceptedCount}/{total} confirmed
+              </span>
+            </div>
           </div>
           {canManage && (
             <div className="flex flex-wrap items-center gap-2">
@@ -307,12 +364,12 @@ export function EventAssignmentsCard({
                         {group.items.map((assignment) => {
                           const isCurrentUser =
                             assignment.userId === currentUserId;
+                          const status = displayStatus(assignment, now);
                           const isDeclined =
-                            assignment.status === InvitationStatus.DECLINED ||
-                            assignment.status === InvitationStatus.CANCELED;
-                          const BadgeIcon = statusBadgeIcons[assignment.status];
-                          const assignmentStyles =
-                            statusStyles[assignment.status];
+                            status === InvitationStatus.DECLINED ||
+                            status === InvitationStatus.CANCELED;
+                          const BadgeIcon = statusBadgeIcons[status];
+                          const assignmentStyles = statusStyles[status];
 
                           return (
                             <div
@@ -384,6 +441,7 @@ export function EventAssignmentsCard({
                           );
                         })}
                       </div>
+
                     </div>
                   );
                 })}

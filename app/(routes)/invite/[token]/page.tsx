@@ -104,33 +104,18 @@ const InvitePage = async ({
     );
   };
 
-   if (invitation.status !== InvitationStatus.PENDING) {
-    return (
-      <PageWrapper>
-        <Card className="border-2 overflow-hidden text-center">
-          <CardContent className="p-8">
-            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-muted text-muted-foreground">
-              <XCircle className="h-8 w-8" />
-            </div>
-            <h1 className="text-2xl font-bold tracking-tight mb-2">
-              Invitation Unavailable
-            </h1>
-            <p className="text-muted-foreground mb-6">
-              This invitation has already been {invitation.status.toLowerCase()}.
-            </p>
-            <Link href="/">
-              <Button variant="outline" className="cursor-pointer">
-                <ArrowLeft className="mr-2 h-4 w-4" />
-                Back to Home
-              </Button>
-            </Link>
-          </CardContent>
-        </Card>
-      </PageWrapper>
-    );
-  };
+  // Lapsed without ever being answered: EXPIRED once the hourly sweep has run,
+  // still PENDING in the window before it. Tested ahead of the generic branch
+  // below, which would otherwise report an EXPIRED row as "already been
+  // expired" — clumsy, and the wrong screen: this one says how to get a new
+  // link. Deliberately narrow, so an accepted or declined invitation whose
+  // deadline has since passed still reports what was actually decided.
+  const isLapsed =
+    invitation.status === InvitationStatus.EXPIRED ||
+    (invitation.status === InvitationStatus.PENDING &&
+      invitation.expiresAt < new Date());
 
-  if (invitation.expiresAt < new Date()) {
+  if (isLapsed) {
     return (
       <PageWrapper>
         <Card className="border-2 overflow-hidden text-center">
@@ -144,6 +129,32 @@ const InvitePage = async ({
             <p className="text-muted-foreground mb-6">
               This invitation is no longer valid. Please ask the
               organization admin to send a new one.
+            </p>
+            <Link href="/">
+              <Button variant="outline" className="cursor-pointer">
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Back to Home
+              </Button>
+            </Link>
+          </CardContent>
+        </Card>
+      </PageWrapper>
+    );
+  };
+
+   if (invitation.status !== InvitationStatus.PENDING) {
+    return (
+      <PageWrapper>
+        <Card className="border-2 overflow-hidden text-center">
+          <CardContent className="p-8">
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-muted text-muted-foreground">
+              <XCircle className="h-8 w-8" />
+            </div>
+            <h1 className="text-2xl font-bold tracking-tight mb-2">
+              Invitation Unavailable
+            </h1>
+            <p className="text-muted-foreground mb-6">
+              This invitation has already been {invitation.status.toLowerCase()}.
             </p>
             <Link href="/">
               <Button variant="outline" className="cursor-pointer">

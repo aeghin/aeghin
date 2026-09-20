@@ -335,11 +335,16 @@ export async function GET(
             })
             : [];
 
+        // Counts both spellings of a lapse: EXPIRED once the hourly sweep has
+        // written it, still PENDING in the window before. Checking only the
+        // timestamp would have quietly reported zero for every already-swept
+        // row, so the phone's "N invites expired" line emptied out over time.
         const expiredInviteCount = canManage
             ? event.assignments.filter(
                 (assignment) =>
-                    assignment.status === InvitationStatus.PENDING &&
-                    assignment.expiresAt < now,
+                    assignment.status === InvitationStatus.EXPIRED ||
+                    (assignment.status === InvitationStatus.PENDING &&
+                        assignment.expiresAt < now),
             ).length
             : 0;
 

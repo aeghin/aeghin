@@ -293,7 +293,7 @@ export const cancelOrgInvite = async (organizationId: string, userEmail: string,
 
         if (!invitation) return { success: false, error: "Invitation doesn't exist." };
 
-        if (invitation.status !== InvitationStatus.PENDING) return { success: false, error: "This invitation has either been accepted, declined or canceled already" };
+        if (invitation.status !== InvitationStatus.PENDING) return { success: false, error: "This invitation is no longer pending" };
 
         await prisma.invitation.update({
             where: {

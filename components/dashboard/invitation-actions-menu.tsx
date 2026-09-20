@@ -45,8 +45,14 @@ export const InvitationActionsMenu = ({
     });
   };
 
+  // EXPIRED belongs here with CANCELED: both are dead rows whose only move is a
+  // fresh invitation, and resendInvitation resets the token and the window for
+  // either. Leaving it out stranded lapsed invites with no menu at all — the
+  // one state where an admin most needs the resend.
   const hasActions =
-    status === InvitationStatus.PENDING || status === InvitationStatus.CANCELED;
+    status === InvitationStatus.PENDING ||
+    status === InvitationStatus.CANCELED ||
+    status === InvitationStatus.EXPIRED;
 
   if (!hasActions) {
     return null;
@@ -84,7 +90,8 @@ export const InvitationActionsMenu = ({
             </DropdownMenuItem>
           </>
         )}
-        {status === InvitationStatus.CANCELED && (
+        {(status === InvitationStatus.CANCELED ||
+          status === InvitationStatus.EXPIRED) && (
           <DropdownMenuItem
             className="cursor-pointer"
             disabled={isResending}

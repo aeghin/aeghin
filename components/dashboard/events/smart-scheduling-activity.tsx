@@ -4,7 +4,6 @@ import { useState, type ReactNode } from "react";
 import {
   CalendarClock,
   ChevronRight,
-  MailWarning,
   TriangleAlert,
   UserSearch,
   Zap,
@@ -130,13 +129,18 @@ const UNFILLED_TYPES = new Set<string>([
 interface SmartSchedulingActivityProps {
   enabled: boolean;
   items: SmartSchedulingActivityItem[];
-  expiredCount: number;
 }
 
+/**
+ * Expired invitations used to be counted here, as a bare "N invites expired".
+ * They belong on the Team card instead: invites lapse whether auto-fill is on
+ * or off, so filing it under this feature implied a connection that isn't
+ * there, and a number with no name attached told nobody who to chase. The
+ * roster now labels the lapsed row itself and totals them in its own header.
+ */
 export const SmartSchedulingActivity = ({
   enabled,
   items,
-  expiredCount,
 }: SmartSchedulingActivityProps) => {
   const [open, setOpen] = useState(false);
 
@@ -145,7 +149,7 @@ export const SmartSchedulingActivity = ({
   ).length;
   const unfilledCount = items.filter((i) => UNFILLED_TYPES.has(i.type)).length;
 
-  if (!enabled && items.length === 0 && expiredCount === 0) return null;
+  if (!enabled && items.length === 0) return null;
 
   const stats = [
     filledCount > 0 && {
@@ -158,12 +162,6 @@ export const SmartSchedulingActivity = ({
       key: "unfilled",
       icon: CalendarClock,
       label: `${unfilledCount} ${unfilledCount === 1 ? "slot" : "slots"} left open`,
-      className: "text-amber-600 dark:text-amber-400",
-    },
-    expiredCount > 0 && {
-      key: "expired",
-      icon: MailWarning,
-      label: `${expiredCount} ${expiredCount === 1 ? "invite" : "invites"} expired`,
       className: "text-amber-600 dark:text-amber-400",
     },
   ].filter(Boolean) as {
