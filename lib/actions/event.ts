@@ -925,6 +925,204 @@ export const cancelUserEventAssignment = async (userId: string, organizationId: 
 }
 
 
+const RESEND_EXPIRY_DAYS = 3;
+
+export const resendEventInvitation = async (
+  organizationId: string,
+  eventId: string,
+  userId: string,
+  touch: TagInvalidator = updateTag,
+): Promise<ActionResponse> => {
+
+  try {
+
+    const user = await currentUser();
+
+    if (!user) return { success: false, error: "Unauthorized" };
+
+    const [membership, assignment] = await Promise.all([
+      prisma.membership.findUnique({
+        where: {
+          userId_organizationId: { userId: user.id, organizationId },
+        },
+        select: {
+          role: true,
+          organization: { select: { name: true, logoUrl: true } },
+        },
+      }),
+      prisma.eventAssignment.findFirst({
+        where: { eventId, userId, organizationId },
+        select: {
+          status: true,
+          role: true,
+          expiresAt: true,
+          user: { select: { email: true, firstName: true } },
+          event: {
+            select: {
+              name: true,
+              dates: { select: { startTime: true, endTime: true } },
+            },
+          },
+        },
+      }),
+    ]);
+
+    if (!membership) return { success: false, error: "Unable to locate membership" };
+
+    if (membership.role === OrgRole.MEMBER) return { success: false, error: "Unauthorized" };
+
+    if (!assignment) return { success: false, error: "Unable to find this assignment" };
+
+    // EXPIRED once the sweep has run; still PENDING in the window before it.
+    const hasLapsed =
+      assignment.status === InvitationStatus.EXPIRED ||
+      (assignment.status === InvitationStatus.PENDING &&
+        assignment.expiresAt <= new Date());
+
+    if (!hasLapsed) return { success: false, error: "That invitation hasn't expired" };
+
+    const targetMembership = await prisma.membership.findUnique({
+      where: { userId_organizationId: { userId, organizationId } },
+      select: { volunteerRoles: true },
+    });
+
+    if (!targetMembership) {
+      return { success: false, error: "They're no longer part of this organization" };
+    }
+
+    if (!targetMembership.volunteerRoles.includes(assignment.role)) {
+      return {
+        success: false,
+        error: `Unable to reinvite — they no longer have the ${volunteerRoleLabels[assignment.role]} role`,
+      };
+    }
+
+    const blockedIds = await getBlockedUserIds(
+      organizationId,
+      assignment.event.dates,
+    );
+
+    if (blockedIds.has(userId)) {
+      return {
+        success: false,
+        error: "Unable to reinvite — they have blockout dates during this event",
+      };
+    }
+
+    await prisma.eventAssignment.update({
+      where: {
+        eventId_userId: { eventId, userId },
+        organizationId,
+      },
+      data: {
+        status: InvitationStatus.PENDING,
+        expiresAt: new Date(Date.now() + RESEND_EXPIRY_DAYS * 24 * 60 * 60 * 1000),
+        assignedById: user.id,
+        autoAssigned: false,
+      },
+    });
+
+    touch(`user-${userId}-events-${organizationId}`);
+    touch(`event-${eventId}-org-${organizationId}-details`);
+    touch(`org-${organizationId}-events`);
+    touch(`org-${organizationId}-activity`);
+
+    const { name: organizationName, logoUrl } = membership.organization;
+
+    after(async () => {
+      await resend.emails.send({
+        from: organizationSender(organizationName),
+        to: assignment.user.email,
+        subject: `You've been assigned to ${assignment.event.name}`,
+        react: EventAssignmentEmail({
+          recipientName: assignment.user.firstName,
+          eventName: assignment.event.name,
+          organizationName: organizationName || "",
+          logoUrl,
+          viewLink: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/organizations/${organizationId}`,
+        }),
+      });
+    });
+
+    await logActivity({
+      organizationId,
+      eventId,
+      eventName: assignment.event.name,
+      type: ActivityType.INVITE_SENT,
+      actorName: `${user.firstName} ${user.lastName}`,
+      targetName: assignment.event.name,
+      detail: `${volunteerRoleLabels[assignment.role]} · reinvited after expiry`,
+    });
+
+    return { success: true };
+
+  } catch {
+
+    return { success: false, error: "Unable to resend this invite, please try again" };
+
+  };
+};
+
+
+// Lapsed rows only. A volunteer who accepted is removed through
+// cancelUserEventAssignment, which tells them they've been removed.
+export const deleteExpiredEventAssignment = async (
+  organizationId: string,
+  eventId: string,
+  userId: string,
+  touch: TagInvalidator = updateTag,
+): Promise<ActionResponse> => {
+
+  try {
+
+    const user = await currentUser();
+
+    if (!user) return { success: false, error: "Unauthorized" };
+
+    const membership = await prisma.membership.findUnique({
+      where: {
+        userId_organizationId: { userId: user.id, organizationId },
+      },
+      select: { role: true },
+    });
+
+    if (!membership) return { success: false, error: "Unable to locate membership" };
+
+    if (membership.role === OrgRole.MEMBER) return { success: false, error: "Unauthorized" };
+
+    const assignment = await prisma.eventAssignment.findFirst({
+      where: { eventId, userId, organizationId },
+      select: { id: true, status: true, expiresAt: true },
+    });
+
+    if (!assignment) return { success: false, error: "Unable to find this assignment" };
+
+    const hasLapsed =
+      assignment.status === InvitationStatus.EXPIRED ||
+      (assignment.status === InvitationStatus.PENDING &&
+        assignment.expiresAt <= new Date());
+
+    if (!hasLapsed) return { success: false, error: "That invitation hasn't expired" };
+
+    await prisma.eventAssignment.delete({
+      where: { id: assignment.id, organizationId },
+    });
+
+    touch(`user-${userId}-events-${organizationId}`);
+    touch(`event-${eventId}-org-${organizationId}-details`);
+    touch(`org-${organizationId}-events`);
+
+    return { success: true };
+
+  } catch {
+
+    return { success: false, error: "Unable to remove this invite, please try again" };
+
+  };
+};
+
+
+
 // Smart scheduling is per-event, so it can be flipped on the event page after
 // creation without touching any other event.
 export const setEventSmartScheduling = async (

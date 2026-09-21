@@ -33,7 +33,6 @@ import { AddEventRolesDialog } from "./add-event-roles-dialog";
 import { InviteToEventDialog } from "./invite-to-event-dialog";
 import { EventRoleRemoveButton } from "./event-role-remove-button";
 import { EventSmartSchedulingToggle } from "./event-smart-scheduling-toggle";
-import { ExpiredInvitesLog } from "./expired-invites-log";
 
 export type TeamMember = {
   userId: string;
@@ -78,15 +77,8 @@ const statusBadgeIcons: Record<InvitationStatus, LucideIcon> = {
   EXPIRED: Hourglass,
 };
 
-/**
- * The status to *show*, which is not always the status stored.
- *
- * The hourly sweep is what writes EXPIRED, so for up to an hour after a lapse
- * the row is still PENDING. Reading through to the timestamp here keeps the
- * badge, the name treatment and the header count agreeing with each other —
- * and with the server, which stops honouring a lapsed answer the moment it
- * lapses rather than when the sweep gets to it.
- */
+// The hourly sweep writes EXPIRED, so for up to an hour after a lapse the row
+// is still PENDING. The timestamp is what the server honours.
 const displayStatus = (
   assignment: EventDetailsAssignment,
   now: Date,
@@ -94,6 +86,17 @@ const displayStatus = (
   assignment.status === InvitationStatus.PENDING && assignment.expiresAt <= now
     ? InvitationStatus.EXPIRED
     : assignment.status;
+
+const lapsedAgo = (expiresAt: Date, now: Date) => {
+  const days = Math.floor(
+    (now.getTime() - expiresAt.getTime()) / (24 * 60 * 60 * 1000),
+  );
+
+  if (days < 1) return "today";
+  if (days === 1) return "yesterday";
+
+  return `${days} days ago`;
+};
 
 export function EventAssignmentsCard({
   event,
@@ -107,15 +110,8 @@ export function EventAssignmentsCard({
   // pickers can't disagree about which invitations are still live.
   const now = new Date();
 
-  // Lapsed invites don't get a row (see roleGroups below), so they must not sit
-  // in the denominator either — "0/1 confirmed" against a row nobody can see is
-  // just a wrong number.
-  const liveRoster = event.assignments.filter(
-    (a) => displayStatus(a, now) !== InvitationStatus.EXPIRED,
-  );
-
-  const total = liveRoster.length;
-  const acceptedCount = liveRoster.filter(
+  const total = event.assignments.length;
+  const acceptedCount = event.assignments.filter(
     (e) => e.status === InvitationStatus.ACCEPTED,
   ).length;
 
@@ -136,21 +132,6 @@ export function EventAssignmentsCard({
         (a.status === InvitationStatus.PENDING && a.expiresAt > now),
     )
     .map((a) => a.userId);
-
-  // Sent, never answered, and now unanswerable. Gathered card-wide rather than
-  // per role: this began as a bare number inside the Smart Scheduling strip,
-  // which is a different feature and named nobody, and a marker on each
-  // affected role grew the card in proportion to how bad the problem was.
-  const expiredInvites = event.assignments
-    .filter((a) => displayStatus(a, now) === InvitationStatus.EXPIRED)
-    .map((a) => ({
-      userId: a.userId,
-      firstName: a.user.firstName,
-      lastName: a.user.lastName,
-      userImageUrl: a.user.userImageUrl,
-      roleLabel: volunteerRoleConfig[a.role].label,
-      expiresAt: a.expiresAt,
-    }));
 
   const membersByRole: Record<string, TeamMember[]> = {};
   const memberCountByRole: Record<string, number> = {};
@@ -176,20 +157,10 @@ export function EventAssignmentsCard({
     .map((key) => {
       const roleGroups = roleOrder
         .filter((role) => roleToCategory[role] === key && rosterRoles.has(role))
-        .map((role) => {
-          const forRole = event.assignments.filter((a) => a.role === role);
-          const isExpired = (a: EventDetailsAssignment) =>
-            displayStatus(a, now) === InvitationStatus.EXPIRED;
-
-          return {
-            role,
-            // A lapsed invite leaves the roster rather than holding a slot:
-            // nobody is on this role any more, so it should read as needing
-            // someone, and a dead row suppressed its invite CTA. The names are
-            // not lost — ExpiredInvitesLog keeps them in the card header.
-            items: forRole.filter((a) => !isExpired(a)),
-          };
-        });
+        .map((role) => ({
+          role,
+          items: event.assignments.filter((a) => a.role === role),
+        }));
 
       const items = roleGroups.flatMap((g) => g.items);
       const acceptedCount = items.filter(
@@ -245,12 +216,9 @@ export function EventAssignmentsCard({
               <Users className="h-4 w-4 text-muted-foreground" />
               Team
             </CardTitle>
-            <div className="flex shrink-0 items-center gap-2">
-              {canManage && <ExpiredInvitesLog invitees={expiredInvites} />}
-              <span className="text-xs text-muted-foreground tabular-nums">
-                {acceptedCount}/{total} confirmed
-              </span>
-            </div>
+            <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+              {acceptedCount}/{total} confirmed
+            </span>
           </div>
           {canManage && (
             <div className="flex flex-wrap items-center gap-2">
@@ -368,6 +336,8 @@ export function EventAssignmentsCard({
                           const isDeclined =
                             status === InvitationStatus.DECLINED ||
                             status === InvitationStatus.CANCELED;
+                          const isExpired =
+                            status === InvitationStatus.EXPIRED;
                           const BadgeIcon = statusBadgeIcons[status];
                           const assignmentStyles = statusStyles[status];
 
@@ -389,7 +359,8 @@ export function EventAssignmentsCard({
                                   className={cn(
                                     "h-9 w-9 ring-2 ring-offset-2 ring-offset-background transition-opacity",
                                     assignmentStyles.ring,
-                                    isDeclined && "opacity-60",
+                                    (isDeclined || isExpired) &&
+                                      "opacity-60",
                                   )}
                                 >
                                   <AvatarImage
@@ -435,13 +406,18 @@ export function EventAssignmentsCard({
                                     ? "You"
                                     : `${assignment.user.firstName} ${assignment.user.lastName}`}
                                 </p>
+                                {isExpired && (
+                                  <p className="truncate text-xs text-muted-foreground">
+                                    Invite expired{" "}
+                                    {lapsedAgo(assignment.expiresAt, now)}
+                                  </p>
+                                )}
                               </div>
-                              {!isDeclined && canManage && <EventVolunteerRowMenu assignedUserId={assignment.userId} eventId={assignment.eventId} organizationId={assignment.organizationId} />}
+                              {!isDeclined && canManage && <EventVolunteerRowMenu assignedUserId={assignment.userId} eventId={assignment.eventId} organizationId={assignment.organizationId} isExpired={isExpired} />}
                             </div>
                           );
                         })}
                       </div>
-
                     </div>
                   );
                 })}
