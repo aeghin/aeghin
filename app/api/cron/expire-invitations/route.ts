@@ -352,21 +352,27 @@ export async function GET(req: Request) {
             take: SWEEP_LIMIT,
         });
 
-        // `updateMany` reports a count but not which rows it touched, hence the
-        // select above. Re-asserting the predicate here closes the gap between
-        // the two: somebody who accepted in between is no longer PENDING, so
-        // their row falls out of the update rather than being overwritten.
-        const assignmentResult =
+        // The rows this actually flipped, not the ones selected a moment
+        // earlier. Re-asserting the predicate closes the gap between the two:
+        // somebody who accepted in between is no longer PENDING, so their row
+        // falls out of the update rather than being overwritten. And because
+        // `PENDING -> EXPIRED` is exclusive at the database, a row comes back to
+        // exactly one caller — so two overlapping ticks cannot both mail it.
+        //
+        // The select above stays regardless: the tags below want every row the
+        // sweep considered, not only the ones it flipped.
+        const flippedAssignments =
             staleAssignments.length > 0
-                ? await prisma.eventAssignment.updateMany({
+                ? await prisma.eventAssignment.updateManyAndReturn({
                     where: {
                         id: { in: staleAssignments.map((row) => row.id) },
                         status: InvitationStatus.PENDING,
                         expiresAt: { lt: now },
                     },
                     data: { status: InvitationStatus.EXPIRED },
+                    select: { id: true },
                 })
-                : { count: 0 };
+                : [];
 
         const invitationResult =
             staleInvitations.length > 0
@@ -418,7 +424,7 @@ export async function GET(req: Request) {
 
         try {
             notified = await notifyLapsedAssignments(
-                staleAssignments.map((row) => row.id),
+                flippedAssignments.map((row) => row.id),
                 now,
             );
         } catch (err) {
@@ -431,7 +437,7 @@ export async function GET(req: Request) {
 
         return NextResponse.json({
             sweptAt: now.toISOString(),
-            assignments: assignmentResult.count,
+            assignments: flippedAssignments.length,
             invitations: invitationResult.count,
             tagsExpired: tags.size,
             notified: notified.emails,

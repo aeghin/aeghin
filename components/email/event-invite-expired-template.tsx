@@ -44,13 +44,17 @@ export default function EventInviteExpiredEmail({
 }: EventInviteExpiredEmailProps) {
   const roles = [...new Set(lapsed.map((invite) => invite.roleLabel))];
   const one = lapsed.length === 1;
+  // Two people can be invited to the same role, so the count of invitations and
+  // the count of roles diverge. The subject line branches on roles; so does
+  // anything here that names a role.
+  const oneRole = roles.length === 1;
 
   return (
     <Tailwind>
       <Html>
         <Head />
         <Preview>
-          {eventName} still needs {one ? `a ${roles[0]}` : `${roles.length} roles filled`} — {organizationName}
+          {eventName} still needs {oneRole ? `a ${roles[0]}` : `${roles.length} roles filled`} — {organizationName}
         </Preview>
         <Body className="bg-gray-100 font-sans">
           <Container className="mx-auto my-10 max-w-120 rounded-2xl bg-white shadow-sm overflow-hidden">
@@ -75,7 +79,7 @@ export default function EventInviteExpiredEmail({
                 {one ? "Invitation Expired" : "Invitations Expired"}
               </Text>
               <Text className="mt-2 text-sm text-gray-500 m-0">
-                The response window closed and {one ? "the role is" : "the roles are"} still open
+                The response window closed and {oneRole ? "the role is" : "the roles are"} still open
               </Text>
             </Section>
 
@@ -83,7 +87,7 @@ export default function EventInviteExpiredEmail({
 
               <Text className="text-sm text-gray-600 m-0 mb-6">
                 Hi {recipientName}, {one ? "this invitation" : "these invitations"} expired
-                without an answer, so {one ? "the role is" : "the roles are"} back to
+                without an answer, so {oneRole ? "the role is" : "the roles are"} back to
                 needing someone.
               </Text>
 
