@@ -47,3 +47,43 @@ export async function eventStaffingRecipients(
 
   return owners.map((owner) => owner.user);
 }
+
+/**
+ * The admins who sent lapsed invitations, when they can still act on them.
+ *
+ * `EventAssignment.assignedById` is nullable and `SetNull`, so it empties when
+ * that account is deleted; the sender may also have left the organization, or
+ * been demoted to MEMBER, who cannot staff an event anyway. Any of those means
+ * there is nobody to tell, and the caller falls back to
+ * `eventStaffingRecipients`.
+ *
+ * One query for the whole sweep rather than one per row: the pairs come from
+ * every organization the tick touched, so they are matched as pairs — a
+ * membership in the wrong organization must not resolve a sender.
+ *
+ * Keyed `organizationId:userId`.
+ */
+export async function inviteSenderRecipients(
+  pairs: { organizationId: string; userId: string }[],
+): Promise<Map<string, EmailRecipient>> {
+  if (pairs.length === 0) return new Map();
+
+  const rows = await prisma.membership.findMany({
+    where: {
+      OR: pairs.map(({ organizationId, userId }) => ({
+        organizationId,
+        userId,
+      })),
+      role: { not: OrgRole.MEMBER },
+    },
+    select: {
+      userId: true,
+      organizationId: true,
+      user: { select: { email: true, firstName: true } },
+    },
+  });
+
+  return new Map(
+    rows.map((row) => [`${row.organizationId}:${row.userId}`, row.user]),
+  );
+}
