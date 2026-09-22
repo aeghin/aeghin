@@ -6,10 +6,16 @@ The question this answers: **who hears about what is happening to an event, how
 often, and through which channel** — with NHC's `OWNER` / `ADMIN` / `MEMBER`
 model and the email infrastructure already in `lib/email/`.
 
-Revised after user feedback: *"used to being notified, and not having to open
-the app to check."* That pushback was correct and changed two recommendations —
-see §2 (why the Linear inbox model does not transfer), §3.2 (the silence
-problem), and §3.4 (push is a missing channel, not a policy question).
+Revised twice against user feedback:
+
+- *"Used to being notified, and not having to open the app to check."* Correct,
+  and it broke the inbox-first model — see §2 and §3.4.
+- *Notify at a threshold of **people invited**, not per response.* Also correct,
+  and cheaper than the role-based reading this doc first gave it. §3.2 is built
+  on that count now, and it needs no migration. `EventRoleSlot` (§4.1) went from
+  "blocking" to "worth doing later."
+
+The current recommendation is the three-layer contract in §3.2.
 
 ---
 
@@ -178,8 +184,8 @@ construction, which is exactly what makes it worth reading.
 **Directly, on "just the creator?"** — yes for routine signals, no for the
 escalation, and never by reading `createdById` yourself:
 
-- **Digest and `gap → 0`** → the creator. They opened the loop; they should get
-  it closed. Use `eventStaffingRecipients` rather than the raw column —
+- **Round closed (`outstanding → 0`) and the digest** → the creator. They
+  opened the loop; they should get it closed. Use `eventStaffingRecipients` rather than the raw column —
   `Event.createdById` is nullable and `SetNull`, so it empties when the account
   is deleted, and the creator may have left the org or been demoted to `MEMBER`
   (who cannot staff an event anyway). That helper already handles all three and
@@ -213,7 +219,7 @@ matter. PCO shipped per-assignment mail first, drowned their users, and
 retrofitted bundling.
 
 **The case against pure transition notifications — which the user is right
-about.** If the only admin-facing signals are `→ FULL` and `→ AT_RISK`, there is
+about.** If the only admin-facing signals are milestone transitions, there is
 a long silence between "invites sent" and "event complete." During that silence,
 *nothing arriving* is indistinguishable from *nobody is responding*, *the emails
 never sent*, and *the system is broken*. So the admin opens the app to check —
@@ -233,48 +239,109 @@ the information the admin is currently opening the app to obtain. Most digest
 implementations get this wrong by suppressing empty sends, which quietly
 reintroduces the wondering.
 
-**On the count threshold ("email once 12 have accepted").** The instinct —
-don't fire per response, fire at a point that means something — is right. The
-metric is not: **an absolute count carries no information without a
-denominator.** 12 accepted on an event needing 20 is trouble; 12 on an event
-needing 12 is done. The two want opposite emails, and the count alone cannot
-tell them apart.
+**On the count threshold ("email once 12 have accepted").** The denominator is
+the **invite list**, not the roles. That makes it computable today with no
+schema change at all, and it is a better signal than the role-based one.
 
-The number that does carry information is the **gap** — slots still open — and
-the gap is what the email needs to say anyway ("still needs a drummer and two
-BGVs"). Once you are computing the gap, `gap === 0` is the natural trigger, and
-a count threshold stops being something you have to pick.
+The rows already exist. `EventAssignment` is unique on `[eventId, userId]`, so
+its rows for an event *are* the people invited, and the five statuses split
+cleanly into settled and not:
 
-**The gap is not computable today** — `rolesNeeded` is a deduped set of role
-types with no per-role count, so there is no denominator to subtract from. See
-§4.1; this blocks the whole staffing-state model and is the first thing to fix.
+| Status | Still waiting on them? |
+| --- | --- |
+| `PENDING`, `expiresAt > now` | **Yes** — the only outstanding state |
+| `ACCEPTED` / `DECLINED` | No — they answered |
+| `EXPIRED` | No — they never answered and the window shut |
+| `CANCELED` | No — an admin withdrew it (`lib/actions/event.ts:881`) |
 
-**Skip intermediate thresholds.** "You're at 8 of 12" is not actionable —
-nothing changes in the admin's behaviour between 8 and 11 — and every extra
-threshold is another email competing with the ones that matter. The daily digest
-already covers progress; let it.
+```ts
+const outstanding = await prisma.eventAssignment.count({
+  where: { eventId, status: InvitationStatus.PENDING, expiresAt: { gt: new Date() } },
+});
+```
 
-**Recommended shape — three layers, all outbound:**
+One query, no migration, no `EventRoleSlot`.
 
-1. **Immediate** — declines, lapses, and `FULL → PARTIAL`. Actionable *now*.
-   Mostly already built.
-2. **Scheduled status digest** — one message per admin per day (org-local
-   morning), listing every upcoming event with its staffing state and what is
-   still open. Sends on a fixed schedule while any event is upcoming, including
-   when the answer is "all five events fully staffed, nothing needed." This is
-   the layer that removes "I have to open the app to check."
-3. **Milestone** — `gap → 0`, once per event. Closes the open loop early
-   instead of making the admin wait for tomorrow's digest. This is the only
-   count-like trigger worth having, and it needs no threshold to be chosen.
+**One refinement: make the trigger `outstanding === 0`, not "N accepted."**
+Same idea, better specified, and strictly less work:
 
-Staffing state is derived from assignments that already exist:
+- **Nothing to configure.** "12" is right for one event and wrong for the next;
+  "everyone I invited has answered" is right for all of them.
+- **It is the actual open loop.** The admin is not waiting for a number, they
+  are waiting to stop chasing people. Zero outstanding *is* that moment.
+- **It is self-terminating.** Exactly one per invite round, ever — no cap or
+  rate limit needed, because the trigger cannot repeat.
+
+**The email is the bundle you were describing.** It reports the tally, which
+rolls up every accept *and* every rejection into one message:
+
+> **All 12 have responded** — 9 accepted, 2 declined, 1 never answered.
+> *Sunday Service, Nov 30.*
+
+When there are declines, that is also the "you may want to invite more" nudge,
+arriving at the moment it is actionable rather than on a timer.
+
+**Re-arm it per round.** If an admin invites four more people after everyone
+answered, outstanding goes back above zero and then to zero again — and that
+second landing is real news, not a duplicate. Fold the roster size into the
+dedupe key so a new round re-arms it and a re-run does not:
 
 ```
-UNSTAFFED  → no accepted assignment for a needed role
-PARTIAL    → some roles filled, some open
-FULL       → every entry in rolesNeeded has an ACCEPTED assignment
-AT_RISK    → still not FULL inside the escalation window (§3.3)
+responses-complete:event:<eventId>:<total assignment rows>
 ```
+
+**Compute it in three places**, all of which already touch these rows:
+`acceptEventInvitation`, `declineEventInvitation`, and the expiry sweep. The
+sweep matters — "everyone has responded" can be reached by the last person
+*never* answering, and only the cron knows that.
+
+**What this does not tell you.** It measures *response completion*, not
+*staffing adequacy*. Invite 5 people to an event that needs 12 and it will
+cheerfully report that everyone responded. The system does not know true need —
+that is the `EventRoleSlot` gap in §4.1, which is a real limitation but **not a
+blocker for any of this**, and worth deferring.
+
+**Skip intermediate thresholds.** "8 of 12 have answered" is not actionable —
+nothing changes in the admin's behaviour between 8 and 11 — and each extra
+threshold competes with the emails that matter.
+
+**Recommended shape.** `outstanding === 0` is strong enough to change the
+earlier recommendation. The daily digest was proposed to solve the silence
+problem — the admin not knowing whether anything is happening. But a digest
+solves it with a *heartbeat*, and there is a cheaper way: give the admin a
+**contract** instead.
+
+> You will hear when everyone has answered. You will hear at T-3 if they
+> haven't. You will hear immediately if someone declines.
+
+An admin who believes that contract has no reason to open the app to check, and
+it costs **two or three emails per event** rather than one per day. That is the
+lower-volume instinct behind the original question, and it is the right one.
+
+| Layer | Fires | Volume |
+| --- | --- | --- |
+| **Immediate** | A decline, or a lapse | Per occurrence — actionable now; mostly built |
+| **Round closed** | `outstanding → 0` | Once per invite round |
+| **Escalation** | T-3d with `outstanding > 0` | At most once per event |
+
+Response state is derived entirely from rows that already exist — no new
+columns, no `rolesNeeded` arithmetic:
+
+```
+OPEN    → outstanding > 0        still chasing people
+CLOSED  → outstanding === 0      everyone answered or lapsed
+```
+
+**Demote the daily digest to opt-in.** It is still right for someone who wants a
+morning glance at everything, and the machinery is shared — but as a *default*
+it sends far more mail than the contract does, for the same certainty. Ship the
+contract; offer the digest.
+
+**One gap the contract leaves.** An event invited three weeks out, with everyone
+slow to answer, produces a long silence between "invites sent" and "everyone
+answered," with T-3 the only backstop. If that proves uncomfortable in practice,
+the cheapest fix is **one** nudge at the midpoint — not a daily cadence. Wait
+for someone to complain before building it.
 
 **And give him the per-accept toggle anyway.** Default off, honoured when on,
 settable per admin. Two reasons this is not a cop-out:
@@ -319,23 +386,24 @@ a Saturday rehearsal and a Sunday service should get one reminder, not two.
 
 | When | Condition | Who |
 | --- | --- | --- |
-| T-3d | `gap > 0` | Creator **and** all admins/owners (tier 3) |
+| T-3d | `outstanding > 0` | Creator **and** all admins/owners (tier 3) |
 
 One escalation, not a ladder of them. T-3d matches the instinct behind
 "3–5 days before"; T-5 is also defensible and the right pick depends on the
 time-to-response data in §7 — set it as a constant, not a guess baked into
 logic.
 
-There is no T-7 rung because the daily digest (Ladder D) already reports the
-gap every morning. **The escalation's value is not the information — the digest
-already delivered that. It is the widened audience and the changed subject
-line:** an event three days out with holes in it has stopped being one admin's
+There is no T-7 rung: the round-closed signal already fires the moment the
+chasing is over, so a rung before T-3 would mostly fire on events that are
+about to close themselves out. **The escalation's value is the widened audience and the changed
+subject line:** an event three days out with holes in it has stopped being one admin's
 problem and become the organization's.
 
-Condition it on **`gap > 0`, not on "pending invites exist."** Outstanding
-invitations on a fully staffed event are not a problem — over-inviting is normal
-and healthy — and mailing about them is exactly the false alarm that teaches
-people to ignore the channel.
+Condition it on **`outstanding > 0`** — people who have not answered — which is
+the same count the round-closed signal watches. Declines are *not* a condition
+here: a decline already sent its own immediate email, and re-raising it at T-3
+is the duplicate that teaches people to ignore the channel. What T-3 adds is
+the people who have gone quiet, which nothing else catches.
 
 **Ladder D — to admins, on a fixed clock** (the "stop making me check" layer
 from §3.2):
@@ -411,9 +479,9 @@ you read state:
 
 | Signal | Bundled how |
 | --- | --- |
-| Accepts | Not sent individually; appear in the next digest as current state |
-| Progress | The digest, daily |
-| `gap → 0` | Immediate, once, no bundling needed (it can only fire once per event) |
+| Accepts | Not sent individually; rolled into the round-closed tally |
+| Progress | The digest, daily — opt-in only |
+| `outstanding → 0` | Immediate, once per round — and it *is* the bundle: one tally covering every accept and decline |
 | Declines / lapses | Immediate — already bucketed per `(event, recipient)` by the cron |
 | T-3 escalation | Immediate, one per event, lists everything outstanding at once |
 
@@ -435,15 +503,18 @@ drummer who accepted forty minutes back.
 
 ---
 
-## 4. What has to be built first (prerequisites)
+## 4. Schema and infrastructure gaps
 
-These are not optional and they are not features. Anything in §3 that ships
-without them will be wrong in a way that is expensive to unwind.
+§4.3 is the only hard prerequisite for §3.2 — everything the round-closed signal
+counts already exists in `EventAssignment`. The rest are ordered by what they
+block: a clock (§4.2), a channel (§4.4), or nothing at all (§4.1).
 
-### 4.1 Events cannot express how many people a role needs — blocking
+### 4.1 Events cannot express how many people a role needs — *not* blocking
 
-This is the one that blocks the threshold idea, and it is a schema gap rather
-than a design choice.
+**Not a prerequisite for anything in §3.2** — the response-completion model
+counts invitations, which the schema already supports. Recorded here because it
+is a real gap that bounds what the notifications can *claim*, and because an
+earlier draft of this doc wrongly treated it as the blocker.
 
 ```prisma
 model Event {
@@ -461,15 +532,14 @@ const merged = [...new Set([...event.rolesNeeded, ...roles])];
 So an event can say *"we need a guitarist, a drummer, and BGVs"*. It cannot say
 *"we need one guitarist, one drummer, and three BGVs."* The consequences:
 
-- **There is no denominator.** "Notify at 12 accepted" has nothing to compare 12
-  against. `rolesNeeded.length` is the count of distinct role *types* — capped
-  at 12 by the enum — not the number of people wanted.
-- **`FULL` is currently only computable in a weak sense:** every distinct role
-  has at least one `ACCEPTED` assignment. That is exactly the test the expiry
-  cron already makes when it drops roles that have since been filled
-  (`app/api/cron/expire-invitations/route.ts`, the `filled` set). An event
-  wanting three BGVs reads as fully staffed the moment one accepts.
-- **A coverage percentage is not computable at all.**
+- **"Is this event actually staffed?" is not answerable.** The strongest
+  available test is the one the expiry cron already makes — every distinct role
+  has at least one `ACCEPTED` assignment (`app/api/cron/expire-invitations/route.ts`,
+  the `filled` set). An event wanting three BGVs reads as staffed the moment one
+  accepts.
+- **Which is why §3.2 reports response completion instead.** "All 12 answered,
+  9 accepted" is a claim the schema can actually support. "You are fully
+  staffed" is not, today — and saying it wrongly is worse than not saying it.
 
 Evidence this wall has already been hit: `components/dashboard/events/event-status-card.tsx`
 is a fully commented-out component whose dead code is
@@ -500,20 +570,21 @@ model EventRoleSlot {
 }
 ```
 
-Then `gap = Σ needed − count(ACCEPTED)` per event, and per role, and everything
-in §3.2 becomes computable. `EventTemplate.rolesNeeded` needs the same
-treatment so recurring services carry their counts.
+Then `Σ needed − count(ACCEPTED)` is a real shortfall, per event and per role.
+That unlocks a genuine "fully staffed" signal, a shortfall figure in the T-3
+escalation, and the dormant status card. `EventTemplate.rolesNeeded` needs the
+same treatment so recurring services carry their counts.
 
 Migration is the real cost: backfill one `EventRoleSlot{ needed: 1 }` per entry
 in each event's existing `rolesNeeded`, which preserves today's exact semantics,
 then move the ~10 read sites (`lib/actions/event.ts:233, 1234, 1314, 1343,
 1445, 1580`, `components/dashboard/events/event-assignment-section.tsx:119`) over.
-Not hard, but it is a day of careful work and **every staffing-state
-notification depends on it.**
+Not hard, but it is a day of careful work — which is exactly why it should not
+gate the notification work. Ship §3.2 against the invite count first.
 
-Worth doing regardless of notifications — "we need 3 BGVs" is a real scheduling
-need that the product cannot currently express, and `event-status-card.tsx`
-suggests it has already been missed once.
+Worth doing on its own merits, though: "we need 3 BGVs" is a real scheduling
+need the product cannot express, and `event-status-card.tsx` suggests it has
+been missed once already.
 
 ### 4.2 Organizations need a real timezone — blocking
 
@@ -628,37 +699,45 @@ that, but probably not much finer:
 Reordered around the user feedback. The principle: **fix "I have to check" over
 a channel that already works before building new channels.**
 
-1. **`EventRoleSlot`** (§4.1). Blocks every staffing-state signal — no gap, no
-   digest content, no `gap → 0`. Biggest single prerequisite; worth doing on its
-   own merits. Revives `event-status-card.tsx` for free.
-2. **`Organization.timeZone`** (§4.2) + settings UI. Blocks the digest. Small.
-3. **`Notification` table** (§4.3). The dedupe ledger; needed before anything
-   scheduled can run safely. No UI yet, no inbox — just the ledger.
-4. **Ladder D: the daily admin digest.** The direct answer to the complaint,
-   over email, which already works. Sends whether or not anything changed.
-5. **Per-accept preference**, default off. One boolean; unblocks that user
-   immediately and settles the argument with data rather than opinion.
-6. **`gap → 0` milestone email.** Closes the loop early. One template, hooks
-   into `acceptEventInvitation`, reuses `eventStaffingRecipients` unchanged.
-7. **Ladder C: the T-3 escalation.** Small once the gap is computable.
-8. **Ladder A** (invite-expiry reminders to volunteers). Directly reduces the
-   lapse rate, which reduces the admin notices we already send.
-9. **Push infrastructure** (§4.4) — device tokens, provider, lifecycle. Then
-   mirror ladders A/D and the immediate layer onto it.
-10. **Ladder B** (event reminders, condensed per person per day).
-11. **Ladder C fuller preferences** (§4.5) and per-role digest granularity.
-12. **SMS**, entitlement-gated, for T-24h and AT_RISK only.
+1. **`Notification` table** (§4.3). The dedupe ledger. Nothing scheduled or
+   once-only can run safely without it, and `responses-complete:...` is the
+   first key it carries. No UI, no inbox — just the ledger.
+2. **Round-closed email** — `outstanding → 0`, with the tally. Pure application
+   logic over rows that already exist; hooks into `acceptEventInvitation`,
+   `declineEventInvitation`, and the expiry sweep. **This is the one that
+   answers the original question**, and it needs no migration.
+3. **Per-accept preference**, default off. One boolean; unblocks the user who
+   asked and settles the default with data rather than opinion (§7).
+4. **Ladder C: the T-3 escalation.** Same count, a date filter, and a widened
+   recipient list. Small.
+5. **`Organization.timeZone`** (§4.2) + settings UI. Needed before anything
+   fires on a clock rather than on an event.
+6. **Ladder A** (invite-expiry reminders to volunteers). Directly reduces the
+   lapse rate — which reduces how often steps 2 and 4 have bad news to carry.
+7. **The digest**, opt-in (Ladder D).
+8. **Push infrastructure** (§4.4) — device tokens, provider, lifecycle. Then
+   mirror the three layers onto it.
+9. **Ladder B** (event reminders, condensed per person per day).
+10. **`EventRoleSlot`** (§4.1) — upgrades "everyone answered" to "you are
+    actually staffed", and revives `event-status-card.tsx`.
+11. **Fuller preferences** (§4.5).
+12. **SMS**, entitlement-gated, for T-24h and the T-3 escalation only.
 
-Steps 1–4 are the smallest set that answers the feedback. Step 1 is the bulk of
-the work and the one to scope first; 4–7 are each small once it lands.
+**Steps 1–2 are the whole answer to the original question** and involve no
+schema change beyond the ledger. Everything past step 4 is expansion.
 
 ---
 
-## 6. Open questions — decide before step 3
+## 6. Open questions — the first two decide step 2's copy
 
-- **Should `gap → 0` fire per role or per event?** Per event is calmer. Per role
-  is more useful for a worship pastor who only cares that they have a drummer.
-  `EventRoleSlot` makes both computable, so this can stay a preference.
+- **Does the round-closed email fire when *nobody* accepted?** `outstanding → 0`
+  with twelve declines is technically "everyone answered" and is really an
+  emergency. Same trigger, very different subject line — worth branching the
+  copy rather than the trigger.
+- **Does withdrawing an invite close a round?** Cancelling the last outstanding
+  invite drives `outstanding` to zero with nobody having answered. It probably
+  should not mail — the admin just did it and knows. Guard on whether the last
+  transition was actually a response.
 - **What `needed` default does the `EventRoleSlot` backfill use?** `1` per
   existing role preserves today's exact semantics and is the safe migration.
   But it silently under-counts every event that has been wanting three BGVs all
@@ -668,7 +747,7 @@ the work and the one to scope first; 4–7 are each small once it lands.
   that person — the system did. Argument for: they should know who is actually
   playing. Argument against: `AUTO_INVITE_SENT` already lands in the feed, and
   the point of auto-fill is that it handles it. Leaning: feed only, unless it
-  completes the event (then it is a `gap → 0` anyway).
+  closes the round (then it is a round-closed email anyway).
 - **Is the org-wide activity feed a notification surface or an audit log?** It
   is currently an audit log. If the inbox in §4.3 is per-user, these stay
   separate and the feed keeps doing what it does. Worth confirming before
