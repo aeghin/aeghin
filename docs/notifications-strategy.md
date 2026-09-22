@@ -12,7 +12,7 @@ Revised twice against user feedback:
   and it broke the inbox-first model — see §2 and §3.4.
 - *Notify at a threshold of **people invited**, not per response.* Also correct,
   and cheaper than the role-based reading this doc first gave it. §3.2 is built
-  on that count now, and it needs no migration. `EventRoleSlot` (§4.1) went from
+  on that count now, and it needs no migration. `EventRoleSlot` (§4.2) went from
   "blocking" to "worth doing later."
 
 The current recommendation is the three-layer contract in §3.2.
@@ -298,7 +298,7 @@ sweep matters — "everyone has responded" can be reached by the last person
 **What this does not tell you.** It measures *response completion*, not
 *staffing adequacy*. Invite 5 people to an event that needs 12 and it will
 cheerfully report that everyone responded. The system does not know true need —
-that is the `EventRoleSlot` gap in §4.1, which is a real limitation but **not a
+that is the `EventRoleSlot` gap in §4.2, which is a real limitation but **not a
 blocker for any of this**, and worth deferring.
 
 **Skip intermediate thresholds.** "8 of 12 have answered" is not actionable —
@@ -399,6 +399,32 @@ about to close themselves out. **The escalation's value is the widened audience 
 subject line:** an event three days out with holes in it has stopped being one admin's
 problem and become the organization's.
 
+**The window should depend on `smartSchedulingEnabled`.** This is the biggest
+single refinement in the cadence section, and it is what makes the escalation
+actually useful to the orgs that need it most.
+
+| | On decline | What the admin must do | Escalate at |
+| --- | --- | --- | --- |
+| **Smart scheduling ON** | `findBestReplacement` auto-invites the next eligible member | Nothing, usually | **T-3d** — a backstop for when auto-fill finds nobody |
+| **Smart scheduling OFF** | `notifyShortage("Auto-fill is off…")`, and the slot just sits there | Notice → pick someone → invite → **wait for them to answer** | **T-7d** |
+
+The asymmetry is that last column. With smart scheduling off, closing a gap
+requires a *whole second invitation round*, and the new invitation needs as long
+to be answered as the first one did. If the median response takes two days (§7
+measures this), an escalation at T-3 leaves no room for the replacement to
+reply — the admin is told about a problem they can no longer fix in time.
+
+Same code, different constant:
+
+```ts
+const ESCALATE_DAYS = event.smartSchedulingEnabled ? 3 : 7;
+```
+
+This is also the honest answer to *"being notified is the biggest win for
+someone not using smart scheduling."* It is — but only if the notice arrives
+with enough runway to act on. A perfectly worded email at T-1 is the same
+outcome as no email at all.
+
 Condition it on **`outstanding > 0`** — people who have not answered — which is
 the same count the round-closed signal watches. Declines are *not* a condition
 here: a decline already sent its own immediate email, and re-raising it at T-3
@@ -440,7 +466,7 @@ is substantially about a missing *channel*.
 | --- | --- | --- |
 | **Push** | **Absent.** RN client exists, no infra | Primary for time-sensitive: new assignment, decline, T-24h, digest tap-through |
 | **Email** | 13 senders, solid plumbing | Primary for substance and for anyone without the app; the durable record |
-| **In-app inbox** | Absent | *Not* a channel. A read model + dedupe ledger (§4.3) |
+| **In-app inbox** | Absent | *Not* a channel. A read model + dedupe ledger (§4.4) |
 | **SMS** | `twilio` installed, commented out at `lib/actions/invitation.ts:26,125`; `User.phoneNumber` already synced from Clerk (`app/api/webhooks/route.ts:34`) | Terminal escalation only — T-24h, AT_RISK |
 
 Three rules:
@@ -450,7 +476,7 @@ Three rules:
   you act, not a condition on being told.
 - **Push and email carry the same signal, deduped per person per signal.** Push
   is the tap on the shoulder, email is the detail. The `Notification.dedupeKey`
-  in §4.3 is what keeps them from double-firing.
+  in §4.4 is what keeps them from double-firing.
 - **SMS stays last and stays gated.** It costs real money per send and it is the
   channel that makes people quit. Worth putting behind a Stripe entitlement
   (`lib/billing/entitlements.ts`) — monetization hook and natural volume limiter
@@ -505,11 +531,59 @@ drummer who accepted forty minutes back.
 
 ## 4. Schema and infrastructure gaps
 
-§4.3 is the only hard prerequisite for §3.2 — everything the round-closed signal
+§4.4 is the only hard prerequisite for §3.2 — everything the round-closed signal
 counts already exists in `EventAssignment`. The rest are ordered by what they
-block: a clock (§4.2), a channel (§4.4), or nothing at all (§4.1).
+block: a clock (§4.3), a channel (§4.5), or nothing at all (§4.2).
 
-### 4.1 Events cannot express how many people a role needs — *not* blocking
+### 4.1 Invite expiry is not clamped to the event date — bug, and the direct cause
+
+This is the mechanism behind "they check a day before and see open slots or
+expired spots." An invitation's deadline is computed purely from *now*, with no
+reference to when the event actually happens. Four write sites, none of which
+read the event's dates:
+
+| Site | Window |
+| --- | --- |
+| `lib/actions/event.ts:354` — `createEvent` | 3 / 5 / 7 days from now |
+| `lib/actions/event.ts:1559`, `:1572` — `inviteMembersToEvent` | 3 / 5 / 7 days from now |
+| `lib/actions/event.ts:1019` — `resendEventInvitation` | `RESEND_EXPIRY_DAYS = 3` |
+| `lib/actions/event.ts:715` — smart-fill replacement | 7-day fallback |
+
+```ts
+expiresAt: new Date(Date.now() + expiresAt * 24 * 60 * 60 * 1000)
+```
+
+**So an invitation can outlive the event it is for.** Invite someone two days
+before a service with a 7-day window and the invite expires five days *after*
+the service. That row:
+
+- never flips to `EXPIRED` before the event, so the hourly sweep never selects
+  it and `notifyLapsedAssignments` **never fires for it**;
+- renders as amber "Pending" on the roster right through the event and past it;
+- is precisely the unresolved slot an admin discovers the day before.
+
+No notification design fixes this, because there is no event to notify *on*. The
+signal the admin needs — "this person is not coming" — is never generated.
+
+**Fix:**
+
+```ts
+const window = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+const cutoff = new Date(eventStart.getTime() - GRACE_MS); // e.g. 24h before
+expiresAt = window < cutoff ? window : cutoff;
+```
+
+A one-line clamp at four sites. It guarantees every invitation resolves —
+answered or lapsed — while there is still time to do something, which is what
+makes the lapse notification worth sending at all. **Do this first.** It is the
+cheapest item in this document and the highest-leverage.
+
+Watch the degenerate case: an event created for *tomorrow* leaves a window of
+hours, not days. That is correct behaviour (a deadline after the event is
+meaningless), but the create form should say so rather than silently shrinking
+the admin's 7-day choice to six hours.
+
+### 4.2 Events cannot express how many people a role needs — *not* blocking
 
 **Not a prerequisite for anything in §3.2** — the response-completion model
 counts invitations, which the schema already supports. Recorded here because it
@@ -565,8 +639,8 @@ model EventRoleSlot {
   eventId String
   event   Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
 
-  @@unique([eventId, role])
-  @@index([eventId])
+  unique([eventId, role])
+  index([eventId])
 }
 ```
 
@@ -586,7 +660,7 @@ Worth doing on its own merits, though: "we need 3 BGVs" is a real scheduling
 need the product cannot express, and `event-status-card.tsx` suggests it has
 been missed once already.
 
-### 4.2 Organizations need a real timezone — blocking
+### 4.3 Organizations need a real timezone — blocking
 
 Right now **every** datetime in the product is floating UTC wall-clock. The
 create form appends `Z` to whatever the admin typed, and `lib/email/event-when.ts`
@@ -610,7 +684,7 @@ This blocks the Ladder D digest specifically: a digest that arrives at an
 unpredictable local hour is not a digest anyone can build a habit around, and
 habit is the entire mechanism by which it replaces opening the app.
 
-### 4.3 Reminders need a dedupe key — blocking
+### 4.4 Reminders need a dedupe key — blocking
 
 The existing cron gets deduplication **for free** from the `PENDING → EXPIRED`
 transition: a flipped row can never be selected again, so nobody is mailed
@@ -621,7 +695,7 @@ so the next hourly tick sends it again. And again. This is the single biggest
 engineering risk in the whole plan.
 
 Recommended: a notification log where a unique constraint does the work —
-mirroring how `@@unique([eventId, userId])` already guards assignments.
+mirroring how `unique([eventId, userId])` already guards assignments.
 
 ```prisma
 model Notification {
@@ -643,15 +717,15 @@ model Notification {
   emailedAt      DateTime?
   createdAt      DateTime @default(now())
 
-  @@index([userId, organizationId, readAt])
-  @@index([eventId])
+  index([userId, organizationId, readAt])
+  index([eventId])
 }
 ```
 
 This one table does triple duty: dedupe key, in-app inbox read model, and the
 read-state signal that decides whether email escalates. Build it once.
 
-### 4.4 Push notifications — the largest single piece of missing work
+### 4.5 Push notifications — the largest single piece of missing work
 
 Nothing in the schema or the API supports push. This is net-new:
 
@@ -662,14 +736,14 @@ Nothing in the schema or the API supports push. This is net-new:
   it is the difference between a day and a week.**
 - Token lifecycle: tokens rotate and go stale, and dead tokens must be reaped on
   provider rejection or the send queue silently rots.
-- A `pushedAt` column alongside `emailedAt` on `Notification` (§4.3), so the two
+- A `pushedAt` column alongside `emailedAt` on `Notification` (§4.4), so the two
   channels dedupe against one shared ledger.
 
 Sequenced after the digest in §5 because the digest fixes the stated complaint
 over a channel that already works, while push is a multi-day project. But push
 is what makes the fix feel native rather than like more email.
 
-### 4.5 Preferences
+### 4.6 Preferences
 
 Start coarse. A `NotificationPreference` row per `(user, organization)` with a
 handful of booleans and a digest-time field beats a per-type matrix nobody will
@@ -678,53 +752,108 @@ configure. Org-level defaults set by owners, user-level overrides.
 The one thing worth having on day one is a **mute/DND window**, so the T-12h
 ladder cannot fire at 3am.
 
-### 4.6 Scheduler shape
+### 4.7 Scheduler shape — cron for everything, with one exception
 
-`vercel.json` runs one hourly cron. Reminder ladders need finer resolution than
-that, but probably not much finer:
+**Recommendation: compute notifications in a cron, not inline in the actions.**
+
+The decisive argument is not preference, it is that **the cron path is required
+whether you want it or not.** A round can close because the last outstanding
+invitation *expired* — nobody clicked anything, no server action ran, and only
+the hourly sweep knows it happened. The same is true of every T-minus signal:
+"three days out and two people are quiet" is a fact about the passage of time,
+not about anything a user did.
+
+So a cron has to exist regardless. Given that, an inline path in
+`acceptEventInvitation` / `declineEventInvitation` buys **at most one cron
+interval of latency** and costs a second implementation of the same logic that
+must agree with the first. That is a bad trade for a signal nobody is standing
+by for.
+
+The principle worth writing down:
+
+> **Notify from state, not from actions — unless a person is waiting on the
+> answer.**
+
+Which gives a clean split:
+
+| Shape | Examples | Where |
+| --- | --- | --- |
+| **Someone just did something, and another person needs to know now** | Decline → shortage email; removed from event; event canceled or updated | **Inline**, via `after()` — already built, leave it |
+| **Something is now true of the world** | Round closed; T-3 quiet; invite expiring in 48h; digest | **Cron** — recompute from rows, no event to miss |
+
+Three properties that fall out of the cron shape and are worth naming, because
+they are the reason it is the right default:
+
+- **Idempotent by construction.** It recomputes state rather than reacting to an
+  edge, so a missed tick, a redeploy mid-run, or a duplicate invocation changes
+  nothing. An inline trigger that fails is lost permanently and silently.
+- **Naturally batched.** One run sees every event at once, so bundling across
+  events for a single recipient is free (§3.5) rather than requiring a queue.
+- **Testable without a request.** You can run the sweep against a seeded
+  database and assert on what it would send.
+
+The ledger (§4.4) is what makes it safe to add an inline fast path *later*, as a
+pure latency optimization, without risking a double-send — the `dedupeKey`
+unique constraint resolves the race whichever path gets there first. Don't build
+that until someone asks for it.
+
+**Concretely:**
 
 - Keep `expire-invitations` hourly and untouched.
-- Add `/api/cron/notifications` at **every 15 min**, which is precise enough for
-  T-48h/T-24h/T-12h windows and cheap.
+- Add `/api/cron/notifications` at **every 15 minutes** — precise enough for
+  every window in §3.3, and cheap.
 - Reuse the sweep discipline verbatim: `CRON_SECRET` + `timingSafeEqual`, a
   `SWEEP_LIMIT` cap, a `NOTIFY_WINDOW` backlog guard, and — critically — the
-  **re-check-at-send-time** pattern from `notifyLapsedAssignments`. A reminder
-  queued at T-48h must re-verify the invite is still `PENDING` and the role
-  still unfilled at the moment it sends.
+  **re-check-at-send-time** pattern from `notifyLapsedAssignments`. Anything
+  queued at T-48h must re-verify the invitation is still outstanding at the
+  moment it sends.
+
+One ordering note: the round-closed check must run **after** the expiry sweep
+within a tick, or an expiry that closes a round is seen a tick late. Either
+fold it into `expire-invitations` or have the notifications cron read the
+sweep's own output.
 
 ---
 
 ## 5. Suggested order of work
 
-Reordered around the user feedback. The principle: **fix "I have to check" over
-a channel that already works before building new channels.**
+Reordered around the user feedback. Two principles: **fix the reason the signal
+never fires before designing the signal**, and **use the channel that already
+works before building new ones.**
 
-1. **`Notification` table** (§4.3). The dedupe ledger. Nothing scheduled or
+1. **Clamp invite expiry to the event date** (§4.1). A bug fix, roughly an
+   hour, and nothing downstream is worth much without it: an invitation that
+   outlives its event never lapses, never notifies, and is exactly the
+   unresolved slot found the day before.
+2. **`Notification` table** (§4.4). The dedupe ledger. Nothing scheduled or
    once-only can run safely without it, and `responses-complete:...` is the
    first key it carries. No UI, no inbox — just the ledger.
-2. **Round-closed email** — `outstanding → 0`, with the tally. Pure application
+3. **Round-closed email** — `outstanding → 0`, with the tally. Pure application
    logic over rows that already exist; hooks into `acceptEventInvitation`,
    `declineEventInvitation`, and the expiry sweep. **This is the one that
    answers the original question**, and it needs no migration.
-3. **Per-accept preference**, default off. One boolean; unblocks the user who
+4. **Per-accept preference**, default off. One boolean; unblocks the user who
    asked and settles the default with data rather than opinion (§7).
-4. **Ladder C: the T-3 escalation.** Same count, a date filter, and a widened
-   recipient list. Small.
-5. **`Organization.timeZone`** (§4.2) + settings UI. Needed before anything
+5. **Ladder C: the staffing escalation** (T-3 with smart scheduling, T-7
+   without). Same count as step 3, plus a date filter and a widened recipient
+   list. Small.
+6. **`Organization.timeZone`** (§4.3) + settings UI. Needed before anything
    fires on a clock rather than on an event.
-6. **Ladder A** (invite-expiry reminders to volunteers). Directly reduces the
-   lapse rate — which reduces how often steps 2 and 4 have bad news to carry.
-7. **The digest**, opt-in (Ladder D).
-8. **Push infrastructure** (§4.4) — device tokens, provider, lifecycle. Then
+7. **Ladder A** (nudge the volunteer before their invitation lapses). Worth
+   pulling forward for orgs without smart scheduling: it prevents the gap
+   instead of reporting it, and a lapse that never happens needs no admin
+   intervention at all. Reduces how often steps 3 and 5 carry bad news.
+8. **The digest**, opt-in (Ladder D).
+9. **Push infrastructure** (§4.5) — device tokens, provider, lifecycle. Then
    mirror the three layers onto it.
-9. **Ladder B** (event reminders, condensed per person per day).
-10. **`EventRoleSlot`** (§4.1) — upgrades "everyone answered" to "you are
+10. **Ladder B** (event reminders, condensed per person per day).
+11. **`EventRoleSlot`** (§4.2) — upgrades "everyone answered" to "you are
     actually staffed", and revives `event-status-card.tsx`.
-11. **Fuller preferences** (§4.5).
-12. **SMS**, entitlement-gated, for T-24h and the T-3 escalation only.
+12. **Fuller preferences** (§4.6).
+13. **SMS**, entitlement-gated, for T-24h and the staffing escalation only.
 
-**Steps 1–2 are the whole answer to the original question** and involve no
-schema change beyond the ledger. Everything past step 4 is expansion.
+**Steps 1–3 are the whole answer to the original question** and involve no
+schema change beyond the ledger. Everything past step 5 is expansion.
 
 ---
 
@@ -749,7 +878,7 @@ schema change beyond the ledger. Everything past step 4 is expansion.
   the point of auto-fill is that it handles it. Leaning: feed only, unless it
   closes the round (then it is a round-closed email anyway).
 - **Is the org-wide activity feed a notification surface or an audit log?** It
-  is currently an audit log. If the inbox in §4.3 is per-user, these stay
+  is currently an audit log. If the inbox in §4.4 is per-user, these stay
   separate and the feed keeps doing what it does. Worth confirming before
   building the bell, since merging them later is painful.
 - **How does this interact with `autoAssigned`?** An auto-assigned volunteer
@@ -759,7 +888,7 @@ schema change beyond the ledger. Everything past step 4 is expansion.
   becomes a per-admin toggle, two admins on the same event can disagree, which
   is fine. But an *org-level* default that an owner sets is probably the thing
   people actually want to configure, with per-admin overrides on top — same
-  shape as §4.5.
+  shape as §4.6.
 - **Per-org volume ceiling?** Resend is 10 req/s per team, and
   `sendEmailBatches` already chunks for it — but that is a *platform-wide*
   budget being spent by individual orgs' crons. Worth modeling before ladders
