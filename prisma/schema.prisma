@@ -108,6 +108,7 @@ model User {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  notifications Notification[]
 }
 
 model Organization {
@@ -135,6 +136,7 @@ model Organization {
 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  notifications Notification[]
 }
 
 model Membership {
@@ -273,6 +275,18 @@ model Event {
   // the next best available member for that role.
   smartSchedulingEnabled Boolean @default(false)
 
+  // When the roster last became fully staffed: every role has someone who
+  // accepted, and nobody is still deciding. Null whenever that isn't true.
+  // Claimed atomically by syncEventNotifications, which is what makes the
+  // "fully staffed" email go out once per fill-up instead of once per
+  // reconcile.
+  fullyStaffedAt DateTime?
+
+  // How far the pre-event staffing check has got: 0 none yet, 1 the 3-day
+  // check, 2 the 1-day check. Claimed by the hourly cron so each check runs
+  // once, and reset to 0 when the event's dates change.
+  lastCallStage Int @default(0)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -296,6 +310,7 @@ model Event {
   @@index([createdById])
   @@index([serviceTypeId])
   @@index([organizationId])
+  notifications Notification[]
 }
 
 model EventAssignment {
@@ -529,4 +544,59 @@ model SongKeyEntry {
   @@unique([userId, songId])
   @@index([userId, organizationId])
   @@index([songId])
+}
+
+enum NotificationCategory {
+  // Admin-facing: this event has roles nobody has taken.
+  ROSTER_ATTENTION
+  // Volunteer-facing: this event is waiting on your answer.
+  AWAITING_RESPONSE
+  // Admin-facing: every role is confirmed and nobody is still deciding.
+  FULLY_STAFFED
+}
+
+/// A pointer at an event that needs someone's attention — not a record that
+/// something happened. That is ActivityLog's job, and this is deliberately its
+/// opposite in three ways:
+///
+///   - Nothing is snapshotted. ActivityLog copies names into strings so a row
+///     survives the event being deleted; a notification is a claim about right
+///     now, so `eventId` cascades and the names are joined live. A row can
+///     never outlive, or disagree with, what it points at.
+///   - One row per person per event per category, upserted rather than
+///     appended. Five declines do not make five rows — they move `count` on the
+///     one row that is already there.
+///   - Rows are deleted once resolved, so the bell empties itself.
+///
+/// `count` is the only detail carried: open roles for ROSTER_ATTENTION, and
+/// always 1 for AWAITING_RESPONSE and FULLY_STAFFED, where the row's existence
+/// is the message. Everything else is a tap away in the app.
+model Notification {
+  id String @id @default(uuid())
+  category NotificationCategory
+
+  count Int @default(0)
+
+  // Null once read. Re-set only when `count` rises — a roster getting better is
+  // not news, and re-pinging on every accept is how a bell trains people to
+  // ignore it.
+  unreadAt DateTime?
+
+  eventId String
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  organizationId String
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // The reconcile's upsert key, and what makes calling it twice harmless.
+  @@unique([userId, eventId, category])
+  @@index([userId, updatedAt])
+  @@index([eventId])
+  @@index([organizationId])
 }

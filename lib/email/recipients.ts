@@ -87,3 +87,37 @@ export async function inviteSenderRecipients(
     rows.map((row) => [`${row.organizationId}:${row.userId}`, row.user]),
   );
 }
+
+/**
+ * The same escalation as `eventStaffingRecipients`, as user ids.
+ *
+ * Notifications need who, not where — but the rule for who is responsible for
+ * an event's roster must not exist twice, or the bell and the email will
+ * eventually disagree about whose problem a hole is. So this mirrors that
+ * function exactly: the creator while they can still act on it, and the owners
+ * when they cannot.
+ */
+export async function eventStaffingWatcherIds(
+  organizationId: string,
+  createdById: string | null,
+): Promise<string[]> {
+  if (createdById) {
+    const creator = await prisma.membership.findUnique({
+      where: {
+        userId_organizationId: { userId: createdById, organizationId },
+      },
+      select: { role: true, userId: true },
+    });
+
+    if (creator && creator.role !== OrgRole.MEMBER) {
+      return [creator.userId];
+    }
+  }
+
+  const owners = await prisma.membership.findMany({
+    where: { organizationId, role: OrgRole.OWNER },
+    select: { userId: true },
+  });
+
+  return owners.map((owner) => owner.userId);
+}

@@ -9,6 +9,7 @@ import { volunteerRoleLabels } from "@/lib/activity";
 import EventInviteExpiredEmail, {
     type LapsedInvite,
 } from "@/components/email/event-invite-expired-template";
+import EventLastCallEmail from "@/components/email/event-last-call-template";
 import { formatEventWhen } from "@/lib/email/event-when";
 import { organizationSender } from "@/lib/email/organization";
 import {
@@ -17,6 +18,7 @@ import {
     type EmailRecipient,
 } from "@/lib/email/recipients";
 import { sendEmailBatches } from "@/lib/email/send";
+import { syncEventNotifications } from "@/lib/notifications/sync";
 
 /**
  * Hourly sweep that turns lapsed invitations into `EXPIRED` rows.
@@ -47,6 +49,41 @@ import { sendEmailBatches } from "@/lib/email/send";
  * next hour still has work, so a backlog is visible rather than silent.
  */
 const SWEEP_LIMIT = 2000;
+
+/**
+ * Seconds this tick may run for. 60 is the ceiling every Vercel plan allows, so
+ * it is safe to deploy anywhere; raise it if this project is on a plan with a
+ * larger budget. Without it the route takes the platform default, which is well
+ * under what a backlog sweep plus its follow-up work can need.
+ */
+export const maxDuration = 60;
+
+/**
+ * Most events one tick will reconcile notifications for.
+ *
+ * The set is every event near enough in time to matter, plus whatever the sweep
+ * touched and whatever already holds rows, so in a busy season it is not small.
+ * It is taken soonest first, so when this binds it is the far-future events
+ * that wait — and those are kept right by the roster actions anyway, each of
+ * which reconciles its own event. At ~120ms a reconcile, ten at a time, the
+ * whole cap is a few seconds.
+ */
+const RECONCILE_LIMIT = 300;
+
+/**
+ * Days before an event's first block that the staffing check runs, furthest
+ * first. A check's stage is its position here plus one, which is the number
+ * `Event.lastCallStage` records.
+ */
+const LAST_CALL_DAYS = [3, 1];
+
+/**
+ * Most events one tick will check. The window is three days wide and an event
+ * is looked at twice in its life, so this only binds on a backlog.
+ */
+const LAST_CALL_LIMIT = 200;
+
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
  * Vercel Cron sends `Authorization: Bearer $CRON_SECRET` on every invocation
@@ -314,6 +351,164 @@ const notifyLapsedAssignments = async (
     };
 };
 
+/**
+ * Tells whoever runs an event, about three days out and again about one day
+ * out, that it isn't fully staffed — so nobody opens the roster the morning of
+ * the service and finds the hole for the first time.
+ *
+ * "Fully staffed" is the bell's test: every role has somebody who accepted, and
+ * nobody is still deciding. The email lists both halves of what is missing,
+ * roles with nobody on them and invitations still unanswered, because an invite
+ * sent the week of a service may not lapse until after it — and until then
+ * nothing else would ever mention it.
+ *
+ * Each check is claimed on `lastCallStage` before anything is sent, so two
+ * overlapping ticks cannot both mail it, and it runs once whatever it finds:
+ * fully staffed at three days out means no three-day email at all, rather than
+ * one the moment somebody drops out — a dropout sends its own.
+ *
+ * Event times are floating wall clock pinned to Z (see LIVE_GRACE_MS in
+ * lib/notifications/sync.ts), so "three days before" is measured against a
+ * start that reads several hours early for an organization west of UTC. The
+ * email lands a few hours ahead of the mark rather than on it — fine for a
+ * day-granular heads-up, and not fixable without storing a time zone.
+ */
+const sendLastCalls = async (now: Date): Promise<NotifyResult> => {
+
+    const events = await prisma.event.findMany({
+        where: {
+            lastCallStage: { lt: LAST_CALL_DAYS.length },
+            dates: {
+                some: {
+                    startTime: {
+                        gt: now,
+                        lte: new Date(now.getTime() + LAST_CALL_DAYS[0] * DAY_MS),
+                    },
+                },
+            },
+        },
+        select: {
+            id: true,
+            name: true,
+            organizationId: true,
+            createdById: true,
+            createdAt: true,
+            lastCallStage: true,
+            rolesNeeded: true,
+            dates: { select: { startTime: true, endTime: true } },
+            organization: { select: { name: true, logoUrl: true } },
+            assignments: {
+                select: {
+                    role: true,
+                    status: true,
+                    expiresAt: true,
+                    user: { select: { firstName: true, lastName: true } },
+                },
+            },
+        },
+        take: LAST_CALL_LIMIT,
+    });
+
+    const perEvent = await Promise.all(
+        events.map(async (event) => {
+
+            if (event.rolesNeeded.length === 0 || event.dates.length === 0) return [];
+
+            const firstStart = Math.min(
+                ...event.dates.map((date) => date.startTime.getTime()),
+            );
+
+            // Already underway. The bell and the lapse mail are still running;
+            // a heads-up now would only be noise.
+            if (firstStart <= now.getTime()) return [];
+
+            // The furthest-along check whose moment has passed. An event first
+            // seen inside one day gets the one-day email only, not both at once.
+            let stage = 0;
+
+            LAST_CALL_DAYS.forEach((days, index) => {
+                if (now.getTime() >= firstStart - days * DAY_MS) stage = index + 1;
+            });
+
+            if (stage <= event.lastCallStage) return [];
+
+            const { count } = await prisma.event.updateMany({
+                where: { id: event.id, lastCallStage: { lt: stage } },
+                data: { lastCallStage: stage },
+            });
+
+            if (count === 0) return [];
+
+            // Created after this check's moment had already passed: whoever made
+            // a service for tomorrow knows it isn't staffed yet. The stage stays
+            // claimed, so the check is spent rather than retried every hour.
+            const dueAt = firstStart - LAST_CALL_DAYS[stage - 1] * DAY_MS;
+
+            if (event.createdAt.getTime() > dueAt) return [];
+
+            const confirmed = new Set(
+                event.assignments
+                    .filter((row) => row.status === InvitationStatus.ACCEPTED)
+                    .map((row) => row.role),
+            );
+
+            const waiting = event.assignments.filter(
+                (row) => row.status === InvitationStatus.PENDING && row.expiresAt > now,
+            );
+
+            const fullyStaffed =
+                event.rolesNeeded.every((role) => confirmed.has(role)) &&
+                waiting.length === 0;
+
+            if (fullyStaffed) return [];
+
+            const deciding = new Set(waiting.map((row) => row.role));
+
+            const unfilledRoles = event.rolesNeeded
+                .filter((role) => !confirmed.has(role) && !deciding.has(role))
+                .map((role) => volunteerRoleLabels[role]);
+
+            const waitingOn = waiting.map((row) => ({
+                inviteeName: `${row.user.firstName} ${row.user.lastName}`,
+                roleLabel: volunteerRoleLabels[row.role],
+            }));
+
+            const recipients = await eventStaffingRecipients(
+                event.organizationId,
+                event.createdById,
+            );
+
+            const when = formatEventWhen(event.dates);
+
+            return recipients.map((recipient) => ({
+                from: organizationSender(event.organization.name),
+                to: recipient.email,
+                subject: `Not fully staffed yet: ${event.name}`,
+                react: EventLastCallEmail({
+                    recipientName: recipient.firstName,
+                    eventName: event.name,
+                    organizationName: event.organization.name,
+                    logoUrl: event.organization.logoUrl,
+                    unfilledRoles,
+                    waitingOn,
+                    eventDate: when?.date ?? null,
+                    eventTime: when?.time ?? null,
+                    viewLink: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/organizations/${event.organizationId}/events/${event.id}`,
+                }),
+            }));
+        }),
+    );
+
+    const messages = perEvent.flat();
+
+    await sendEmailBatches("expire-invitations last call", messages);
+
+    return {
+        emails: messages.length,
+        events: perEvent.filter((batch) => batch.length > 0).length,
+    };
+};
+
 export async function GET(req: Request) {
 
     if (!authorized(req)) {
@@ -435,6 +630,83 @@ export async function GET(req: Request) {
             );
         }
 
+        // The pre-event staffing check, in its own try/catch for the same reason.
+        let lastCall: NotifyResult = { emails: 0, events: 0 };
+        let lastCallFailed = false;
+
+        try {
+            lastCall = await sendLastCalls(now);
+        } catch (err) {
+            lastCallFailed = true;
+            console.error(
+                "GET /api/cron/expire-invitations: last-call check failed —",
+                err,
+            );
+        }
+
+        // The bell, last. It is the one piece of this tick that can afford to be
+        // late: a reconcile is idempotent and the next tick heals whatever this
+        // one misses, where the mail above cannot be retried — those rows are
+        // EXPIRED now and never selected again. So if anything here runs long,
+        // it is the bell that waits, not the mail.
+        //
+        // Three sets, deduped, most urgent first:
+        //
+        //   - the sweep's own events, whose counts just moved;
+        //   - events near enough in time to matter, soonest first, which is how
+        //     the bell fills after a deploy without a backfill, and how an event
+        //     that has simply finished gets its rows retired;
+        //   - events that still hold rows, which catches anything the horizon
+        //     missed — rows on a service further back than it, say, after the
+        //     cron has been down.
+        const horizon = new Date(now.getTime() - 2 * DAY_MS);
+
+        const [upcomingDates, rowHolders] = await Promise.all([
+            // Several blocks per event are possible, hence the headroom before
+            // deduping down to events.
+            prisma.eventDate.findMany({
+                where: { endTime: { gte: horizon } },
+                orderBy: { startTime: "asc" },
+                select: { eventId: true },
+                take: RECONCILE_LIMIT * 2,
+            }),
+            // Grouped in SQL. `distinct` would read every row and dedupe in
+            // memory.
+            prisma.notification.groupBy({
+                by: ["eventId"],
+                orderBy: { eventId: "asc" },
+                take: RECONCILE_LIMIT,
+            }),
+        ]);
+
+        const eventIds = [
+            ...new Set([
+                ...staleAssignments.map((row) => row.eventId),
+                ...upcomingDates.map((row) => row.eventId),
+                ...rowHolders.map((row) => row.eventId),
+            ]),
+        ];
+
+        const toReconcile = eventIds.slice(0, RECONCILE_LIMIT);
+        const reconcileSkipped = eventIds.length - toReconcile.length;
+
+        if (reconcileSkipped > 0) {
+            console.warn(
+                `GET /api/cron/expire-invitations: reconcile capped at ${RECONCILE_LIMIT}; ${reconcileSkipped} event(s) left for their next roster change.`,
+            );
+        }
+
+        // Bounded batches, so a backlog cannot turn into hundreds of round trips
+        // at once. Each call swallows its own failures, so one bad event cannot
+        // take the rest down.
+        for (let i = 0; i < toReconcile.length; i += 10) {
+            await Promise.all(
+                toReconcile
+                    .slice(i, i + 10)
+                    .map((eventId) => syncEventNotifications(eventId, expireTag)),
+            );
+        }
+
         return NextResponse.json({
             sweptAt: now.toISOString(),
             assignments: flippedAssignments.length,
@@ -443,6 +715,11 @@ export async function GET(req: Request) {
             notified: notified.emails,
             notifiedEvents: notified.events,
             notifyFailed,
+            lastCall: lastCall.emails,
+            lastCallEvents: lastCall.events,
+            lastCallFailed,
+            reconciled: toReconcile.length,
+            reconcileSkipped,
             // A full page on either table means there is very likely more
             // behind it; the next tick picks it up.
             hasMore:

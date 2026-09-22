@@ -4,6 +4,8 @@ import { NextRequest, after } from "next/server";
 import { revalidateTag } from "next/cache";
 import { ActivityType, OrgRole } from "@/generated/prisma/enums";
 import { UTApi } from "uploadthing/server";
+import { notifyDeparture } from "@/lib/email/departures";
+import { syncOrganizationNotifications } from "@/lib/notifications/sync";
 
 export async function POST(req: NextRequest) {
   const event = await verifyWebhook(req, {
@@ -143,6 +145,22 @@ export async function POST(req: NextRequest) {
     for (const a of user.assignedEvents) eventOrgById.set(a.eventId, a.organizationId);
     for (const s of user.setlistSongAssignment)
       eventOrgById.set(s.setlistSong.eventId, s.setlistSong.event.organizationId);
+
+    // Their spots on upcoming events, read before the cascade takes them: each
+    // one they still held is a role somebody now has to fill.
+    const departingSpots = await prisma.eventAssignment.findMany({
+      where: {
+        userId: user.id,
+        event: { dates: { some: { endTime: { gte: new Date() } } } },
+      },
+      select: {
+        eventId: true,
+        organizationId: true,
+        role: true,
+        status: true,
+        expiresAt: true,
+      },
+    });
 
     // Invites addressed to this email can sit in orgs they never joined.
     const invitedOrgs = await prisma.invitation.findMany({
@@ -310,6 +328,30 @@ export async function POST(req: NextRequest) {
       revalidateTag(`user-${userId}-org-${organizationId}-role`, { expire: 0 });
       revalidateTag(`user-${userId}-orgs`, { expire: 0 });
     }
+
+    // Roles just opened and owners may have changed hands, so the bell is
+    // recomputed now rather than left for the hourly cron. Surviving orgs
+    // only: a doomed one took its events, and their rows, with it.
+    const touch = (tag: string) => revalidateTag(tag, { expire: 0 });
+
+    for (const organizationId of survivingOrgIds) {
+      await syncOrganizationNotifications(organizationId, touch);
+    }
+
+    // And whoever runs the events this leaves short hears about it, as they
+    // would a decline — the cascade deleted the rows, so nothing else will.
+    after(async () => {
+      for (const organizationId of survivingOrgIds) {
+        await notifyDeparture({
+          organizationId,
+          departedName: `${user.firstName} ${user.lastName}`,
+          reason: "deleted",
+          spots: departingSpots.filter(
+            (spot) => spot.organizationId === organizationId,
+          ),
+        });
+      }
+    });
   }
 
   return new Response("Webhook received", { status: 200 });

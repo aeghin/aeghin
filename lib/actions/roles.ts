@@ -4,7 +4,13 @@ import { currentUser } from "@/lib/services/user";
 import prisma from "@/lib/prisma";
 import { ActivityType, OrgRole, VolunteerRole } from "@/generated/prisma/enums";
 import { revalidatePath, updateTag } from "next/cache";
+import { after } from "next/server";
 import { logActivity, orgRoleLabels } from "@/lib/activity";
+import { notifyDeparture } from "@/lib/email/departures";
+import {
+    clearMemberNotifications,
+    syncOrganizationNotifications,
+} from "@/lib/notifications/sync";
 import { userRoleSchema, UserRoleInput, assignOwnerSchema, AssignOwnerInput } from "../validations/roles";
 
 /**
@@ -81,6 +87,12 @@ export const updateUserRole = async (data: UserRoleInput, touch: TagInvalidator 
             }
         });
         
+        // A demotion to MEMBER takes away the right to staff an event, so the
+        // rows saying one needs staffing have to go with it — and a promotion
+        // earns them. `eventStaffingWatcherIds` already encodes both; this is
+        // what makes it run.
+        await syncOrganizationNotifications(organizationId, touch);
+
         await logActivity({
             organizationId,
             type: ActivityType.ROLE_CHANGED,
@@ -153,7 +165,7 @@ export const removeMember = async (userId: string, organizationId: string, touch
                 organizationId,
                 event: { dates: { some: { endTime: { gte: new Date() } } } },
             },
-            select: { eventId: true },
+            select: { eventId: true, role: true, status: true, expiresAt: true },
         });
 
         await prisma.$transaction([
@@ -174,6 +186,20 @@ export const removeMember = async (userId: string, organizationId: string, touch
                 where: { userId_organizationId: { userId, organizationId } },
             }),
         ]);
+
+        await clearMemberNotifications(userId, organizationId, touch);
+        await syncOrganizationNotifications(organizationId, touch);
+
+        // Their upcoming spots were deleted, not declined, so none of the
+        // decline or expiry mail fires for them.
+        after(() =>
+            notifyDeparture({
+                organizationId,
+                departedName: `${assignee.user.firstName} ${assignee.user.lastName}`,
+                reason: "removed",
+                spots: upcoming,
+            }),
+        );
 
         await logActivity({
             organizationId,
@@ -323,7 +349,7 @@ export const leaveOrganization = async (organizationId: string, touch: TagInvali
           organizationId,
           event: { dates: { some: { endTime: { gte: new Date() } } } },
       },
-      select: { eventId: true },
+      select: { eventId: true, role: true, status: true, expiresAt: true },
   });   
 
         
@@ -344,6 +370,20 @@ export const leaveOrganization = async (organizationId: string, touch: TagInvali
         }),
       ]);
       
+        await clearMemberNotifications(user.id, organizationId, touch);
+        await syncOrganizationNotifications(organizationId, touch);
+
+        // Their upcoming spots were deleted, not declined, so none of the
+        // decline or expiry mail fires for them.
+        after(() =>
+            notifyDeparture({
+                organizationId,
+                departedName: `${user.firstName} ${user.lastName}`,
+                reason: "left",
+                spots: upcoming,
+            }),
+        );
+
         await logActivity({
             organizationId,
             type: ActivityType.MEMBER_LEFT,
@@ -422,6 +462,8 @@ export const assignOwnerRole = async (data: AssignOwnerInput, touch: TagInvalida
                 role: OrgRole.OWNER
             }
         });
+
+        await syncOrganizationNotifications(organizationId, touch);
 
         await logActivity({
             organizationId,

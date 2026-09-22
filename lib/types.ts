@@ -1,6 +1,7 @@
 import type {
   InvitationStatus,
   KeyQuality,
+  NotificationCategory,
   Pitch,
   VolunteerRole,
 } from "@/generated/prisma/enums";
@@ -209,4 +210,26 @@ export type SongKeyEntry = {
     spotifyUrl: string | null
     youtubeUrl: string | null
   } | null
+}
+
+/**
+ * One bell row. Carries a count and nothing else on purpose — no role labels,
+ * no names, no "who declined". The app is one tap away and always right; a
+ * notification that repeats detail is a notification that can contradict it.
+ */
+export type NotificationItem = {
+  id: string
+  category: NotificationCategory
+  count: number
+  unread: boolean
+  eventId: string
+  eventName: string
+  organizationId: string
+  organizationName: string
+  updatedAt: Date
+}
+
+export type NotificationFeed = {
+  items: NotificationItem[]
+  unreadCount: number
 }

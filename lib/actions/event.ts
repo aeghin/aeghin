@@ -39,6 +39,10 @@ import { formatEventWhen, formatRehearsal, sameSchedule } from "@/lib/email/even
 import { organizationSender } from "@/lib/email/organization";
 import { eventStaffingRecipients } from "@/lib/email/recipients";
 import { sendEmailBatches } from "@/lib/email/send";
+import {
+  clearEventNotifications,
+  syncEventNotifications,
+} from "@/lib/notifications/sync";
 
 import {
   findBestReplacement,
@@ -415,6 +419,8 @@ export async function createEvent(
 
     revalidatePath(`/dashboard/organizations/${organizationId}`);
 
+    await syncEventNotifications(newEventId, touch);
+
     return { success: true };
 
   } catch {
@@ -549,6 +555,8 @@ export const acceptEventInvitation = async (
     touch(`org-${organizationId}-activity`);
     touch(`event-${eventId}-org-${organizationId}-activity`);
 
+    await syncEventNotifications(eventId, touch);
+
     return { success: true };
 
   } catch {
@@ -636,6 +644,20 @@ export const declineEventInvitation = async (
      */
     const notifyShortage = (reason: string) => {
       after(async () => {
+        // A role somebody else has already confirmed isn't short — the rule
+        // the expired-invite email follows too. Without it, the last extra
+        // invite on a role declining would mail "Needs a BGVs" in the same
+        // moment the roster reports itself fully staffed.
+        const stillConfirmed = await prisma.eventAssignment.count({
+          where: {
+            eventId,
+            role: assignment.role,
+            status: InvitationStatus.ACCEPTED,
+          },
+        });
+
+        if (stillConfirmed > 0) return;
+
         const recipients = await eventStaffingRecipients(
           organizationId,
           assignment.event.createdById,
@@ -684,6 +706,8 @@ export const declineEventInvitation = async (
 
       touch(`org-${organizationId}-activity`);
       touch(`event-${eventId}-org-${organizationId}-activity`);
+
+      await syncEventNotifications(eventId, touch);
 
       return { success: true };
     }
@@ -814,6 +838,10 @@ export const declineEventInvitation = async (
     touch(`org-${organizationId}-activity`);
     touch(`event-${eventId}-org-${organizationId}-activity`);
 
+    // Runs after smart-fill, not before: a replacement invited into the slot
+    // closes the hole this decline opened, and the count has to reflect that.
+    await syncEventNotifications(eventId, touch);
+
     return { success: true };
 
   } catch {
@@ -914,6 +942,8 @@ export const cancelUserEventAssignment = async (userId: string, organizationId: 
         });
       });
     }
+
+    await syncEventNotifications(eventId, touch);
 
     return { success: true };
 
@@ -1054,6 +1084,8 @@ export const resendEventInvitation = async (
       detail: `${volunteerRoleLabels[assignment.role]} · reinvited after expiry`,
     });
 
+    await syncEventNotifications(eventId, touch);
+
     return { success: true };
 
   } catch {
@@ -1111,6 +1143,8 @@ export const deleteExpiredEventAssignment = async (
     touch(`user-${userId}-events-${organizationId}`);
     touch(`event-${eventId}-org-${organizationId}-details`);
     touch(`org-${organizationId}-events`);
+
+    await syncEventNotifications(eventId, touch);
 
     return { success: true };
 
@@ -1245,6 +1279,8 @@ export const addEventRoles = async (
     touch(`event-${eventId}-org-${organizationId}-details`);
     touch(`org-${organizationId}-events`);
 
+    await syncEventNotifications(eventId, touch);
+
     return { success: true };
 
   } catch {
@@ -1355,6 +1391,8 @@ export const removeEventRole = async (
     if (event.assignments.some((a) => a.status === InvitationStatus.DECLINED)) {
       touch(`org-${organizationId}-acceptance-stats`);
     }
+
+    await syncEventNotifications(eventId, touch);
 
     return { success: true };
 
@@ -1634,6 +1672,8 @@ export const inviteMembersToEvent = async (
       touch(`org-${organizationId}-acceptance-stats`);
     }
 
+    await syncEventNotifications(eventId, touch);
+
     return { success: true, invitedCount: invitedUserIds.length, skippedNames };
 
   } catch {
@@ -1713,6 +1753,10 @@ export const deleteEvent = async (organizationId: string, eventId: string, touch
         assignment.status === InvitationStatus.ACCEPTED ||
         assignment.status === InvitationStatus.PENDING,
     );
+
+    // Before the delete, not after: the cascade removes these rows silently,
+    // leaving every watcher's cached bell pointing at an event that is gone.
+    await clearEventNotifications(eventId, touch);
 
     await prisma.event.delete({
       where: {
@@ -2007,6 +2051,8 @@ export const editEventDetails = async (
         endTime: new Date(times.endTime),
       }));
 
+      const scheduleChanged = !sameSchedule(event.dates, nextDates);
+
       await prisma.$transaction(async (tx) => {
         await tx.event.update({
           where: { id: eventId },
@@ -2015,6 +2061,9 @@ export const editEventDetails = async (
             location,
             description: description ?? "",
             ...(nextRehearsal ?? {}),
+            // New dates, new countdown: any last-call email already sent was
+            // about the old ones.
+            ...(scheduleChanged ? { lastCallStage: 0 } : {}),
           },
         });
 
@@ -2041,7 +2090,7 @@ export const editEventDetails = async (
         changes.push({ label: "Name", from: event.name, to: name });
       }
 
-      if (!sameSchedule(event.dates, nextDates)) {
+      if (scheduleChanged) {
         const previousWhen = formatEventWhen(event.dates);
         const nextWhen = formatEventWhen(nextDates);
 
@@ -2120,6 +2169,12 @@ export const editEventDetails = async (
           );
         });
       }
+
+      // Editing an event rewrites its EventDate rows, and those are what decide
+      // whether it is still live. Moving a service out of the past earns it a
+      // row; moving one into the past retires the rows it had. Nothing else
+      // here touches the roster, so this is the only reason to reconcile.
+      await syncEventNotifications(eventId, touch);
 
       return { success: true };
 
