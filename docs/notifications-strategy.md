@@ -6,6 +6,11 @@ The question this answers: **who hears about what is happening to an event, how
 often, and through which channel** — with NHC's `OWNER` / `ADMIN` / `MEMBER`
 model and the email infrastructure already in `lib/email/`.
 
+Revised after user feedback: *"used to being notified, and not having to open
+the app to check."* That pushback was correct and changed two recommendations —
+see §2 (why the Linear inbox model does not transfer), §3.2 (the silence
+problem), and §3.4 (push is a missing channel, not a policy question).
+
 ---
 
 ## 1. Where we actually are
@@ -119,20 +124,34 @@ get an immediate notification on each booking — but Calendly is 1:1, so "each
 booking" *is* the whole event. That model does not transfer to a 12-person
 roster, and this is the single most common mistake to avoid here.
 
-### Linear / Asana / Monday — the inbox model
+### Linear / Asana / Monday — the inbox model, and why it does not transfer
 
-The pattern worth stealing wholesale:
+The pattern these converge on is: **in-app is the source of truth, email is a
+fallback for what you didn't read.** Linear delays notification email and only
+sends it if you haven't already read the in-app notification.
 
-> **In-app is the source of truth. Email is a fallback for what you didn't read.**
+An earlier draft of this doc recommended adopting that model. **That was wrong
+for this product**, and a current user said so directly:
 
-Linear delays notification email and **only sends it if you haven't already
-read the in-app notification**, with the delay scaled to urgency. Monday and
-Asana do the same thing with a bell icon plus a rolled-up digest.
+> He's used to being notified, and not having to open the app to check.
 
-This inverts the naive model. Instead of *"which events deserve an email?"* the
-question becomes *"everything lands in the inbox; what escalates out of it?"* —
-which is a much easier question to answer correctly, and it makes over-notifying
-structurally impossible rather than a matter of taste.
+The rule that model depends on is unstated and load-bearing: **it assumes a
+daily-driver tool.** Linear, Asana and Monday are where their users spend the
+workday, so "read it in-app within 15 minutes" is the common case and email is
+genuinely the exception.
+
+Aeghin is a twice-a-week tool. A worship pastor opens it Tuesday to plan Sunday
+and maybe again Saturday. Volunteers open it when an email tells them to. Under
+that engagement pattern, "email only if the in-app notification is still unread"
+degrades to "email always, 15 minutes late" — an inbox whose only measurable
+effect is latency. Strictly worse than sending the mail.
+
+**Engagement frequency is the variable that decides notification architecture.**
+High-frequency tools can treat the app as the channel and email as escalation.
+Low-frequency tools must treat the outbound channel as primary and the app as
+the place you go when a notification has already told you there is something
+worth going for. PCO, Calendly and every reminder product in this space are
+built the second way — that is not a coincidence.
 
 ---
 
@@ -161,21 +180,52 @@ create Sunday's service can opt into its staffing signals without being an
 owner. Cheap to model (`EventWatcher` join table), and it removes most of the
 pressure to broadcast to roles.
 
-### 3.2 Individual accepts vs. pending digest — neither, actually
+### 3.2 Individual accepts vs. pending digest — the silence problem
 
-This was the framing question, and I think it is the wrong axis. Both options
-are bad:
+The framing question was per-accept email or a pending digest. I still think
+per-accept-as-the-default is wrong, but the user feedback exposed a real defect
+in the alternative I proposed, so both halves need stating.
 
-- **Per-accept email** → 12 emails for a well-staffed event, all saying "things
-  are fine." Admins filter them within a week, and the filter also eats the
-  decline notices that actually matter.
-- **Pending digest** → a recurring email whose content is "still waiting," which
-  is not actionable and trains people to ignore it.
+**The case against per-accept as a default.** A 5-admin org running a 12-person
+event generates 60 emails saying "things are fine." Admins filter the channel
+within a week — and the filter also eats the decline notices that actually
+matter. PCO shipped per-assignment mail first, drowned their users, and
+retrofitted bundling.
 
-**Notify on staffing-state transitions, not on individual responses.**
+**The case against pure transition notifications — which the user is right
+about.** If the only admin-facing signals are `→ FULL` and `→ AT_RISK`, there is
+a long silence between "invites sent" and "event complete." During that silence,
+*nothing arriving* is indistinguishable from *nobody is responding*, *the emails
+never sent*, and *the system is broken*. So the admin opens the app to check —
+which is the exact behaviour the feature was supposed to eliminate. A pure
+transition model creates an information vacuum during precisely the window when
+the admin is most anxious.
 
-Derive a state per `(event, role)` — and per event overall — from the
-assignments that already exist:
+**The reframe that resolves it:**
+
+> A notification that fires only when there is news still requires you to wonder
+> whether there is news. A notification that fires on a schedule you can set your
+> watch by does not.
+
+So the load-bearing piece is **a scheduled digest that sends whether or not
+anything changed.** "Nothing changed" is not an empty message — it is precisely
+the information the admin is currently opening the app to obtain. Most digest
+implementations get this wrong by suppressing empty sends, which quietly
+reintroduces the wondering.
+
+**Recommended shape — three layers, all outbound:**
+
+1. **Immediate** — declines, lapses, and `FULL → PARTIAL`. Actionable *now*.
+   Mostly already built.
+2. **Scheduled status digest** — one message per admin per day (org-local
+   morning), listing every upcoming event with its staffing state and what is
+   still open. Sends on a fixed schedule while any event is upcoming, including
+   when the answer is "all five events fully staffed, nothing needed." This is
+   the layer that removes "I have to open the app to check."
+3. **Milestone** — `→ FULL`, once per event. Closes the open loop early instead
+   of making the admin wait for tomorrow's digest.
+
+Staffing state is derived from assignments that already exist:
 
 ```
 UNSTAFFED  → no accepted assignment for a needed role
@@ -184,22 +234,19 @@ FULL       → every entry in rolesNeeded has an ACCEPTED assignment
 AT_RISK    → still not FULL inside the escalation window (§3.3)
 ```
 
-Then mail only on the **edges**:
+**And give him the per-accept toggle anyway.** Default off, honoured when on,
+settable per admin. Two reasons this is not a cop-out:
 
-- `→ FULL` — *"Sunday Service is fully staffed."* Once. High value, ends the
-  admin's open loop, and it is the first genuinely good news the product would
-  ever send. Ship this first.
-- `FULL → PARTIAL` — a late decline after the event was complete. Higher
-  urgency than an ordinary decline, and worth a distinct subject line.
-- `→ AT_RISK` — the escalation ladder below.
+- **His volume is probably fine.** The 60-email disaster is a *large-org*
+  problem. For a 4-volunteer team with one admin, four emails is genuinely
+  useful and genuinely harmless. The right default depends on org size —
+  see §7, which is measurable from data already in the database.
+- One loud user should not set the default, and should not be ignored either. A
+  preference costs one boolean and resolves both.
 
-Individual accepts go to the **activity feed and the in-app inbox** (both nearly
-free — `logActivity` already writes `INVITE_ACCEPTED`), never to email. An admin
-who wants per-accept granularity opens the event; the dashboard is the right
-surface for "who has answered so far," not the inbox.
-
-This is the same conclusion PCO reached by bundling accepted requests, arrived
-at from the other direction.
+Individual accepts still land in the activity feed regardless — `logActivity`
+already writes `INVITE_ACCEPTED` at `lib/actions/event.ts:~536`, so the feed is
+free.
 
 ### 3.3 Cadence — anchor reminders to two different clocks
 
@@ -233,29 +280,56 @@ a Saturday rehearsal and a Sunday service should get one reminder, not two.
 | T-7d | Not `FULL` | Creator (tier 2) |
 | T-48h | Not `FULL` | Creator + all admins/owners (tier 3) |
 
+**Ladder D — to admins, on a fixed clock** (the "stop making me check" layer
+from §3.2):
+
+| When | Condition | Content |
+| --- | --- | --- |
+| Daily, org-local morning | Any event upcoming in the next 14 days | Every upcoming event, its staffing state, what is still open — **including when nothing is open** |
+
+Ladder D is the one that is not conditional on news. Suppress it only when the
+org has no upcoming events at all.
+
 **Hard caps**, non-negotiable: at most **one staffing email per admin per event
 per 24h**, and at most **one reminder per volunteer per day** across all
-ladders. Enforce in the sender, not in each call site.
+ladders. Enforce in the sender, not in each call site. Ladder D is exempt — it
+*is* the cap, and anything it already covered should be suppressed from the
+immediate layer for the rest of that day.
 
-### 3.4 Channel strategy — build the inbox before more email
+### 3.4 Channel strategy — outbound is primary, and push is the missing one
 
-Sequence matters. Adding ladders A–C on top of today's thirteen senders, with no
-inbox and no preferences, makes the product noisier without making it better.
+Revised from the earlier draft, which had this backwards.
 
-1. **In-app inbox** — a `Notification` table + a bell in
-   `components/dashboard/navbar/`. Everything lands here. Cheap to write
-   alongside `logActivity`.
-2. **Email as escalation** — the Linear rule: send only if the in-app
-   notification is still unread after a delay (~10–15 min for routine, immediate
-   for terminal escalations). This alone would cut volume substantially for
-   active admins while leaving the disengaged fully covered.
-3. **SMS, last.** `twilio` is already a dependency and `User.phoneNumber` is
-   already synced from Clerk (`app/api/webhooks/route.ts:34`) — the code is
-   sitting commented out at `lib/actions/invitation.ts:26,125`. Reserve it for
-   the T-24h event reminder and the T-48h AT_RISK escalation only. SMS is the
-   channel that makes people quit, and it costs real money per send. Consider
-   gating it behind a Stripe entitlement (`lib/billing/entitlements.ts`), which
-   is both a monetization hook and a natural volume limiter.
+**There is a React Native client** (`app/api/mobile/v1/*` — 50 routes,
+`lib/mobile/route.ts` is written around RN's fetch cache) **and no push
+notification infrastructure of any kind.** No Expo, APNs, FCM, OneSignal, or
+device-token column anywhere in the schema.
+
+That is the actual answer to "I want to be notified without opening the app."
+He has the app on his phone. The channel purpose-built for reaching him there
+does not exist, so the product has been routing everything through email —
+which is why the complaint reads as being about notification *policy* when it
+is substantially about a missing *channel*.
+
+| Channel | State | Role |
+| --- | --- | --- |
+| **Push** | **Absent.** RN client exists, no infra | Primary for time-sensitive: new assignment, decline, T-24h, digest tap-through |
+| **Email** | 13 senders, solid plumbing | Primary for substance and for anyone without the app; the durable record |
+| **In-app inbox** | Absent | *Not* a channel. A read model + dedupe ledger (§4.2) |
+| **SMS** | `twilio` installed, commented out at `lib/actions/invitation.ts:26,125`; `User.phoneNumber` already synced from Clerk (`app/api/webhooks/route.ts:34`) | Terminal escalation only — T-24h, AT_RISK |
+
+Three rules:
+
+- **Never gate an outbound send on in-app read state.** That was the Linear rule
+  and it does not apply here (§2). Send on the schedule; let the app be where
+  you act, not a condition on being told.
+- **Push and email carry the same signal, deduped per person per signal.** Push
+  is the tap on the shoulder, email is the detail. The `Notification.dedupeKey`
+  in §4.2 is what keeps them from double-firing.
+- **SMS stays last and stays gated.** It costs real money per send and it is the
+  channel that makes people quit. Worth putting behind a Stripe entitlement
+  (`lib/billing/entitlements.ts`) — monetization hook and natural volume limiter
+  in one.
 
 ---
 
@@ -283,6 +357,10 @@ model Organization {
 
 Add it, expose it in org settings, and have the scheduler resolve send times
 through it. Leave `event-when.ts` alone — it is correct for what it does.
+
+This blocks the Ladder D digest specifically: a digest that arrives at an
+unpredictable local hour is not a digest anyone can build a habit around, and
+habit is the entire mechanism by which it replaces opening the app.
 
 ### 4.2 Reminders need a dedupe key — blocking
 
@@ -325,7 +403,25 @@ model Notification {
 This one table does triple duty: dedupe key, in-app inbox read model, and the
 read-state signal that decides whether email escalates. Build it once.
 
-### 4.3 Preferences
+### 4.3 Push notifications — the largest single piece of missing work
+
+Nothing in the schema or the API supports push. This is net-new:
+
+- A `DeviceToken` model (`userId`, `token`, `platform`, `lastSeenAt`), with
+  registration and revocation routes under `app/api/mobile/v1/`.
+- A provider. Expo's push service is the least work if the RN client is an Expo
+  app; APNs + FCM directly if it is bare RN. **Check which before estimating —
+  it is the difference between a day and a week.**
+- Token lifecycle: tokens rotate and go stale, and dead tokens must be reaped on
+  provider rejection or the send queue silently rots.
+- A `pushedAt` column alongside `emailedAt` on `Notification` (§4.2), so the two
+  channels dedupe against one shared ledger.
+
+Sequenced after the digest in §5 because the digest fixes the stated complaint
+over a channel that already works, while push is a multi-day project. But push
+is what makes the fix feel native rather than like more email.
+
+### 4.4 Preferences
 
 Start coarse. A `NotificationPreference` row per `(user, organization)` with a
 handful of booleans and a digest-time field beats a per-type matrix nobody will
@@ -334,7 +430,7 @@ configure. Org-level defaults set by owners, user-level overrides.
 The one thing worth having on day one is a **mute/DND window**, so the T-12h
 ladder cannot fire at 3am.
 
-### 4.4 Scheduler shape
+### 4.5 Scheduler shape
 
 `vercel.json` runs one hourly cron. Reminder ladders need finer resolution than
 that, but probably not much finer:
@@ -352,26 +448,32 @@ that, but probably not much finer:
 
 ## 5. Suggested order of work
 
-Each step is independently shippable and independently valuable.
+Reordered around the user feedback. The principle: **fix "I have to check" over
+a channel that already works before building new channels.**
 
-1. **`Organization.timeZone`** + settings UI. Unblocks everything. Small.
-2. **`→ FULL` staffing email.** One new template, hooks into the existing
-   `acceptEventInvitation`, uses `eventStaffingRecipients` unchanged. The first
-   good news the product sends, and it needs no new infrastructure.
-3. **`Notification` table + bell.** The inbox. Write alongside `logActivity` at
-   every existing call site; no new email.
-4. **`/api/cron/notifications` + Ladder A** (invite expiry reminders to
-   volunteers). Directly reduces lapse rate, which reduces the admin notices we
-   already send.
-5. **Ladder B** (event reminders, condensed per person per day).
-6. **Email-escalates-on-unread.** Retrofit the Linear rule across senders. This
-   is where total volume drops.
-7. **Ladder C** (admin AT_RISK escalation) + preferences.
-8. **SMS**, entitlement-gated, for T-24h and AT_RISK only.
+1. **`Organization.timeZone`** + settings UI. Blocks the digest. Small.
+2. **`Notification` table.** Needed as the dedupe ledger before anything
+   scheduled can run safely (§4.2). No UI yet, no inbox — just the ledger.
+3. **Ladder D: the daily admin digest.** The direct answer to the complaint,
+   over email, which already works. Sends whether or not anything changed.
+4. **Per-accept preference**, default off. One boolean; unblocks this user
+   immediately and settles the argument with data rather than opinion.
+5. **`→ FULL` milestone email.** Closes the loop early. One template, hooks into
+   `acceptEventInvitation`, reuses `eventStaffingRecipients` unchanged.
+6. **Ladder A** (invite-expiry reminders to volunteers). Directly reduces the
+   lapse rate, which reduces the admin notices we already send.
+7. **Push infrastructure** (§4.3) — device tokens, provider, lifecycle. Then
+   mirror ladders A/D and the immediate layer onto it.
+8. **Ladder B** (event reminders, condensed per person per day).
+9. **Ladder C** (admin AT_RISK escalation) + fuller preferences.
+10. **SMS**, entitlement-gated, for T-24h and AT_RISK only.
+
+Steps 1–4 are the smallest set that answers the feedback, and 3–4 are both
+shippable in a sitting once 1–2 land.
 
 ---
 
-## 6. Open questions — decide before step 2
+## 6. Open questions — decide before step 3
 
 - **Should `→ FULL` fire per role or per event?** Per event is calmer. Per role
   is more useful for a worship pastor who only cares that they have a drummer.
@@ -388,12 +490,49 @@ Each step is independently shippable and independently valuable.
 - **How does this interact with `autoAssigned`?** An auto-assigned volunteer
   never opted into that slot. Should their reminder ladder be more aggressive
   (they are less likely to be expecting it) or less (they did not ask for it)?
+- **Is one user's "notify me more" the org's preference or his?** If per-accept
+  becomes a per-admin toggle, two admins on the same event can disagree, which
+  is fine. But an *org-level* default that an owner sets is probably the thing
+  people actually want to configure, with per-admin overrides on top — same
+  shape as §4.4.
 - **Per-org volume ceiling?** Resend is 10 req/s per team, and
   `sendEmailBatches` already chunks for it — but that is a *platform-wide*
   budget being spent by individual orgs' crons. Worth modeling before ladders
   A–C multiply send volume.
 
 ---
+
+## 7. Settle the default with data, not argument
+
+The disagreement between "notify me on everything" and "that will drown people"
+is an empirical question about org size, and the answer is already in the
+database. Worth running before picking the §3.2 default — it is a handful of
+queries, no new instrumentation.
+
+- **Distribution of roster size per event.** `EventAssignment` grouped by
+  `eventId`. If the median event has 4–6 assignments, per-accept email is
+  ~5 messages per event and the volume objection is largely theoretical — his
+  request is just correct, and the default should probably be *on* for small
+  orgs. If there is a long tail at 15–20, the cap matters.
+- **Admins per org.** `Membership` where `role != MEMBER`, grouped by org. This
+  is the multiplier on everything in §3.1, and the number that decides whether
+  role-broadcast is survivable.
+- **Time-to-response.** `EventAssignment.createdAt` → `updatedAt` for
+  `ACCEPTED`/`DECLINED` rows. Sets the reminder ladder honestly: if the median
+  response is 8 hours, a T-48h reminder is noise; if it is 5 days, T-48h is too
+  late to be the first nudge.
+- **Lapse rate.** `EXPIRED` as a share of all assignments, per org. This is the
+  number Ladder A is meant to move, and the baseline you need to know whether
+  it worked.
+- **Do declines cluster?** If most events see 0–1 declines, the immediate
+  decline email is already low-volume and needs no bundling. If some events see
+  five, the bucketing from the expiry cron should be lifted into the decline
+  path too.
+
+A reasonable default falls out of the first two alone: **per-accept email on by
+default below some roster threshold, off above it**, with the toggle overriding
+either way. That is defensible to both this user and the org that would have
+been drowned.
 
 ## Sources
 
