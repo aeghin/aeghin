@@ -34,7 +34,7 @@ export type DepartureReason = "left" | "removed" | "deleted";
  * Leaving, being removed and deleting an account all take a person's upcoming
  * spots with them — the rows are deleted, not declined — so none of the
  * decline or expiry mail ever fires for them. Before this, the only trace was
- * a count in the bell, which the mobile app doesn't have.
+ * a count in the bell.
  *
  * One email per recipient, listing every event of theirs this leaves short,
  * so a creator who runs four upcoming services hears once, not four times.

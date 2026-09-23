@@ -26,7 +26,7 @@ export const POST = route<Params>("POST /notifications/[id]/read", async (_req, 
 
     const result = await markNotificationRead(notificationId, expireTag);
 
-    if (!result.success) return actionFailure(result.error ?? "Unable to update notification");
+    if (!result.success) return actionFailure(result.error);
 
     return json({ success: true });
 });

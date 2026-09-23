@@ -24,7 +24,7 @@ export const POST = route<Record<string, never>>("POST /notifications/read", asy
 
     const result = await markAllNotificationsRead(expireTag);
 
-    if (!result.success) return actionFailure(result.error ?? "Unable to update notifications");
+    if (!result.success) return actionFailure(result.error);
 
     return json({ success: true });
 });

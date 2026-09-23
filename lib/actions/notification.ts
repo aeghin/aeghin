@@ -5,7 +5,7 @@ import { updateTag } from "next/cache";
 import prisma from "@/lib/prisma";
 import { currentUser } from "@/lib/services/user";
 
-type ActionResponse = { success: boolean; error?: string };
+type ActionResponse = { success: true } | { success: false; error: string };
 
 /**
  * How a caller expires cache tags. `updateTag` throws inside a Route Handler,
