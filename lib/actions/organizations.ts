@@ -323,6 +323,9 @@ export const deleteOrganization = async (organizationId: string, touch: TagInval
         for (const { userId: memberId } of members) {
             touch(`user-${memberId}-orgs`);
             touch(`user-${memberId}-memberships`);
+            // The cascade takes their rows with it, but silently — their bell
+            // would keep pointing into an organization that is gone.
+            touch(`user-${memberId}-notifications`);
         }
 
         touch(`org-${organizationId}-details`);

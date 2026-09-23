@@ -5,7 +5,13 @@ import { updateTag } from "next/cache";
 import prisma from "@/lib/prisma";
 import { currentUser } from "@/lib/services/user";
 
-type ActionResponse = { success: boolean; error?: string };
+type ActionResponse = { success: true } | { success: false; error: string };
+
+/**
+ * How a caller expires cache tags. `updateTag` throws inside a Route Handler,
+ * so the mobile routes pass `revalidateTag` in its place.
+ */
+type TagInvalidator = (tag: string) => void;
 
 /**
  * Clears the badge without touching the rows' meaning.
@@ -15,7 +21,9 @@ type ActionResponse = { success: boolean; error?: string };
  * roster is fixed, not when it is acknowledged. So "mark read" quiets the bell
  * and leaves the work visible, which is the right of the two.
  */
-export const markAllNotificationsRead = async (): Promise<ActionResponse> => {
+export const markAllNotificationsRead = async (
+  touch: TagInvalidator = updateTag,
+): Promise<ActionResponse> => {
   try {
     const user = await currentUser();
 
@@ -26,7 +34,7 @@ export const markAllNotificationsRead = async (): Promise<ActionResponse> => {
       data: { unreadAt: null },
     });
 
-    updateTag(`user-${user.id}-notifications`);
+    touch(`user-${user.id}-notifications`);
 
     return { success: true };
   } catch {
@@ -36,6 +44,7 @@ export const markAllNotificationsRead = async (): Promise<ActionResponse> => {
 
 export const markNotificationRead = async (
   notificationId: string,
+  touch: TagInvalidator = updateTag,
 ): Promise<ActionResponse> => {
   try {
     const user = await currentUser();
@@ -49,7 +58,7 @@ export const markNotificationRead = async (
       data: { unreadAt: null },
     });
 
-    updateTag(`user-${user.id}-notifications`);
+    touch(`user-${user.id}-notifications`);
 
     return { success: true };
   } catch {
