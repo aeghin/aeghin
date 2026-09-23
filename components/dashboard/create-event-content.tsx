@@ -92,6 +92,7 @@ import type { EventDraft } from "@/lib/agents/event/agent";
 import { Switch } from "@/components/ui/switch";
 
 import { getServiceColors as getColorClasses } from "@/lib/config/service-types-config";
+import { capitalizeName } from "@/lib/names";
 
 const newTypeColorOptions = [
   "indigo",
@@ -378,9 +379,6 @@ export function CreateEventPageContent({
     return map;
   }, [members]);
 
-  const formatName = (name: string) =>
-    name.charAt(0).toUpperCase() + name.slice(1).toLowerCase();
-
   const [isPending, startTransition] = useTransition();
   const [isCreating, startCreateTransition] = useTransition();
 
@@ -608,7 +606,7 @@ export function CreateEventPageContent({
         setConflictWarning({
           role,
           memberId,
-          memberName: `${formatName(member.user.firstName)} ${formatName(member.user.lastName)}`,
+          memberName: `${capitalizeName(member.user.firstName)} ${capitalizeName(member.user.lastName)}`,
           conflict: memberConflicts[memberId],
         });
       }
@@ -1814,8 +1812,8 @@ export function CreateEventPageContent({
                                       </Avatar>
                                       <div className="min-w-0">
                                         <p className="font-medium truncate">
-                                          {member.user.firstName}{" "}
-                                          {formatName(member.user.lastName)}
+                                          {capitalizeName(member.user.firstName)}{" "}
+                                          {capitalizeName(member.user.lastName)}
                                         </p>
                                         <p className="text-xs text-muted-foreground truncate">
                                           {member.user.email}

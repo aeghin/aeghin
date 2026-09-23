@@ -30,6 +30,7 @@ import { getRoleConfig, volunteerRoleConfig } from "@/lib/config/roles";
 import { cn } from "@/lib/utils";
 
 import { RoleAssignButtons } from "@/components/dashboard/role-assign-buttons";
+import { capitalizeName } from "@/lib/names";
 
 interface Members {
   organizationId: string
@@ -57,9 +58,6 @@ export function MembersList({ members, currentUserId, viewerRole }: MembersListP
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState<OrgRole | "ALL">("ALL");
   const [volunteerFilter, setVolunteerFilter] = useState<VolunteerRole | "ALL">("ALL");
-
-  const formatName = (name: string) =>
-    name.charAt(0).toUpperCase() + name.slice(1).toLowerCase();
 
   const formatPhone = (phone: string) => {
     const digits = phone.replace(/\D/g, "").replace(/^1/, "");
@@ -174,7 +172,7 @@ export function MembersList({ members, currentUserId, viewerRole }: MembersListP
               </Avatar>
               <div className="min-w-0 space-y-1">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-medium">{member.user.id === currentUserId ? "You" : `${formatName(member.user.firstName)} ${formatName(member.user.lastName)}`}</span>
+                  <span className="font-medium">{member.user.id === currentUserId ? "You" : `${capitalizeName(member.user.firstName)} ${capitalizeName(member.user.lastName)}`}</span>
                   <Badge variant="outline" className={cn("text-[10px] font-medium", roleConfig.className)}>
                     <RoleIcon className="mr-1 h-3 w-3" />
                     {roleConfig.label}

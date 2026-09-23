@@ -41,6 +41,7 @@ import {
   inviteMembersToEvent,
 } from "@/lib/actions/event";
 import type { MemberBlockout, MemberConflict } from "@/lib/actions/event";
+import { capitalizeName } from "@/lib/names";
 
 export type InviteMember = {
   userId: string;
@@ -89,9 +90,6 @@ function formatBlockoutDate(iso: string): string {
     day: "numeric",
   });
 }
-
-const formatName = (name: string) =>
-  name.charAt(0).toUpperCase() + name.slice(1).toLowerCase();
 
 export function InviteToEventDialog({
   organizationId,
@@ -162,7 +160,7 @@ export function InviteToEventDialog({
     if (checked && conflicts[member.userId]) {
       setConflictWarning({
         userId: member.userId,
-        memberName: `${formatName(member.user.firstName)} ${formatName(member.user.lastName)}`,
+        memberName: `${capitalizeName(member.user.firstName)} ${capitalizeName(member.user.lastName)}`,
         conflict: conflicts[member.userId],
       });
       return;
@@ -380,8 +378,8 @@ export function InviteToEventDialog({
                       </Avatar>
                       <div className="min-w-0">
                         <p className="truncate font-medium">
-                          {member.user.firstName}{" "}
-                          {formatName(member.user.lastName)}
+                          {capitalizeName(member.user.firstName)}{" "}
+                          {capitalizeName(member.user.lastName)}
                         </p>
                         <p className="truncate text-xs text-muted-foreground">
                           {member.user.email}

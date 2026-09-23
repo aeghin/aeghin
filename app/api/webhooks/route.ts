@@ -1,11 +1,13 @@
 import prisma from "@/lib/prisma";
 import { verifyWebhook } from "@clerk/nextjs/webhooks";
+import { clerkClient } from "@clerk/nextjs/server";
 import { NextRequest, after } from "next/server";
 import { revalidateTag } from "next/cache";
 import { ActivityType, OrgRole } from "@/generated/prisma/enums";
 import { UTApi } from "uploadthing/server";
 import { notifyDeparture } from "@/lib/email/departures";
 import { syncOrganizationNotifications } from "@/lib/notifications/sync";
+import { capitalizeName } from "@/lib/names";
 
 export async function POST(req: NextRequest) {
   const event = await verifyWebhook(req, {
@@ -15,8 +17,8 @@ export async function POST(req: NextRequest) {
   if (event.type === "user.created") {
     const userId = event.data.id;
     const email = event.data.email_addresses[0].email_address;
-    const firstName = event.data.first_name!;
-    const lastName = event.data.last_name!;
+    const firstName = capitalizeName(event.data.first_name!);
+    const lastName = capitalizeName(event.data.last_name!);
     const phoneNumber = event.data.phone_numbers[0]?.phone_number ?? null;
     const userImageUrl = event.data.image_url;
 
@@ -51,6 +53,10 @@ export async function POST(req: NextRequest) {
     revalidateTag(`user-${userId}`, { expire: 0 });
 
     if (!existing) after(() => notifyNewSignup({ email, firstName, lastName }));
+
+    if (firstName !== event.data.first_name || lastName !== event.data.last_name) {
+      after(() => capitalizeInClerk(userId, { firstName, lastName }));
+    }
   }
 
   if (event.type === "user.updated") {
@@ -76,14 +82,26 @@ export async function POST(req: NextRequest) {
       (p) => p.id === event.data.primary_phone_number_id,
     )?.phone_number;
 
+    const firstName = first_name && capitalizeName(first_name);
+    const lastName = last_name && capitalizeName(last_name);
+
+    if (firstName !== first_name || lastName !== last_name) {
+      after(() =>
+        capitalizeInClerk(id, {
+          firstName: firstName ?? undefined,
+          lastName: lastName ?? undefined,
+        }),
+      );
+    }
+
     const updates: Record<string, string | undefined> = {};
 
     if (primaryEmail && primaryEmail !== existingUser.email)
       updates.email = primaryEmail;
-    if (first_name && first_name !== existingUser.firstName)
-      updates.firstName = first_name;
-    if (last_name && last_name !== existingUser.lastName)
-      updates.lastName = last_name;
+    if (firstName && firstName !== existingUser.firstName)
+      updates.firstName = firstName;
+    if (lastName && lastName !== existingUser.lastName)
+      updates.lastName = lastName;
     if (image_url !== existingUser.userImageUrl) updates.userImageUrl = image_url;
     if (primaryPhone && primaryPhone !== existingUser.phoneNumber)
       updates.phoneNumber = primaryPhone;
@@ -355,6 +373,23 @@ export async function POST(req: NextRequest) {
   }
 
   return new Response("Webhook received", { status: 200 });
+}
+
+/**
+ * Clerk's own screens read Clerk's copy of the name, not ours, so the
+ * capitalized one goes back there too. The user.updated this fires finds
+ * nothing left to change, so it does not loop.
+ */
+async function capitalizeInClerk(
+  userId: string,
+  name: { firstName?: string; lastName?: string },
+) {
+  try {
+    const client = await clerkClient();
+    await client.users.updateUser(userId, name);
+  } catch (error) {
+    console.error("Capitalizing the name in Clerk failed", error);
+  }
 }
 
 type NewSignup = {
