@@ -1,18 +1,21 @@
 import "server-only";
 
+import { after } from "next/server";
+
 import prisma from "@/lib/prisma";
 import {
   InvitationStatus,
   NotificationCategory,
 } from "@/generated/prisma/enums";
 import EventFullyStaffedEmail from "@/components/email/event-fully-staffed-template";
-import { formatEventWhen } from "@/lib/email/event-when";
+import { formatEventShort, formatEventWhen } from "@/lib/email/event-when";
 import { organizationSender } from "@/lib/email/organization";
 import {
   eventStaffingRecipients,
   eventStaffingWatcherIds,
 } from "@/lib/email/recipients";
 import { sendEmailBatches } from "@/lib/email/send";
+import { sendPushNotices } from "@/lib/push/send";
 
 /** Same shape the actions already pass around, so `touch` threads straight through. */
 export type TagInvalidator = (tag: string) => void;
@@ -57,7 +60,7 @@ type Desired = {
   quiet?: boolean;
 };
 
-/** What `mailFullyStaffed` reads off the event, written out by hand. */
+/** What `announceFullyStaffed` reads off the event, written out by hand. */
 type StaffedEvent = {
   name: string;
   organizationId: string;
@@ -67,15 +70,15 @@ type StaffedEvent = {
 };
 
 /**
- * The one email a fill-up sends, to whoever the roster belongs to — the same
- * creator-then-owners rule every other staffing email follows.
+ * The one email and push a fill-up sends, to whoever the roster belongs to —
+ * the same creator-then-owners rule every other staffing email follows.
  *
  * Best effort, like the rest of this file: the claim on `fullyStaffedAt` has
- * already committed, so a send that fails is logged by `sendEmailBatches` and
- * not retried. Retrying risks mailing twice, which is worse than once missed
- * when the bell row is there either way.
+ * already committed, so a send that fails is logged and not retried. Retrying
+ * risks mailing twice, which is worse than once missed when the bell row is
+ * there either way.
  */
-const mailFullyStaffed = async (eventId: string, event: StaffedEvent) => {
+const announceFullyStaffed = async (eventId: string, event: StaffedEvent) => {
   const recipients = await eventStaffingRecipients(
     event.organizationId,
     event.createdById,
@@ -101,6 +104,23 @@ const mailFullyStaffed = async (eventId: string, event: StaffedEvent) => {
         viewLink: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/organizations/${event.organizationId}/events/${eventId}`,
       }),
     })),
+  );
+
+  // After the response: this runs inside whichever accept filled the roster,
+  // and that tap shouldn't wait on Expo.
+  after(() =>
+    sendPushNotices(
+      "syncEventNotifications fully staffed",
+      recipients.map((recipient) => ({
+        email: recipient.email,
+        title: `Fully staffed: ${event.name}`,
+        subtitle: event.organization.name,
+        body: ["Every role has someone confirmed.", formatEventShort(event.dates)]
+          .filter(Boolean)
+          .join("\n"),
+        data: { type: "event", organizationId: event.organizationId, eventId },
+      })),
+    ),
   );
 };
 
@@ -343,7 +363,7 @@ export const syncEventNotifications = async (
 
     // Last, so no bell waits on a mail provider.
     if (justFilled) {
-      await mailFullyStaffed(eventId, event);
+      await announceFullyStaffed(eventId, event);
     }
   } catch (err) {
     console.error(`Failed to sync notifications for event ${eventId}`, err);

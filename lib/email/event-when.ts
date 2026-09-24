@@ -65,6 +65,26 @@ export function formatEventWhen(dates: EventWhenDate[]): EventWhen | null {
 }
 
 /**
+ * `"Sun, Sep 28 · 9:00 AM"`, or `"Sat, Aug 30 – Mon, Sep 1"` across several
+ * days — the "when" a push notification has room for. Null with no dates, like
+ * `formatEventWhen`.
+ */
+export function formatEventShort(dates: EventWhenDate[]): string | null {
+  if (dates.length === 0) return null;
+
+  const sorted = [...dates].sort(
+    (a, b) => a.startTime.getTime() - b.startTime.getTime(),
+  );
+
+  const first = sorted[0];
+  const last = sorted[sorted.length - 1];
+
+  return sorted.length > 1
+    ? `${shortDate(first.startTime)} – ${shortDate(last.startTime)}`
+    : `${shortDate(first.startTime)} · ${asTime(first.startTime)}`;
+}
+
+/**
  * `"Thu, Sep 18 · 7:00 PM – 9:00 PM"`, or null when there is no rehearsal.
  *
  * Pinned to UTC for the same reason the rest of this file is: the columns hold

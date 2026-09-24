@@ -35,10 +35,17 @@ import EventRemovedEmail from "@/components/email/event-removed-template";
 import EventShortageEmail from "@/components/email/event-shortage-template";
 import EventUpdatedEmail, { type EventChange } from "@/components/email/event-updated-template";
 
-import { formatEventWhen, formatRehearsal, sameSchedule } from "@/lib/email/event-when";
+import {
+  formatEventShort,
+  formatEventWhen,
+  formatRehearsal,
+  sameSchedule,
+} from "@/lib/email/event-when";
 import { organizationSender } from "@/lib/email/organization";
 import { eventStaffingRecipients } from "@/lib/email/recipients";
 import { sendEmailBatches } from "@/lib/email/send";
+import { assignmentPush } from "@/lib/push/notices";
+import { sendPushNotices } from "@/lib/push/send";
 import {
   clearEventNotifications,
   syncEventNotifications,
@@ -391,6 +398,39 @@ export async function createEvent(
           })),
         );
       });
+
+      // One role per person per event, so each assignee maps to exactly one.
+      const roleByUser = new Map(
+        Object.entries(roleAssignments).flatMap(([role, userIds]) =>
+          userIds.map((uid) => [uid, role as VolunteerRole] as const),
+        ),
+      );
+
+      const when = formatEventShort(
+        Object.values(dayTimes).map((times) => ({
+          startTime: new Date(times.startTime),
+          endTime: new Date(times.endTime),
+        })),
+      );
+
+      after(() =>
+        sendPushNotices(
+          "createEvent assignment",
+          assignedUsers.map((user) => {
+            const role = roleByUser.get(user.id);
+
+            return assignmentPush({
+              email: user.email,
+              eventName: name,
+              eventId: newEventId,
+              organizationName,
+              organizationId,
+              roleLabel: role ? volunteerRoleLabels[role] : null,
+              when,
+            });
+          }),
+        ),
+      );
 };
 
     await logActivity({
@@ -687,6 +727,17 @@ export const declineEventInvitation = async (
             }),
           })),
         );
+
+        await sendPushNotices(
+          "declineEventInvitation shortage",
+          recipients.map((recipient) => ({
+            email: recipient.email,
+            title: `Needs a ${roleLabel}: ${eventName}`,
+            subtitle: assignment.organization.name,
+            body: `${declinerName} declined. ${reason}`,
+            data: { type: "event", organizationId, eventId },
+          })),
+        );
       });
     };
 
@@ -770,6 +821,20 @@ export const declineEventInvitation = async (
             }),
           });
         });
+
+        after(() =>
+          sendPushNotices("declineEventInvitation replacement", [
+            assignmentPush({
+              email: replacement.email,
+              eventName,
+              eventId,
+              organizationName: assignment.organization.name,
+              organizationId,
+              roleLabel,
+              when: formatEventShort(assignment.event.dates),
+            }),
+          ]),
+        );
       } else if (outcome.status === "NO_QUALIFIED_MEMBERS") {
         await logActivity({
           organizationId,
@@ -941,6 +1006,24 @@ export const cancelUserEventAssignment = async (userId: string, organizationId: 
           }),
         });
       });
+
+      const shortWhen = formatEventShort(assignment.event.dates);
+
+      // To their organization rather than the event: they can't open it now.
+      after(() =>
+        sendPushNotices("cancelUserEventAssignment removed", [
+          {
+            email: assignment.user.email,
+            title: `Removed: ${assignment.event.name}`,
+            subtitle: organizationName,
+            body: [
+              `${user.firstName} ${user.lastName} took you off the team.`,
+              [volunteerRoleLabels[assignment.role], shortWhen].filter(Boolean).join(" · "),
+            ].join("\n"),
+            data: { type: "organization", organizationId },
+          },
+        ]),
+      );
     }
 
     await syncEventNotifications(eventId, touch);
@@ -1073,6 +1156,20 @@ export const resendEventInvitation = async (
         }),
       });
     });
+
+    after(() =>
+      sendPushNotices("resendEventInvitation assignment", [
+        assignmentPush({
+          email: assignment.user.email,
+          eventName: assignment.event.name,
+          eventId,
+          organizationName,
+          organizationId,
+          roleLabel: volunteerRoleLabels[assignment.role],
+          when: formatEventShort(assignment.event.dates),
+        }),
+      ]),
+    );
 
     await logActivity({
       organizationId,
@@ -1648,6 +1745,25 @@ export const inviteMembersToEvent = async (
       );
     });
 
+    const when = formatEventShort(event.dates);
+
+    after(() =>
+      sendPushNotices(
+        "inviteMembersToEvent assignment",
+        invitedUsers.map((invitee) =>
+          assignmentPush({
+            email: invitee.email,
+            eventName: event.name,
+            eventId,
+            organizationName,
+            organizationId,
+            roleLabel: volunteerRoleLabels[role],
+            when,
+          }),
+        ),
+      ),
+    );
+
     await logActivity({
       organizationId,
       eventId,
@@ -1789,6 +1905,23 @@ export const deleteEvent = async (organizationId: string, eventId: string, touch
           })),
         );
       });
+
+      const shortWhen = formatEventShort(event.dates);
+
+      after(() =>
+        sendPushNotices(
+          "deleteEvent cancellation",
+          strandedTeam.map((assignment) => ({
+            email: assignment.user.email,
+            title: `Canceled: ${event.name}`,
+            subtitle: organizationName,
+            body: [`${canceledByName} canceled this event.`, shortWhen]
+              .filter(Boolean)
+              .join("\n"),
+            data: { type: "organization", organizationId },
+          })),
+        ),
+      );
     }
 
     await logActivity({
@@ -1925,6 +2058,21 @@ export const emailAcceptedVolunteers = async (
         return { success: false, error: "Unable to send message, please try again" };
       }
     }
+
+    // Only once the mail has gone, so a failed send the sender retries doesn't
+    // ring everybody's phone twice.
+    after(() =>
+      sendPushNotices(
+        "emailAcceptedVolunteers message",
+        recipients.map(({ user: recipient }) => ({
+          email: recipient.email,
+          title: subject,
+          subtitle: event.name,
+          body: `${senderName}: ${body}`,
+          data: { type: "event", organizationId, eventId },
+        })),
+      ),
+    );
 
     return { success: true, sentCount: recipients.length };
 
@@ -2168,6 +2316,37 @@ export const editEventDetails = async (
             })),
           );
         });
+
+        const changed = new Intl.ListFormat("en", { type: "conjunction" }).format(
+          changes.map((change) =>
+            change.label === "When"
+              ? "time"
+              : change.label === "Where"
+                ? "location"
+                : change.label.toLowerCase(),
+          ),
+        );
+
+        const nextWhen = scheduleChanged ? formatEventShort(nextDates) : null;
+
+        after(() =>
+          sendPushNotices(
+            "editEventDetails update",
+            roster.map((assignment) => ({
+              email: assignment.user.email,
+              title: `Updated: ${name}`,
+              subtitle: organizationName,
+              body: [`${updatedByName} changed the ${changed}.`, nextWhen && `Now ${nextWhen}`]
+                .filter(Boolean)
+                .join("\n"),
+              // Someone still deciding can't open the event page yet.
+              data:
+                assignment.status === InvitationStatus.ACCEPTED
+                  ? { type: "event", organizationId, eventId }
+                  : { type: "invitation", organizationId, eventId },
+            })),
+          ),
+        );
       }
 
       // Editing an event rewrites its EventDate rows, and those are what decide

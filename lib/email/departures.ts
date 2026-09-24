@@ -13,6 +13,7 @@ import {
   type EmailRecipient,
 } from "@/lib/email/recipients";
 import { sendEmailBatches } from "@/lib/email/send";
+import { sendPushNotices } from "@/lib/push/send";
 
 /**
  * An assignment on an upcoming event, as the caller read it before deleting it.
@@ -126,9 +127,10 @@ export async function notifyDeparture({
       return lookup;
     };
 
+    // `eventIds` runs parallel to `vacated`, for where the push opens.
     const byRecipient = new Map<
       string,
-      { recipient: EmailRecipient; vacated: VacatedSpot[] }
+      { recipient: EmailRecipient; vacated: VacatedSpot[]; eventIds: string[] }
     >();
 
     for (const spot of ordered) {
@@ -147,6 +149,7 @@ export async function notifyDeparture({
         const entry = byRecipient.get(recipient.email) ?? {
           recipient,
           vacated: [],
+          eventIds: [],
         };
 
         entry.vacated.push({
@@ -156,17 +159,21 @@ export async function notifyDeparture({
           viewLink: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/organizations/${organizationId}/events/${event.id}`,
         });
 
+        entry.eventIds.push(event.id);
+
         byRecipient.set(recipient.email, entry);
       }
     }
 
+    const subjectFor = (vacated: VacatedSpot[]) =>
+      vacated.length === 1
+        ? `Needs a ${vacated[0].roleLabel}: ${vacated[0].eventName}`
+        : `${vacated.length} upcoming events need people`;
+
     const messages = [...byRecipient.values()].map(({ recipient, vacated }) => ({
       from: organizationSender(organization.name),
       to: recipient.email,
-      subject:
-        vacated.length === 1
-          ? `Needs a ${vacated[0].roleLabel}: ${vacated[0].eventName}`
-          : `${vacated.length} upcoming events need people`,
+      subject: subjectFor(vacated),
       react: EventDepartureEmail({
         recipientName: recipient.firstName,
         organizationName: organization.name,
@@ -178,6 +185,30 @@ export async function notifyDeparture({
     }));
 
     await sendEmailBatches("departure shortage", messages);
+
+    const departed =
+      reason === "left"
+        ? "left"
+        : reason === "removed"
+          ? "was removed"
+          : "deleted their account";
+
+    await sendPushNotices(
+      "departure shortage",
+      [...byRecipient.values()].map(({ recipient, vacated, eventIds }) => ({
+        email: recipient.email,
+        title: subjectFor(vacated),
+        subtitle: organization.name,
+        body:
+          vacated.length === 1
+            ? `${departedName} ${departed}. Nobody else is confirmed as ${vacated[0].roleLabel}.`
+            : `${departedName} ${departed}, leaving ${vacated.length} upcoming events short.`,
+        data:
+          eventIds.length === 1
+            ? { type: "event", organizationId, eventId: eventIds[0] }
+            : { type: "organization", organizationId },
+      })),
+    );
   } catch (err) {
     console.error(
       `Failed to notify about a departure from org ${organizationId}`,

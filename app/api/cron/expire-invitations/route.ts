@@ -10,7 +10,7 @@ import EventInviteExpiredEmail, {
     type LapsedInvite,
 } from "@/components/email/event-invite-expired-template";
 import EventLastCallEmail from "@/components/email/event-last-call-template";
-import { formatEventWhen } from "@/lib/email/event-when";
+import { formatEventShort, formatEventWhen } from "@/lib/email/event-when";
 import { organizationSender } from "@/lib/email/organization";
 import {
     eventStaffingRecipients,
@@ -19,6 +19,7 @@ import {
 } from "@/lib/email/recipients";
 import { sendEmailBatches } from "@/lib/email/send";
 import { syncEventNotifications } from "@/lib/notifications/sync";
+import { sendPushNotices, type PushNotice } from "@/lib/push/send";
 
 /**
  * Hourly sweep that turns lapsed invitations into `EXPIRED` rows.
@@ -319,17 +320,21 @@ const notifyLapsedAssignments = async (
         }
     }
 
+    const subjectFor = (bucket: Bucket) => {
+        const roles = [...new Set(bucket.lapsed.map((item) => item.roleLabel))];
+
+        return roles.length === 1
+            ? `Needs a ${roles[0]}: ${bucket.eventName}`
+            : `Needs ${roles.length} roles filled: ${bucket.eventName}`;
+    };
+
     const messages = [...buckets.values()].map((bucket) => {
         const when = formatEventWhen(bucket.dates);
-        const roles = [...new Set(bucket.lapsed.map((item) => item.roleLabel))];
 
         return {
             from: organizationSender(bucket.organizationName),
             to: bucket.recipient.email,
-            subject:
-                roles.length === 1
-                    ? `Needs a ${roles[0]}: ${bucket.eventName}`
-                    : `Needs ${roles.length} roles filled: ${bucket.eventName}`,
+            subject: subjectFor(bucket),
             react: EventInviteExpiredEmail({
                 recipientName: bucket.recipient.firstName,
                 eventName: bucket.eventName,
@@ -344,6 +349,24 @@ const notifyLapsedAssignments = async (
     });
 
     await sendEmailBatches("expire-invitations lapsed", messages);
+
+    await sendPushNotices(
+        "expire-invitations lapsed",
+        [...buckets.values()].map((bucket) => ({
+            email: bucket.recipient.email,
+            title: subjectFor(bucket),
+            subtitle: bucket.organizationName,
+            body:
+                bucket.lapsed.length === 1
+                    ? `${bucket.lapsed[0].inviteeName}'s invitation expired without an answer.`
+                    : `${bucket.lapsed.length} invitations expired without an answer.`,
+            data: {
+                type: "event",
+                organizationId: bucket.organizationId,
+                eventId: bucket.eventId,
+            },
+        })),
+    );
 
     return {
         emails: messages.length,
@@ -408,6 +431,8 @@ const sendLastCalls = async (now: Date): Promise<NotifyResult> => {
         },
         take: LAST_CALL_LIMIT,
     });
+
+    const pushes: PushNotice[] = [];
 
     const perEvent = await Promise.all(
         events.map(async (event) => {
@@ -480,6 +505,28 @@ const sendLastCalls = async (now: Date): Promise<NotifyResult> => {
 
             const when = formatEventWhen(event.dates);
 
+            const missing = [
+                unfilledRoles.length > 0 && `Open: ${unfilledRoles.join(", ")}`,
+                waitingOn.length > 0 &&
+                    `Waiting on ${waitingOn.length === 1 ? "1 reply" : `${waitingOn.length} replies`}`,
+            ].filter(Boolean);
+
+            for (const recipient of recipients) {
+                pushes.push({
+                    email: recipient.email,
+                    title: `Not fully staffed yet: ${event.name}`,
+                    subtitle: event.organization.name,
+                    body: [formatEventShort(event.dates), missing.join(" · ")]
+                        .filter(Boolean)
+                        .join("\n"),
+                    data: {
+                        type: "event",
+                        organizationId: event.organizationId,
+                        eventId: event.id,
+                    },
+                });
+            }
+
             return recipients.map((recipient) => ({
                 from: organizationSender(event.organization.name),
                 to: recipient.email,
@@ -502,6 +549,8 @@ const sendLastCalls = async (now: Date): Promise<NotifyResult> => {
     const messages = perEvent.flat();
 
     await sendEmailBatches("expire-invitations last call", messages);
+
+    await sendPushNotices("expire-invitations last call", pushes);
 
     return {
         emails: messages.length,

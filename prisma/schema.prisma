@@ -109,6 +109,7 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   notifications Notification[]
+  pushTokens PushToken[]
 }
 
 model Organization {
@@ -599,4 +600,21 @@ model Notification {
   @@index([userId, updatedAt])
   @@index([eventId])
   @@index([organizationId])
+}
+
+/// One installed copy of the phone app that can be pushed to, belonging to
+/// whoever last signed in on it. Keyed by the token rather than the user, so a
+/// phone that changes hands moves to the new account instead of ringing for
+/// both. Deleted on sign-out, and whenever Expo reports the app is gone.
+model PushToken {
+  id    String @id @default(uuid())
+  token String @unique
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
 }

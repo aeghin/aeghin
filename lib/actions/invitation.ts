@@ -3,12 +3,13 @@
 import { auth } from "@clerk/nextjs/server";
 import prisma from "@/lib/prisma";
 import { orgInvitationSchema, OrgInvitationInput } from "../validations/invitations";
-import { OrgRole, InvitationStatus, ActivityType } from "@/generated/prisma/enums";
+import { OrgRole, InvitationStatus, ActivityType, type VolunteerRole } from "@/generated/prisma/enums";
 import { logActivity, volunteerRoleLabels } from "@/lib/activity";
 
 import { Resend } from "resend";
 import InvitationEmail from "@/components/email/email-template";
 import { organizationSender } from "@/lib/email/organization";
+import { sendPushNotices } from "@/lib/push/send";
 import { verifyInvitationByToken } from "../services/invitation";
 
 import { after } from "next/server";
@@ -35,6 +36,41 @@ const resend = new Resend(process.env.RESEND_EMAIL_API_KEY);
 type ActionResponse =
   | { success: true; orgId?: string }
   | { success: false; error: string }
+
+/**
+ * The invitation's push. Only somebody who already has an account can have a
+ * phone registered, so most invitees get the email alone. Matched on the email
+ * case-insensitively, as the membership check above it is.
+ *
+ * Not exported: a "use server" module may only export callable actions.
+ */
+const pushInvitation = async (invitation: {
+    email: string;
+    token: string;
+    volunteerRoles: VolunteerRole[];
+    organizationName: string;
+    invitedByName: string;
+}) => {
+    try {
+        const invitee = await prisma.user.findFirst({
+            where: { email: { equals: invitation.email, mode: "insensitive" } },
+            select: { email: true },
+        });
+
+        if (!invitee) return;
+
+        const roles = invitation.volunteerRoles.map((role) => volunteerRoleLabels[role]).join(", ");
+
+        await sendPushNotices("organization invitation", [{
+            email: invitee.email,
+            title: `You've been invited to join ${invitation.organizationName}`,
+            body: `${invitation.invitedByName} invited you${roles ? ` as ${roles}` : ""}. Tap to accept or decline.`,
+            data: { type: "organization-invite", token: invitation.token },
+        }]);
+    } catch (err) {
+        console.error("Failed to push an organization invitation", err);
+    }
+};
 
 export async function inviteMember(data: OrgInvitationInput, touch: TagInvalidator = updateTag): Promise<ActionResponse> {
     
@@ -121,6 +157,14 @@ export async function inviteMember(data: OrgInvitationInput, touch: TagInvalidat
             })
         })
     });
+
+        after(() => pushInvitation({
+            email,
+            token: invitation.token,
+            volunteerRoles,
+            organizationName: membership.organization.name,
+            invitedByName: user.firstName,
+        }));
 
         // await twilioClient.messages.create({
         //      body: `${user.firstName} has invited you to join ${membership.organization.name}! Accept here: ${process.env.NEXT_PUBLIC_APP_URL}/invite/${invitation.token}`,
@@ -396,6 +440,14 @@ export const resendInvitation = async (organizationId: string, userEmail: string
                 })
             });
         });
+
+        after(() => pushInvitation({
+            email: userEmail,
+            token: resentInvitation.token,
+            volunteerRoles: resentInvitation.volunteerRoles,
+            organizationName: membership.organization.name,
+            invitedByName: user.firstName,
+        }));
 
         return { success: true }
 
