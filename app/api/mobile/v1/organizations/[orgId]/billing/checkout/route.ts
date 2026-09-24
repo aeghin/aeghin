@@ -15,14 +15,16 @@ type Params = { orgId: string };
 const isPlan = (value: unknown): value is AiPlan => value === "premium" || value === "pro";
 
 /** Where Stripe sends the phone afterwards: a page that deep-links back into the app. */
-const returnUrl = (status: "success" | "cancel") =>
+const returnUrl = (status: "success" | "cancel" | "portal") =>
     `${process.env.NEXT_PUBLIC_APP_URL}/mobile/billing/return?status=${status}`;
 
 /**
  * POST /api/mobile/v1/organizations/[orgId]/billing/checkout
  *
  * Starts a subscription Checkout Session: `{ plan: "premium" | "pro" }` →
- * `{ url }`. Owners only, as on the dashboard. The phone opens the URL in an
+ * `{ url }` — or, for an org that already has a plan, Stripe's confirm page
+ * for switching it, so nobody ends up with two subscriptions. A 409 means it's
+ * already on that plan. Owners only, as on the dashboard. The phone opens the URL in an
  * auth session and Stripe returns through `/mobile/billing/return`, which
  * hands off to `aeghin://settings/billing`.
  */
@@ -47,15 +49,16 @@ export const POST = route<Params>("POST .../billing/checkout", async (req, { par
         return fail(400, "Expected a plan of \"premium\" or \"pro\".");
     }
 
-    const url = await createAiCheckoutSession({
+    const result = await createAiCheckoutSession({
         orgId,
         plan: body.plan,
         successUrl: returnUrl("success"),
+        switchedUrl: returnUrl("portal"),
         cancelUrl: returnUrl("cancel"),
         originContext: "mobile_app",
     });
 
-    if (!url) return fail(502, "Could not start checkout.");
+    if (!result.success) return fail(409, result.error);
 
-    return json({ url });
+    return json({ url: result.url });
 });

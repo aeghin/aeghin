@@ -31,17 +31,19 @@ async function startCheckout(orgId: string, plan: AiPlan): Promise<ActionResult>
     return { success: false, error: "Forbidden" };
   }
 
-  const url = await createAiCheckoutSession({
-    orgId,
-    plan,
-    successUrl: `${process.env.NEXT_PUBLIC_APP_URL}/api/billing/return?session_id={CHECKOUT_SESSION_ID}`,
-    cancelUrl: dashboardUrl(orgId),
-    originContext: "web",
-  });
-
-  return url
-    ? { success: true, url }
-    : { success: false, error: "Could not start checkout" };
+  try {
+    return await createAiCheckoutSession({
+      orgId,
+      plan,
+      successUrl: `${process.env.NEXT_PUBLIC_APP_URL}/api/billing/return?session_id={CHECKOUT_SESSION_ID}`,
+      switchedUrl: `${process.env.NEXT_PUBLIC_APP_URL}/api/billing/return?subscription_id={SUBSCRIPTION_ID}`,
+      cancelUrl: dashboardUrl(orgId),
+      originContext: "web",
+    });
+  } catch (err) {
+    console.error("startCheckout failed", err);
+    return { success: false, error: "Couldn't open the upgrade page. Please try again." };
+  }
 }
 
 /** Start a subscription Checkout Session for the AI setlist plan. */
