@@ -5,6 +5,7 @@ import { EditSettingsDialog } from "./edit-settings-dialog";
 import { DeleteOrgDialog } from "./delete-org-dialog";
 import { LeaveOrgDialog } from "./leave-org-dialog";
 import { ManageSubscriptionButton } from "./manage-subscription-button";
+import { PlanUsageSection } from "./plan-usage-section";
 import { ServiceTypesSettings } from "./service-types-settings";
 import { OrgLogoUploader } from "./org-logo-uploader";
 
@@ -88,6 +89,9 @@ export const SettingsTabContent = async ({
       />
       {canManage && (
         <ServiceTypesSettings organizationId={organizationId} serviceTypes={org?.serviceTypes ?? []} />
+      )}
+      {canManage && (
+        <PlanUsageSection organizationId={organizationId} isOwner={isOwner} />
       )}
       {isOwner && (
         <section className="rounded-xl border border-border/40 bg-secondary/10 p-5">

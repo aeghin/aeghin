@@ -6,6 +6,7 @@ import { PLAN_LIMITS, formatStorage, type OrgPlan } from "@/lib/config/plans";
 import { getOrgPlan, planFromEntitlements } from "@/lib/billing/entitlements";
 import { getOrgMemberCountById } from "@/lib/services/organization";
 import { getOrgPendingInvitationCount } from "@/lib/services/invitation";
+import { getOrganizationSongs } from "@/lib/services/songs";
 
 /**
  * The org's plan, read live rather than cached: a write is about to be allowed
@@ -176,5 +177,45 @@ export async function getSeatUsage(organizationId: string): Promise<SeatUsage | 
     members,
     pendingInvites,
     left: Math.max(0, limit - members - pendingInvites),
+  };
+}
+
+/**
+ * What the Plan & usage screens show. Mirrored by `PlanUsage` in the Expo app
+ * (`src/types/billing.ts`), which reads it from `GET .../usage`.
+ */
+export type PlanUsage = {
+  plan: OrgPlan;
+  members: { used: number; pending: number; limit: number | null };
+  songs: { used: number; limit: number | null };
+  storage: { used: number; limit: number };
+};
+
+/**
+ * An organization's use of its plan, for display — through cached reads every
+ * write already expires; the library read is the one the song screen uses.
+ * Never enforce with this.
+ */
+export async function getPlanUsage(organizationId: string): Promise<PlanUsage> {
+  const [plan, members, pending, songs] = await Promise.all([
+    getOrgPlan(organizationId),
+    getOrgMemberCountById(organizationId),
+    getOrgPendingInvitationCount(organizationId),
+    getOrganizationSongs(organizationId),
+  ]);
+
+  const limits = PLAN_LIMITS[plan];
+
+  return {
+    plan,
+    members: { used: members, pending, limit: limits.members },
+    songs: { used: songs.length, limit: limits.songs },
+    storage: {
+      used: songs.reduce(
+        (total, song) => total + song.attachments.reduce((sum, file) => sum + file.size, 0),
+        0,
+      ),
+      limit: limits.storage,
+    },
   };
 }
