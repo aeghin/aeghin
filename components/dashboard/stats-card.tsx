@@ -8,13 +8,15 @@ interface StatsCardProps {
   value: string | number
   icon: LucideIcon
   description?: string
+  // Tints the description to flag something that needs attention.
+  highlight?: boolean
   trend?: {
     value: string
     positive: boolean
   }
 };
 
-export function StatsCard({ title, value, icon: Icon, description, trend }: StatsCardProps) {
+export function StatsCard({ title, value, icon: Icon, description, highlight = false, trend }: StatsCardProps) {
   return (
     <Card className="group relative overflow-hidden border-border/40 bg-linear-to-br from-card to-card/80 transition-all duration-300 hover:border-primary/30 hover:shadow-lg hover:shadow-primary/5">
       <div className="absolute inset-0 bg-linear-to-br from-transparent via-transparent to-primary/10 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
@@ -36,7 +38,11 @@ export function StatsCard({ title, value, icon: Icon, description, trend }: Stat
                 </span>
               )}
             </div>
-            {description && <p className="text-xs text-muted-foreground">{description}</p>}
+            {description && (
+              <p className={cn("text-xs", highlight ? "font-medium text-amber-600 dark:text-amber-400" : "text-muted-foreground")}>
+                {description}
+              </p>
+            )}
           </div>
           <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 transition-transform duration-200 group-hover:scale-110 sm:size-12">
             <Icon className="h-5 w-5 text-primary sm:h-6 sm:w-6" />

@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { getRoleConfig, volunteerRoleConfig } from "@/lib/config/roles";
 import { InviteMemberButton } from "./invite-person-button";
 import { OrgRole, VolunteerRole } from "@/generated/prisma/enums";
+import { getSeatUsage } from "@/lib/billing/limits";
 import Link from "next/link";
 
 type Organization = {
@@ -34,6 +35,9 @@ export const OrganizationHero = async ({
   const RoleIcon = roleConfig.icon;
 
   const canManage = userRole === OrgRole.OWNER || userRole === OrgRole.ADMIN;
+
+  // Read here so the invite dialog can say "full" before anyone fills it in.
+  const seatUsage = canManage ? await getSeatUsage(id) : null;
 
   return (
     <div className="relative overflow-hidden rounded-2xl border border-border/40 bg-linear-to-br from-card via-card to-primary/5 p-8">
@@ -105,7 +109,12 @@ export const OrganizationHero = async ({
                 Create Event
               </Link>
             </Button>
-            <InviteMemberButton organizationId={id} organizationName={name} />
+            <InviteMemberButton
+              organizationId={id}
+              organizationName={name}
+              seatUsage={seatUsage}
+              canUpgrade={userRole === OrgRole.OWNER}
+            />
           </div>
         )}
       </div>

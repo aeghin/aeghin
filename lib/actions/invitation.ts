@@ -11,6 +11,7 @@ import InvitationEmail from "@/components/email/email-template";
 import { organizationSender } from "@/lib/email/organization";
 import { sendPushNotices } from "@/lib/push/send";
 import { verifyInvitationByToken } from "../services/invitation";
+import { inviteLimitError, joinLimitError } from "@/lib/billing/limits";
 
 import { after } from "next/server";
 import { updateTag } from "next/cache";
@@ -35,7 +36,7 @@ const resend = new Resend(process.env.RESEND_EMAIL_API_KEY);
 
 type ActionResponse =
   | { success: true; orgId?: string }
-  | { success: false; error: string }
+  | { success: false; error: string; code?: "MEMBER_LIMIT" }
 
 /**
  * The invitation's push. Only somebody who already has an account can have a
@@ -108,6 +109,13 @@ export async function inviteMember(data: OrgInvitationInput, touch: TagInvalidat
         });
         
         if (existingMember) return { success: false, error: "User is member" };
+
+        const seatError = await inviteLimitError(orgId, {
+            isOwner: membership.role === OrgRole.OWNER,
+            exceptEmail: email,
+        });
+
+        if (seatError) return { success: false, error: seatError, code: "MEMBER_LIMIT" };
 
         const invitation = await prisma.invitation.upsert({
             where: {
@@ -206,7 +214,11 @@ export async function acceptOrgInvite(token: string, touch: TagInvalidator = upd
          if (user.email.toLowerCase() !== invitation.email.toLowerCase()) {
             return { success: false, error: "Incorrect Invitation"}
          };
-         
+
+         const joinError = await joinLimitError(invitation.organizationId, invitation.organization.name);
+
+         if (joinError) return { success: false, error: joinError, code: "MEMBER_LIMIT" };
+
          const acceptedInvitation = await prisma.$transaction(async (trx) => {
             const inv = await trx.invitation.update({
                 where: {
@@ -411,6 +423,13 @@ export const resendInvitation = async (organizationId: string, userEmail: string
         });
 
         if (existingMember) return { success: false, error: "User is member" };
+
+        const seatError = await inviteLimitError(organizationId, {
+            isOwner: membership.role === OrgRole.OWNER,
+            exceptEmail: userEmail,
+        });
+
+        if (seatError) return { success: false, error: seatError, code: "MEMBER_LIMIT" };
 
         const resentInvitation = await prisma.invitation.update({
             where: {

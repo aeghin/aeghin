@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button"
 import { Check, Sparkles } from "lucide-react"
 import Link from "next/link"
+import { PLAN_LIMITS, PLAN_PRICES } from "@/lib/config/plans"
 
 const plans = [
   {
@@ -10,6 +11,7 @@ const plans = [
     description: "Core scheduling for your team",
     features: [
       "Create organizations, invite members, schedule events",
+      `Up to ${PLAN_LIMITS.free.members} members per organization`,
       "Event templates & service types",
       "Blockout dates & smart scheduling",
       "Song library with charts and audio",
@@ -21,11 +23,12 @@ const plans = [
   },
   {
     name: "AI Setlist Premium",
-    price: "$39.99",
+    price: PLAN_PRICES.premium,
     period: "/month",
     description: "Let AI build the setlist from your catalog",
     features: [
       "Everything in Free",
+      "Unlimited members",
       "AI setlist generation",
       "Matches themes, keys, and tempo arc",
       "Works strictly from your song catalog",
@@ -37,7 +40,7 @@ const plans = [
   },
   {
     name: "AI Setlist Pro",
-    price: "$49.99",
+    price: PLAN_PRICES.pro,
     period: "/month",
     description: "Drafts whole events, and researches beyond your catalog",
     features: [
@@ -115,7 +118,7 @@ export function PricingSection() {
         </div>
 
         <p className="mt-10 text-center text-sm text-muted-foreground">
-          Sign up free, then upgrade from your organization&apos;s dashboard. AI plans are per organization and can be
+          Sign up free, then upgrade from your organization&apos;s dashboard. Paid plans are per organization and can be
           started by an owner. AI usage is subject to plan limits.
         </p>
       </div>

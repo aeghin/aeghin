@@ -7,10 +7,13 @@ import { InvitePersonModal } from "@/components/setup/invite-person-modal";
 
 interface InviteMemberButtonProps {
     organizationId: string,
-    organizationName: string
+    organizationName: string,
+    // Null when the plan has no member cap.
+    seatUsage: { limit: number; left: number; pendingInvites: number } | null,
+    canUpgrade: boolean
 }
 
-export function InviteMemberButton({ organizationId, organizationName }: InviteMemberButtonProps) {
+export function InviteMemberButton({ organizationId, organizationName, seatUsage, canUpgrade }: InviteMemberButtonProps) {
 
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
 
@@ -24,7 +27,7 @@ export function InviteMemberButton({ organizationId, organizationName }: InviteM
           <Plus className="mr-2 h-4 w-4" />
           Invite Member
         </Button>
-      <InvitePersonModal open={inviteModalOpen} onOpenChange={setInviteModalOpen} organizationId={organizationId} organizationName={organizationName}/>
+      <InvitePersonModal open={inviteModalOpen} onOpenChange={setInviteModalOpen} organizationId={organizationId} organizationName={organizationName} seatUsage={seatUsage} canUpgrade={canUpgrade}/>
     </>
   )
 }

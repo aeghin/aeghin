@@ -48,10 +48,12 @@ const getStatusConfig = (status: InvitationStatus) => {
 
 interface InvitationsTabContentProps {
   organizationId: string;
+  canUpgrade: boolean;
 }
 
 export const InvitationsTabContent = async ({
   organizationId,
+  canUpgrade,
 }: InvitationsTabContentProps) => {
   
 
@@ -143,6 +145,7 @@ export const InvitationsTabContent = async ({
                       organizationId={organizationId}
                       email={invitation.email}
                       status={invitation.status}
+                      canUpgrade={canUpgrade}
                     />
                   </div>
                 </AnimatedInvitationRow>

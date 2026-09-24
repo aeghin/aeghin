@@ -11,7 +11,7 @@ export default function TermsPage() {
   return (
     <>
       <h1 className="text-3xl font-bold tracking-tight">Terms &amp; Conditions</h1>
-      <p className="text-sm">Last updated: July 16, 2026</p>
+      <p className="text-sm">Last updated: September 24, 2026</p>
 
       <h2>1. Acceptance of These Terms</h2>
       <p>
@@ -133,8 +133,10 @@ export default function TermsPage() {
       <h2>8. Paid Features and Billing</h2>
       <ul>
         <li>
-          Some features (such as AI setlist generation) require a paid subscription. Payments are
-          processed securely by Stripe.
+          Some features (such as AI setlist generation) require a paid subscription. The free plan
+          has usage limits, such as the number of members an organization can have; current limits
+          are listed on our <Link href="/#pricing">pricing page</Link>. Payments are processed
+          securely by Stripe.
         </li>
         <li>Subscriptions renew automatically at the end of each billing period until canceled.</li>
         <li>
@@ -142,8 +144,8 @@ export default function TermsPage() {
           period, and fees already paid are non-refundable except where required by law.
         </li>
         <li>
-          We may change subscription prices with advance notice; changes apply from your next
-          billing period.
+          We may change subscription prices or plan limits with advance notice. Price changes apply
+          from your next billing period.
         </li>
       </ul>
 

@@ -34,7 +34,7 @@ async function startCheckout(orgId: string, plan: AiPlan): Promise<ActionResult>
   const url = await createAiCheckoutSession({
     orgId,
     plan,
-    successUrl: `${dashboardUrl(orgId)}?upgraded=1`,
+    successUrl: `${process.env.NEXT_PUBLIC_APP_URL}/api/billing/return?session_id={CHECKOUT_SESSION_ID}`,
     cancelUrl: dashboardUrl(orgId),
     originContext: "web",
   });

@@ -3,6 +3,7 @@ import { AnimatedSection } from "@/components/dashboard/animate-section";
 import { StatsCard } from "@/components/dashboard/stats-card";
 import { getOrgMemberCountById, getUserVolunteerRolesByOrg } from "@/lib/services/organization";
 import { userEventsTotalCount, getUserEvents } from "@/lib/services/events";
+import { getSeatUsage } from "@/lib/billing/limits";
 import { InvitationStatus } from "@/generated/prisma/enums";
 
 
@@ -18,11 +19,12 @@ export const OrganizationStatsGrid = async ({
   canManage,
 }: OrganizationStatsGridProps) => {
 
-  const [memberCount, userRolesCount, upcomingCount, userEvents] = await Promise.all([
+  const [memberCount, userRolesCount, upcomingCount, userEvents, seatUsage] = await Promise.all([
     getOrgMemberCountById(organizationId),
     getUserVolunteerRolesByOrg(organizationId, userId),
     userEventsTotalCount(userId, organizationId, canManage),
     getUserEvents(organizationId, userId),
+    getSeatUsage(organizationId),
   ]);
 
   // Invites still open for a reply: pending, not expired, event not over.
@@ -34,12 +36,28 @@ export const OrganizationStatsGrid = async ({
       ) && event.dates.some((d) => d.endTime >= now),
   ).length;
 
+  // Only managers invite, so only they see the cap. Pending invites hold seats
+  // too, which is why they come off what's left.
+  let membersValue: string | number = memberCount;
+  let membersDescription = "In this organization";
+  let membersHighlight = false;
+
+  if (canManage && seatUsage) {
+    const left = seatUsage.left === 0 ? "Free limit reached" : `${seatUsage.left} left on Free`;
+
+    membersValue = `${memberCount} / ${seatUsage.limit}`;
+    membersDescription =
+      seatUsage.pendingInvites > 0 ? `${seatUsage.pendingInvites} invited · ${left}` : left;
+    membersHighlight = seatUsage.left === 0;
+  }
+
   const statCards = [
     {
       title: "Members",
-      value: memberCount,
+      value: membersValue,
       icon: Users,
-      description: "In this organization",
+      description: membersDescription,
+      highlight: membersHighlight,
     },
     {
       title: canManage ? "Upcoming Events" : "My Upcoming Events",

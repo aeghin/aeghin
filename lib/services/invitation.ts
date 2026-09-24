@@ -2,6 +2,7 @@ import "server-only"
 
 import prisma from "../prisma";
 import { cacheLife, cacheTag } from "next/cache";
+import { InvitationStatus } from "@/generated/prisma/enums";
 
 export const verifyInvitationByToken = async (token: string) => {
 
@@ -47,4 +48,18 @@ export const organizationInvitations = async (organizationId: string) => {
 
   return invitations;
 
+};
+
+// Seats held by invites nobody has answered. Status alone, no expiry check: the
+// hourly sweep flips lapsed rows to EXPIRED and expires this same tag.
+export const getOrgPendingInvitationCount = async (organizationId: string) => {
+  "use cache"
+
+  cacheLife("minutes");
+
+  cacheTag(`invitations-${organizationId}-list`);
+
+  return prisma.invitation.count({
+    where: { organizationId, status: InvitationStatus.PENDING },
+  });
 };

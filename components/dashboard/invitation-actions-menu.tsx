@@ -11,18 +11,21 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cancelOrgInvite, resendInvitation } from "@/lib/actions/invitation";
+import { startAiSetlistCheckout } from "@/lib/actions/billing";
 import { InvitationStatus } from "@/generated/prisma/enums";
 
 interface InvitationActionsMenuProps {
   organizationId: string;
   email: string;
   status: InvitationStatus;
+  canUpgrade: boolean;
 }
 
 export const InvitationActionsMenu = ({
   organizationId,
   email,
   status,
+  canUpgrade,
 }: InvitationActionsMenuProps) => {
   const [isCanceling, startCancel] = useTransition();
   const [isResending, startResend] = useTransition();
@@ -36,12 +39,30 @@ export const InvitationActionsMenu = ({
     });
   };
 
+  const handleUpgrade = async () => {
+    const result = await startAiSetlistCheckout(organizationId);
+
+    if (result.success) {
+      window.location.href = result.url;
+    } else {
+      toast.error(result.error, { position: "top-center" });
+    }
+  };
+
   const handleResend = (message: string) => {
     startResend(async () => {
       const result = await resendInvitation(organizationId, email);
-      result.success
-        ? toast.success(message, { position: "top-center" })
-        : toast.error(`${result.error}`, { position: "top-center" });
+
+      if (result.success) {
+        toast.success(message, { position: "top-center" });
+      } else if (result.code === "MEMBER_LIMIT" && canUpgrade) {
+        toast.error(result.error, {
+          position: "top-center",
+          action: { label: "Upgrade", onClick: handleUpgrade },
+        });
+      } else {
+        toast.error(`${result.error}`, { position: "top-center" });
+      }
     });
   };
 
