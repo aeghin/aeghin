@@ -128,6 +128,8 @@ const UNFILLED_TYPES = new Set<string>([
 
 interface SmartSchedulingActivityProps {
   enabled: boolean;
+  // Whether the plan includes it. An enabled event on a plan without it is paused.
+  available: boolean;
   items: SmartSchedulingActivityItem[];
 }
 
@@ -140,9 +142,12 @@ interface SmartSchedulingActivityProps {
  */
 export const SmartSchedulingActivity = ({
   enabled,
+  available,
   items,
 }: SmartSchedulingActivityProps) => {
   const [open, setOpen] = useState(false);
+
+  const running = enabled && available;
 
   const filledCount = items.filter(
     (i) => i.type === ActivityType.AUTO_INVITE_SENT,
@@ -180,12 +185,12 @@ export const SmartSchedulingActivity = ({
               <div
                 className={cn(
                   "flex h-8 w-8 shrink-0 items-center justify-center rounded-xl",
-                  enabled
+                  running
                     ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
                     : "bg-muted text-muted-foreground",
                 )}
               >
-                {enabled ? (
+                {running ? (
                   <Zap className="h-4 w-4 fill-current" />
                 ) : (
                   <ZapOff className="h-4 w-4" />
@@ -194,7 +199,7 @@ export const SmartSchedulingActivity = ({
               <div className="min-w-0">
                 <p className="text-sm font-semibold">Smart Scheduling</p>
                 <p className="text-xs text-muted-foreground">
-                  Auto-fill {enabled ? "on" : "off"}
+                  Auto-fill {running ? "on" : enabled ? "paused on the Free plan" : "off"}
                 </p>
               </div>
             </div>

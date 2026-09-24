@@ -1,10 +1,12 @@
 import { createAgentUIStreamResponse, type UIMessage } from "ai";
 
 import prisma from "@/lib/prisma";
+import { UsageKind } from "@/generated/prisma/enums";
 import {
     createEventDraftAgent,
     type EventAgentDeps,
 } from "@/lib/agents/event/agent";
+import { aiRunLimitError, recordUsage } from "@/lib/billing/limits";
 import { getOrgEventTemplates } from "@/lib/services/event-templates";
 import { getOrgMembersWithUser } from "@/lib/services/organization";
 import { getEligibilityByRole } from "@/lib/services/scheduling";
@@ -12,6 +14,7 @@ import { getOrgServiceTypes } from "@/lib/services/service-types";
 import {
     canManage,
     clerkIdOf,
+    expireTag,
     fail,
     isObject,
     membershipFor,
@@ -98,6 +101,15 @@ export const POST = route<Params>("POST .../event-ai", async (req, { params }) =
     ]);
 
     if (serviceTypes.length === 0) return fail(422, "No service types");
+
+    // The dashboard's monthly allowance, worded so the phone can show it as is.
+    const aiLimit = await aiRunLimitError(orgId);
+
+    if (aiLimit) return fail(429, aiLimit);
+
+    await recordUsage(orgId, UsageKind.AI_RUN);
+
+    expireTag(`org-${orgId}-usage`);
 
     // The one place calendar date + clock time become the stored floating-UTC
     // instants. The agent never sees a timezone.

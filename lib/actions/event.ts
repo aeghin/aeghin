@@ -5,10 +5,19 @@ import {
   ActivityType,
   InvitationStatus,
   OrgRole,
+  UsageKind,
   VolunteerRole,
 } from "@/generated/prisma/enums";
 
 import { logActivity, volunteerRoleLabels } from "@/lib/activity";
+
+import {
+  SMART_SCHEDULING_PLAN_ERROR,
+  bulkEmailLimitError,
+  hasSmartScheduling,
+  recordUsage,
+  smartSchedulingIncluded,
+} from "@/lib/billing/limits";
 
 import {
   AddEventRolesInput,
@@ -192,7 +201,7 @@ export async function createEvent(
       roleAssignments,
       rolesNeeded,
       expiresAt,
-      smartSchedulingEnabled,
+      smartSchedulingEnabled: smartSchedulingRequested,
       rehearsal,
     } = parsed.data;
 
@@ -226,6 +235,11 @@ export async function createEvent(
     }
 
     if (!serviceType) return { success: false, error: "Invalid Service Type" };
+
+    // Off on Free rather than refused: the dashboard locks the switch there, and
+    // an older phone build asking for it shouldn't cost anybody their event.
+    const smartSchedulingEnabled =
+      smartSchedulingRequested && (await hasSmartScheduling(organizationId));
 
     const { name: organizationName, logoUrl } = membership.organization;
 
@@ -645,7 +659,9 @@ export const declineEventInvitation = async (
             dates: { select: { startTime: true, endTime: true } },
           },
         },
-        organization: { select: { name: true, logoUrl: true } },
+        // Entitlements are read here, before the decline commits, so nothing
+        // after it can fail on a plan lookup.
+        organization: { select: { name: true, logoUrl: true, entitlements: true } },
       },
     });
 
@@ -741,7 +757,13 @@ export const declineEventInvitation = async (
       });
     };
 
-    if (!assignment.event.smartSchedulingEnabled) {
+    // Paused rather than off when the plan doesn't include it: the event keeps
+    // its setting, and picks up again if the organization upgrades.
+    const autoFillPaused =
+      assignment.event.smartSchedulingEnabled &&
+      !smartSchedulingIncluded(assignment.organization.entitlements);
+
+    if (!assignment.event.smartSchedulingEnabled || autoFillPaused) {
       await logActivity({
         organizationId,
         eventId,
@@ -752,7 +774,9 @@ export const declineEventInvitation = async (
       });
 
       notifyShortage(
-        "Auto-fill is off for this event, so no replacement was invited.",
+        autoFillPaused
+          ? "Auto-fill is paused while this organization is on the Free plan, so no replacement was invited."
+          : "Auto-fill is off for this event, so no replacement was invited.",
       );
 
       touch(`org-${organizationId}-activity`);
@@ -1284,6 +1308,12 @@ export const setEventSmartScheduling = async (
     if (!membership) return { success: false, error: "Unable to locate membership" };
 
     if (membership.role === OrgRole.MEMBER) return { success: false, error: "Unauthorized" };
+
+    // Switching it off is always allowed, so a Free organization can still
+    // clear a setting it kept from a paid plan.
+    if (enabled && !(await hasSmartScheduling(organizationId))) {
+      return { success: false, error: SMART_SCHEDULING_PLAN_ERROR };
+    }
 
     const updatedEvent = await prisma.event.update({
       where: {
@@ -1970,12 +2000,13 @@ export const deleteEvent = async (organizationId: string, eventId: string, touch
 
 type EmailTeamResult =
   | { success: true; sentCount: number }
-  | { success: false; error: string };
+  | { success: false; error: string; code?: "EMAIL_LIMIT" };
 
 export const emailAcceptedVolunteers = async (
   organizationId: string,
   eventId: string,
   input: EventEmailInput,
+  touch: TagInvalidator = updateTag,
 ): Promise<EmailTeamResult> => {
 
   try {
@@ -2029,6 +2060,10 @@ export const emailAcceptedVolunteers = async (
       return { success: false, error: "No accepted volunteers to email" };
     }
 
+    const limitError = await bulkEmailLimitError(organizationId);
+
+    if (limitError) return { success: false, error: limitError, code: "EMAIL_LIMIT" };
+
     const { name: organizationName, logoUrl } = membership.organization;
     const senderName = `${user.firstName} ${user.lastName}`;
     const viewLink = `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/organizations/${organizationId}/events/${eventId}`;
@@ -2058,6 +2093,11 @@ export const emailAcceptedVolunteers = async (
         return { success: false, error: "Unable to send message, please try again" };
       }
     }
+
+    // Counted only once it has all gone, so a failed send doesn't use one up.
+    await recordUsage(organizationId, UsageKind.BULK_EMAIL);
+
+    touch(`org-${organizationId}-usage`);
 
     // Only once the mail has gone, so a failed send the sender retries doesn't
     // ring everybody's phone twice.

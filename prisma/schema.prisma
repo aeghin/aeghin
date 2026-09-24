@@ -133,6 +133,7 @@ model Organization {
   messages Message[]
   blockoutDates BlockoutDate[]
   activityLogs ActivityLog[]
+  usageEvents UsageEvent[]
   songKeys SongKeyEntry[]
 
   createdAt   DateTime @default(now())
@@ -421,6 +422,28 @@ model ActivityLog {
 
   @@index([organizationId, createdAt])
   @@index([eventId, createdAt])
+}
+
+enum UsageKind {
+  // One Message All or Email Team send, however many people it reached.
+  BULK_EMAIL
+  // One message to the setlist or event AI.
+  AI_RUN
+}
+
+/// One use of a monthly allowance. Counted per organization per calendar month
+/// (UTC) against `PLAN_LIMITS`; nothing else reads these rows, so there is
+/// nothing to snapshot and nothing to show.
+model UsageEvent {
+  id   String    @id @default(uuid())
+  kind UsageKind
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([organizationId, kind, createdAt])
 }
 
 model Song {

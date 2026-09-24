@@ -1,11 +1,14 @@
 import { createAgentUIStreamResponse, type UIMessage } from "ai";
 
 import prisma from "@/lib/prisma";
+import { UsageKind } from "@/generated/prisma/enums";
 import { createSetlistAgent } from "@/lib/agents/setlist/agent";
+import { aiRunLimitError, recordUsage } from "@/lib/billing/limits";
 import { getOrganizationSongs } from "@/lib/services/songs";
 import {
     canManage,
     clerkIdOf,
+    expireTag,
     fail,
     isObject,
     membershipFor,
@@ -69,6 +72,15 @@ export const POST = route<Params>("POST .../setlist-ai", async (req, { params })
     const catalog = await getOrganizationSongs(orgId);
 
     if (catalog.length === 0) return fail(422, "No songs in catalog");
+
+    // The dashboard's monthly allowance, worded so the phone can show it as is.
+    const aiLimit = await aiRunLimitError(orgId);
+
+    if (aiLimit) return fail(429, aiLimit);
+
+    await recordUsage(orgId, UsageKind.AI_RUN);
+
+    expireTag(`org-${orgId}-usage`);
 
     const agent = createSetlistAgent({
         tier: hasPro ? "pro" : "premium",

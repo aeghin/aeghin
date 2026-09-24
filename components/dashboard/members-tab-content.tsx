@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { MembersList } from "@/components/dashboard/members-list";
 import { EmailOrganizationDialog } from "@/components/dashboard/email-organization-dialog";
 import { organizationMembersList } from "@/lib/services/organization";
+import { getEmailAllowance } from "@/lib/billing/limits";
 import { OrgRole } from "@/generated/prisma/enums";
 import { notFound } from "next/navigation";
 
@@ -31,6 +32,9 @@ export const MembersTabContent = async ({
 
   const canManage = viewerRole === OrgRole.OWNER || viewerRole === OrgRole.ADMIN;
 
+  // Only managers send group emails, so only they pay for the count.
+  const emailAllowance = canManage ? await getEmailAllowance(organizationId) : null;
+
   const visibleMembers = canManage
     ? sorted
     : sorted.map((member) =>
@@ -57,11 +61,13 @@ export const MembersTabContent = async ({
           </div>
         </div>
 
-        {canManage && members.length > 1 && (
+        {emailAllowance && members.length > 1 && (
           <EmailOrganizationDialog
             organizationId={organizationId}
             organizationName={organizationName}
             recipientCount={members.length}
+            allowance={emailAllowance}
+            canUpgrade={viewerRole === OrgRole.OWNER}
           />
         )}
       </CardHeader>

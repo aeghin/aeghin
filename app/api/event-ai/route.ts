@@ -1,11 +1,13 @@
 import { createAgentUIStreamResponse } from "ai";
+import { revalidateTag } from "next/cache";
 import { currentUser } from "@/lib/services/user";
 import { getUserMembershipWithOrg, getOrgMembersWithUser } from "@/lib/services/organization";
 import { getOrgServiceTypes } from "@/lib/services/service-types";
 import { getOrgEventTemplates } from "@/lib/services/event-templates";
 import { getEligibilityByRole } from "@/lib/services/scheduling";
 import { getAiProAccess } from "@/lib/billing/entitlements";
-import { OrgRole } from "@/generated/prisma/enums";
+import { aiRunLimitError, recordUsage } from "@/lib/billing/limits";
+import { OrgRole, UsageKind } from "@/generated/prisma/enums";
 import {
   createEventDraftAgent,
   type EventAgentDeps,
@@ -62,6 +64,16 @@ export async function POST(req: Request) {
   if (serviceTypes.length === 0) {
     return new Response("No service types", { status: 422 });
   }
+
+  const aiLimit = await aiRunLimitError(orgId);
+
+  if (aiLimit) return new Response(aiLimit, { status: 429 });
+
+  // Counted as it starts, so a run that fails partway still counts: the model
+  // was paid for either way.
+  await recordUsage(orgId, UsageKind.AI_RUN);
+
+  revalidateTag(`org-${orgId}-usage`, { expire: 0 });
 
   // The one place calendar date + clock time become the stored floating-UTC
   // instants. The agent never sees a timezone.

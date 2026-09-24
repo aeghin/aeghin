@@ -24,6 +24,9 @@ import {
   getOrgMembersWithUser,
   getUserMembershipRole,
 } from "@/lib/services/organization";
+import { getOrgPlan } from "@/lib/billing/entitlements";
+import { getEmailAllowance } from "@/lib/billing/limits";
+import { PLAN_LIMITS } from "@/lib/config/plans";
 import { InvitationStatus, OrgRole, VolunteerRole } from "@/generated/prisma/enums";
 
 export default async function EventDetailPage({
@@ -80,6 +83,13 @@ export default async function EventDetailPage({
     ? await getEventSmartSchedulingActivity(eventId, orgId)
     : [];
 
+  // Managers only, like the auto-fill switch and Email Team they drive.
+  const [emailAllowance, plan] = canManage
+    ? await Promise.all([getEmailAllowance(orgId), getOrgPlan(orgId)])
+    : [null, null];
+
+  const smartSchedulingAvailable = plan !== null && PLAN_LIMITS[plan].smartScheduling;
+
   return (
     <main className="mx-auto max-w-screen-2xl px-4 py-6 sm:px-6 sm:py-8">
       <div className="space-y-6 sm:space-y-8">
@@ -102,6 +112,7 @@ export default async function EventDetailPage({
           <AnimatedSection delay={0.15}>
             <SmartSchedulingActivity
               enabled={event.smartSchedulingEnabled}
+              available={smartSchedulingAvailable}
               items={smartSchedulingActivity}
             />
           </AnimatedSection>
@@ -124,6 +135,9 @@ export default async function EventDetailPage({
               currentUserId={user.id}
               canManage={canManage}
               members={members}
+              emailAllowance={emailAllowance}
+              smartSchedulingAvailable={smartSchedulingAvailable}
+              canUpgrade={membership.role === OrgRole.OWNER}
             />
             <EventChatPanel
               eventId={eventId}

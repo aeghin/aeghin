@@ -36,6 +36,12 @@ export async function getAiProAccess(params: {
   return entitlements.includes("ai_pro");
 };
 
+/**
+ * The entitlements that put an org on Premium or Pro — `planFromEntitlements`
+ * as a list, for a query that has to pick paid organizations out in SQL.
+ */
+export const PAID_ENTITLEMENTS = ["ai_setlist", "ai_pro"];
+
 /** The plan an org is on, read off its Stripe entitlements. Pro wins when it holds both. */
 export function planFromEntitlements(entitlements: string[]): OrgPlan {
   if (entitlements.includes("ai_pro")) return "pro";

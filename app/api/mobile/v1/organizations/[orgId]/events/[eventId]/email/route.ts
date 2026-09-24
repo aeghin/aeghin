@@ -2,6 +2,8 @@ import { emailAcceptedVolunteers } from "@/lib/actions/event";
 import {
     actionFailure,
     clerkIdOf,
+    emailLimitFailure,
+    expireTag,
     fail,
     isObject,
     json,
@@ -39,12 +41,21 @@ export const POST = route<Params>("POST .../events/[id]/email", async (req, { pa
         return fail(400, "Expected a subject and a message.");
     }
 
-    const result = await emailAcceptedVolunteers(orgId, eventId, {
-        subject: body.subject,
-        body: body.body,
-    });
+    const result = await emailAcceptedVolunteers(
+        orgId,
+        eventId,
+        {
+            subject: body.subject,
+            body: body.body,
+        },
+        expireTag,
+    );
 
-    if (!result.success) return actionFailure(result.error);
+    if (!result.success) {
+        if (result.code === "EMAIL_LIMIT") return emailLimitFailure(result.error);
+
+        return actionFailure(result.error);
+    }
 
     return json({ sentCount: result.sentCount });
 });

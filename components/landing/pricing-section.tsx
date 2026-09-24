@@ -13,12 +13,13 @@ const plans = [
       "Create organizations, invite members, schedule events",
       `Up to ${PLAN_LIMITS.free.members} members per organization`,
       "Event templates & service types",
-      "Blockout dates & smart scheduling",
+      "Blockout dates",
       "Song library with charts and audio",
       `Up to ${PLAN_LIMITS.free.songs} songs in your library`,
       `${formatStorage(PLAN_LIMITS.free.storage)} of storage for charts and audio`,
       "Setlists & per-song assignments",
       "Event chat and email notifications",
+      `${PLAN_LIMITS.free.bulkEmails} group emails a month`,
     ],
     cta: "Get started free",
     popular: false,
@@ -31,8 +32,10 @@ const plans = [
     features: [
       "Everything in Free",
       "Unlimited members and songs",
+      "Smart Scheduling and last-call staffing alerts",
       `${formatStorage(PLAN_LIMITS.premium.storage)} of storage for charts and audio`,
-      "AI setlist generation",
+      `${PLAN_LIMITS.premium.bulkEmails} group emails a month`,
+      `AI setlist generation (${PLAN_LIMITS.premium.aiRuns} requests a month)`,
       "Matches themes, keys, and tempo arc",
       "Works strictly from your song catalog",
       "Apply proposals straight into the editor",
@@ -49,6 +52,7 @@ const plans = [
     features: [
       "Everything in Premium",
       `${formatStorage(PLAN_LIMITS.pro.storage)} of storage for charts and audio`,
+      `${PLAN_LIMITS.pro.bulkEmails} group emails a month`,
       "AI event drafting with volunteer picks",
       "Upgraded, more capable AI model",
       "Web search for songs and artists",
@@ -69,8 +73,8 @@ export function PricingSection() {
           <p className="text-sm font-semibold text-primary mb-4 tracking-wide uppercase">Pricing</p>
           <h2 className="text-4xl font-bold tracking-tight sm:text-5xl text-balance">Simple, transparent pricing</h2>
           <p className="mt-6 text-lg text-muted-foreground">
-            Start free. Premium lifts the limits and adds AI setlists; Pro adds
-            AI event drafting on top.
+            Start free. Premium lifts the limits and adds Smart Scheduling and AI
+            setlists; Pro adds AI event drafting on top.
           </p>
         </div>
 

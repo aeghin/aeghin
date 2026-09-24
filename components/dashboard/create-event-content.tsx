@@ -87,6 +87,7 @@ import { createServiceType } from "@/lib/actions/service-type";
 import { createEvent } from "@/lib/actions/event";
 import { AiEventPanel } from "@/components/dashboard/events/ai-event-panel";
 import { AiSetlistProUpsell } from "@/components/dashboard/events/ai-setlist-pro-upsell";
+import { UpgradePlanButton } from "@/components/dashboard/upgrade-plan-button";
 import type { EventDraft } from "@/lib/agents/event/agent";
 
 import { Switch } from "@/components/ui/switch";
@@ -265,6 +266,8 @@ interface CreateEventPageContentProps {
   initialTemplateId?: string;
   canDraftWithAi: boolean;
   canSubscribe: boolean;
+  // Whether the plan includes auto-fill. Free gets the upgrade in the switch's place.
+  smartSchedulingAvailable: boolean;
 }
 
 export function CreateEventPageContent({
@@ -276,6 +279,7 @@ export function CreateEventPageContent({
   initialTemplateId,
   canDraftWithAi,
   canSubscribe,
+  smartSchedulingAvailable,
 }: CreateEventPageContentProps) {
   const router = useRouter();
 
@@ -1645,21 +1649,33 @@ export function CreateEventPageContent({
                           <p className="text-sm font-medium">Auto-fill Declines</p>
                           <p className="text-xs text-muted-foreground">
                             Invite the next best available member when someone
-                            declines
+                            declines{!smartSchedulingAvailable && " · Part of Premium"}
                           </p>
                         </div>
                       </div>
-                      <Switch
-                        size="lg"
-                        checked={watchedSmartScheduling}
-                        onCheckedChange={(checked) =>
-                          setValue("smartSchedulingEnabled", checked, {
-                            shouldValidate: true,
-                          })
-                        }
-                        aria-label="Toggle auto-fill for this event"
-                        className="cursor-pointer self-start sm:self-auto"
-                      />
+                      {smartSchedulingAvailable ? (
+                        <Switch
+                          size="lg"
+                          checked={watchedSmartScheduling}
+                          onCheckedChange={(checked) =>
+                            setValue("smartSchedulingEnabled", checked, {
+                              shouldValidate: true,
+                            })
+                          }
+                          aria-label="Toggle auto-fill for this event"
+                          className="cursor-pointer self-start sm:self-auto"
+                        />
+                      ) : canSubscribe ? (
+                        // A template can still carry it switched on; the
+                        // server creates the event with it off either way.
+                        <div className="self-start sm:self-auto">
+                          <UpgradePlanButton orgId={organizationId} plan="premium" />
+                        </div>
+                      ) : (
+                        <p className="text-xs text-muted-foreground">
+                          Ask an owner to upgrade
+                        </p>
+                      )}
                   </div>
 
                   {/* Role Assignments — compact rows; picking happens in a modal */}

@@ -2,6 +2,8 @@ import { emailEntireOrganization } from "@/lib/actions/organizations";
 import {
     actionFailure,
     clerkIdOf,
+    emailLimitFailure,
+    expireTag,
     fail,
     isObject,
     json,
@@ -43,12 +45,20 @@ export const POST = route<Params>("POST .../email", async (req, { params }) => {
         return fail(400, "Expected a subject and a message.");
     }
 
-    const result = await emailEntireOrganization(orgId, {
-        subject: body.subject,
-        body: body.body,
-    });
+    const result = await emailEntireOrganization(
+        orgId,
+        {
+            subject: body.subject,
+            body: body.body,
+        },
+        expireTag,
+    );
 
-    if (!result.success) return actionFailure(result.error);
+    if (!result.success) {
+        if (result.code === "EMAIL_LIMIT") return emailLimitFailure(result.error);
+
+        return actionFailure(result.error);
+    }
 
     return json({ sentCount: result.sentCount });
 });

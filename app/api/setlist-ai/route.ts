@@ -1,10 +1,12 @@
 import { createAgentUIStreamResponse } from "ai";
+import { revalidateTag } from "next/cache";
 import { currentUser } from "@/lib/services/user";
 import { getUserMembershipRole } from "@/lib/services/organization";
 import { getEventDetailsById } from "@/lib/services/events";
 import { getOrganizationSongs } from "@/lib/services/songs";
 import { getAiSetlistAccess, getAiProAccess } from "@/lib/billing/entitlements";
-import { OrgRole } from "@/generated/prisma/enums";
+import { aiRunLimitError, recordUsage } from "@/lib/billing/limits";
+import { OrgRole, UsageKind } from "@/generated/prisma/enums";
 import { createSetlistAgent } from "@/lib/agents/setlist/agent";
 
 
@@ -44,6 +46,16 @@ export async function POST(req: Request) {
   if (catalog.length === 0) {
     return new Response("No songs in catalog", { status: 422 });
   }
+
+  const aiLimit = await aiRunLimitError(orgId);
+
+  if (aiLimit) return new Response(aiLimit, { status: 429 });
+
+  // Counted as it starts, so a run that fails partway still counts: the model
+  // was paid for either way.
+  await recordUsage(orgId, UsageKind.AI_RUN);
+
+  revalidateTag(`org-${orgId}-usage`, { expire: 0 });
 
   const agent = createSetlistAgent({
     tier,

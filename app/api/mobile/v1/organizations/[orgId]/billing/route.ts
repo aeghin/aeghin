@@ -15,8 +15,18 @@ type BillingStatus = {
     canSubscribe: boolean;
     /** Whether a Stripe customer exists, so the portal has something to open. */
     hasBillingAccount: boolean;
-    /** The caps on the organization's plan. `null` means no cap; storage is bytes. */
-    limits: { members: number | null; songs: number | null; storage: number };
+    /**
+     * The caps on the organization's plan. `null` means no cap; storage is
+     * bytes; the two allowances are per calendar month.
+     */
+    limits: {
+        members: number | null;
+        songs: number | null;
+        storage: number;
+        bulkEmails: number;
+        aiRuns: number;
+        smartScheduling: boolean;
+    };
 };
 
 type Params = { orgId: string };

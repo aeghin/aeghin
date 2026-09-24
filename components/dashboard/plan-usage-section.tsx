@@ -2,21 +2,26 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 import { getPlanUsage } from "@/lib/billing/limits";
-import { PLAN_LIMITS, formatStorage, type OrgPlan } from "@/lib/config/plans";
+import {
+  NEXT_PLAN,
+  PLAN_LIMITS,
+  PLAN_NAMES,
+  formatResetDate,
+  formatStorage,
+  type OrgPlan,
+} from "@/lib/config/plans";
 import { UpgradePlanButton } from "./upgrade-plan-button";
-
-const PLAN_NAMES: Record<OrgPlan, string> = { free: "Free", premium: "Premium", pro: "Pro" };
 
 // From this share of a limit the row turns amber, so the wall is never a surprise.
 const WARN_AT = 0.8;
 
 /** What a plan includes, from the same numbers the checks use. */
 function planSummary(plan: OrgPlan): string {
-  const { members, songs, storage } = PLAN_LIMITS[plan];
+  const { members, songs, storage, bulkEmails, aiRuns } = PLAN_LIMITS[plan];
 
   return members !== null && songs !== null
-    ? `${PLAN_NAMES[plan]} includes up to ${members} members, ${songs} songs and ${formatStorage(storage)} of storage.`
-    : `${PLAN_NAMES[plan]} has no member or song limit, and ${formatStorage(storage)} of storage.`;
+    ? `${PLAN_NAMES[plan]} includes up to ${members} members, ${songs} songs, ${formatStorage(storage)} of storage and ${bulkEmails} group emails a month.`
+    : `${PLAN_NAMES[plan]} has no member or song limit, with ${formatStorage(storage)} of storage, ${bulkEmails} group emails and ${aiRuns} AI requests a month.`;
 }
 
 interface PlanUsageSectionProps {
@@ -26,9 +31,11 @@ interface PlanUsageSectionProps {
 
 /** The organization's plan and how much of it is in use. Owners and admins see it. */
 export const PlanUsageSection = async ({ organizationId, isOwner }: PlanUsageSectionProps) => {
-  const { plan, members, songs, storage } = await getPlanUsage(organizationId);
+  const { plan, members, songs, storage, bulkEmails, aiRuns, resetsAt } = await getPlanUsage(organizationId);
 
-  const nextPlan = plan === "free" ? "premium" : plan === "premium" ? "pro" : null;
+  const nextPlan = NEXT_PLAN[plan];
+
+  const resets = `Resets ${formatResetDate(new Date(resetsAt))}`;
 
   // Pending invites hold seats too, so they fill the bar and come off what's left.
   const seatsUsed = members.used + members.pending;
@@ -72,6 +79,23 @@ export const PlanUsageSection = async ({ organizationId, isOwner }: PlanUsageSec
           used={storage.used}
           limit={storage.limit}
         />
+        <UsageRow
+          label="Group emails this month"
+          value={`${bulkEmails.used} / ${bulkEmails.limit}`}
+          detail={`${bulkEmails.used >= bulkEmails.limit ? "Limit reached" : `${bulkEmails.limit - bulkEmails.used} left`} · ${resets}`}
+          used={bulkEmails.used}
+          limit={bulkEmails.limit}
+        />
+        {/* Free has no AI, so there's no allowance to show. */}
+        {aiRuns.limit > 0 && (
+          <UsageRow
+            label="AI requests this month"
+            value={`${aiRuns.used} / ${aiRuns.limit}`}
+            detail={`${aiRuns.used >= aiRuns.limit ? "Limit reached" : `${aiRuns.limit - aiRuns.used} left`} · ${resets}`}
+            used={aiRuns.used}
+            limit={aiRuns.limit}
+          />
+        )}
       </div>
 
       {nextPlan && (

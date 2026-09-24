@@ -29,7 +29,7 @@ const features = [
     icon: Calendar,
     title: "Smart Scheduling",
     description:
-      "When someone declines, the best eligible member for that role is found automatically — skipping anyone with a conflict or blockout.",
+      "On Premium, when someone declines, the best eligible member for that role is found automatically — skipping anyone with a conflict or blockout.",
   },
   {
     icon: MessageSquare,

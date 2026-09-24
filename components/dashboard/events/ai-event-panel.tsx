@@ -232,7 +232,9 @@ export function AiEventPanel({
                 ? "This organization has no service types yet — add one below and try again."
                 : /upgrade/i.test(error.message)
                   ? "This organization's plan no longer includes AI event drafting."
-                  : "Something went wrong. Please try again."}
+                  : /AI requests/.test(error.message)
+                    ? error.message
+                    : "Something went wrong. Please try again."}
             </p>
           )}
         </div>

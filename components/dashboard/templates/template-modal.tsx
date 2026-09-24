@@ -101,6 +101,8 @@ const getFormValues = (
 interface TemplateModalProps {
   organizationId: string;
   serviceTypes: ServiceTypeOption[];
+  // Whether the plan includes auto-fill; the switch is locked off without it.
+  smartSchedulingAvailable: boolean;
   template?: EventTemplateWithServiceType;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
@@ -109,6 +111,7 @@ interface TemplateModalProps {
 export function TemplateModal({
   organizationId,
   serviceTypes,
+  smartSchedulingAvailable,
   template,
   open,
   onOpenChange,
@@ -388,13 +391,16 @@ export function TemplateModal({
                     <div className="space-y-0.5 pr-3">
                       <FormLabel>Auto-fill Declines</FormLabel>
                       <p className="text-xs text-muted-foreground">
-                        Events from this template start with auto-fill on
+                        {smartSchedulingAvailable
+                          ? "Events from this template start with auto-fill on"
+                          : "Part of Premium. Events start with auto-fill off on the Free plan."}
                       </p>
                     </div>
                     <FormControl>
                       <Switch
-                        checked={field.value}
+                        checked={smartSchedulingAvailable && field.value}
                         onCheckedChange={field.onChange}
+                        disabled={!smartSchedulingAvailable}
                         className="cursor-pointer"
                       />
                     </FormControl>

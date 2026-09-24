@@ -53,6 +53,14 @@ const LIMIT_MESSAGES: Record<"MEMBER_LIMIT" | "SONG_LIMIT", string> = {
 export const limitFailure = (code: "MEMBER_LIMIT" | "SONG_LIMIT") =>
     json({ error: LIMIT_MESSAGES[code], code }, 409);
 
+/**
+ * The monthly group-email allowance, which every plan has. Its action already
+ * words the refusal without pointing at an upgrade, so the message passes
+ * through as is.
+ */
+export const emailLimitFailure = (error: string) =>
+    json({ error, code: "EMAIL_LIMIT" }, 409);
+
 /** The verified Clerk id, or null when there is no session. */
 export const clerkIdOf = async () => (await auth()).userId;
 

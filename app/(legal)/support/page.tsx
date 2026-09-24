@@ -89,7 +89,11 @@ export default function SupportPage() {
         pending invites, and {PLAN_LIMITS.free.songs} songs in the library; Premium and Pro have no
         limit on either. Attachment storage is {formatStorage(PLAN_LIMITS.free.storage)} on Free,{" "}
         {formatStorage(PLAN_LIMITS.premium.storage)} on Premium and {formatStorage(PLAN_LIMITS.pro.storage)} on
-        Pro. A plan applies to an organization
+        Pro. Group emails (Message All and Email Team) are limited to {PLAN_LIMITS.free.bulkEmails} a
+        month on Free, {PLAN_LIMITS.premium.bulkEmails} on Premium and {PLAN_LIMITS.pro.bulkEmails} on
+        Pro; automatic emails never count. Premium and Pro include {PLAN_LIMITS.premium.aiRuns} AI
+        requests a month, and Smart Scheduling with its last-call staffing alerts. Monthly counts
+        start over on the 1st (UTC). A plan applies to an organization
         rather than to an individual, so upgrading
         unlocks the paid features for everyone in that organization — including in the mobile
         app, where the features are available but not sold. Only an organization owner can change

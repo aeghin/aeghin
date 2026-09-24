@@ -27,6 +27,8 @@ import {
 } from "@/components/ui/form";
 
 import { emailEntireOrganization } from "@/lib/actions/organizations";
+import { PlanLimitReached } from "@/components/dashboard/plan-limit-reached";
+import type { EmailAllowance } from "@/lib/billing/limits";
 
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -41,17 +43,26 @@ interface EmailOrganizationDialogProps {
   organizationId: string;
   organizationName: string;
   recipientCount: number;
+  // This month's group emails against the plan's allowance.
+  allowance: EmailAllowance;
+  canUpgrade: boolean;
 }
 
 export function EmailOrganizationDialog({
   organizationId,
   organizationName,
   recipientCount,
+  allowance,
+  canUpgrade,
 }: EmailOrganizationDialogProps) {
 
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [sentCount, setSentCount] = useState<number | null>(null);
+  // The server's refusal, for when it knew the allowance was used up and this page didn't.
+  const [limitMessage, setLimitMessage] = useState<string | null>(null);
+
+  const limitReached = allowance.sent >= allowance.limit || limitMessage !== null;
 
   const form = useForm<OrganizationEmailInput>({
     resolver: zodResolver(organizationEmailSchema),
@@ -69,6 +80,8 @@ export function EmailOrganizationDialog({
 
       if (result.success) {
         setSentCount(result.sentCount);
+      } else if (result.code === "EMAIL_LIMIT") {
+        setLimitMessage(result.error);
       } else {
         toast.error(result.error, { position: "top-center" });
       }
@@ -80,6 +93,7 @@ export function EmailOrganizationDialog({
       setOpen(false);
       form.reset();
       setSentCount(null);
+      setLimitMessage(null);
     }
   };
 
@@ -109,6 +123,20 @@ export function EmailOrganizationDialog({
                 you.
               </DialogDescription>
             </div>
+          ) : limitReached ? (
+            <PlanLimitReached
+              icon={Megaphone}
+              title="Monthly email limit reached"
+              description={
+                limitMessage ??
+                `${organizationName} has sent all ${allowance.limit} of this month's group emails. The count starts over on ${allowance.resetsOn}.`
+              }
+              organizationId={organizationId}
+              organizationName={organizationName}
+              canUpgrade={canUpgrade}
+              upgradeTo={allowance.upgradeTo}
+              onClose={handleClose}
+            />
           ) : (
             <>
               <DialogHeader>
@@ -123,6 +151,9 @@ export function EmailOrganizationDialog({
                   {recipientCount === 1 ? "" : "s"} of {organizationName},
                   regardless of role. You&apos;ll get a copy too.
                 </DialogDescription>
+                <p className="text-center text-xs text-muted-foreground">
+                  {allowance.sent} of {allowance.limit} group emails sent this month
+                </p>
               </DialogHeader>
               <Form {...form}>
                 <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4 py-4">

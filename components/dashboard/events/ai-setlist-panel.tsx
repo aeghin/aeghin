@@ -195,7 +195,9 @@ export function AiSetlistPanel({
           )}
           {error && (
             <p className="text-xs text-destructive">
-              Something went wrong. Please try again.
+              {/AI requests/.test(error.message)
+                ? error.message
+                : "Something went wrong. Please try again."}
             </p>
           )}
         </div>

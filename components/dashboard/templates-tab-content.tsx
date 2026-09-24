@@ -4,6 +4,8 @@ import { TemplateModal } from "@/components/dashboard/templates/template-modal";
 import { TemplateList } from "@/components/dashboard/templates/template-list";
 import { getOrgEventTemplates } from "@/lib/services/event-templates";
 import { getOrgServiceTypes } from "@/lib/services/service-types";
+import { getOrgPlan } from "@/lib/billing/entitlements";
+import { PLAN_LIMITS } from "@/lib/config/plans";
 
 interface TemplatesTabContentProps {
   organizationId: string;
@@ -13,10 +15,13 @@ export const TemplatesTabContent = async ({
   organizationId,
 }: TemplatesTabContentProps) => {
 
-  const [templates, serviceTypes] = await Promise.all([
+  const [templates, serviceTypes, plan] = await Promise.all([
     getOrgEventTemplates(organizationId),
     getOrgServiceTypes(organizationId),
+    getOrgPlan(organizationId),
   ]);
+
+  const smartSchedulingAvailable = PLAN_LIMITS[plan].smartScheduling;
 
   return (
     <Card className="overflow-hidden rounded-xl border-border/40 bg-linear-to-br from-card to-card/80 shadow-sm">
@@ -38,6 +43,7 @@ export const TemplatesTabContent = async ({
         <TemplateModal
           organizationId={organizationId}
           serviceTypes={serviceTypes}
+          smartSchedulingAvailable={smartSchedulingAvailable}
         />
       </CardHeader>
       <CardContent className="p-6">
@@ -46,6 +52,7 @@ export const TemplatesTabContent = async ({
             templates={templates}
             serviceTypes={serviceTypes}
             organizationId={organizationId}
+            smartSchedulingAvailable={smartSchedulingAvailable}
           />
         ) : (
           <div className="flex flex-col items-center justify-center py-12 text-center">

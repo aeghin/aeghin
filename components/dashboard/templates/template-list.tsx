@@ -48,12 +48,14 @@ interface TemplateCardProps {
   template: EventTemplateWithServiceType;
   serviceTypes: ServiceTypeOption[];
   organizationId: string;
+  smartSchedulingAvailable: boolean;
 }
 
 const TemplateCard = ({
   template,
   serviceTypes,
   organizationId,
+  smartSchedulingAvailable,
 }: TemplateCardProps) => {
 
   const [editOpen, setEditOpen] = useState(false);
@@ -185,6 +187,7 @@ const TemplateCard = ({
       <TemplateModal
         organizationId={organizationId}
         serviceTypes={serviceTypes}
+        smartSchedulingAvailable={smartSchedulingAvailable}
         template={template}
         open={editOpen}
         onOpenChange={setEditOpen}
@@ -204,12 +207,14 @@ interface TemplateListProps {
   templates: EventTemplateWithServiceType[];
   serviceTypes: ServiceTypeOption[];
   organizationId: string;
+  smartSchedulingAvailable: boolean;
 }
 
 export const TemplateList = ({
   templates,
   serviceTypes,
   organizationId,
+  smartSchedulingAvailable,
 }: TemplateListProps) => (
   <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
     {templates.map((template) => (
@@ -218,6 +223,7 @@ export const TemplateList = ({
         template={template}
         serviceTypes={serviceTypes}
         organizationId={organizationId}
+        smartSchedulingAvailable={smartSchedulingAvailable}
       />
     ))}
   </div>

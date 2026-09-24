@@ -5,7 +5,8 @@ import prisma from "@/lib/prisma";
 import { organizationSchema, OrganizationInput, organizationLogoSchema, OrganizationLogoInput } from "@/lib/validations/organization";
 import { OrganizationEmailInput, organizationEmailSchema } from "../validations/organization-email";
 import { revalidatePath, updateTag } from "next/cache";
-import { OrgRole } from "@/generated/prisma/enums";
+import { OrgRole, UsageKind } from "@/generated/prisma/enums";
+import { bulkEmailLimitError, recordUsage } from "@/lib/billing/limits";
 import { UTApi } from "uploadthing/server";
 import { currentUser } from "../services/user";
 import { Resend } from "resend";
@@ -353,12 +354,13 @@ export const deleteOrganization = async (organizationId: string, touch: TagInval
 
 type EmailOrganizationResult =
   | { success: true; sentCount: number }
-  | { success: false; error: string };
+  | { success: false; error: string; code?: "EMAIL_LIMIT" };
 
 
 export const emailEntireOrganization = async (
     organizationId: string,
     data: OrganizationEmailInput,
+    touch: TagInvalidator = updateTag,
 ): Promise<EmailOrganizationResult> => {
 
     try {
@@ -413,6 +415,10 @@ export const emailEntireOrganization = async (
             return { success: false, error: "No members to email" };
         }
 
+        const limitError = await bulkEmailLimitError(organizationId);
+
+        if (limitError) return { success: false, error: limitError, code: "EMAIL_LIMIT" };
+
         const { name: organizationName, logoUrl } = userMembership.organization;
         const senderName = `${user.firstName} ${user.lastName}`;
         const viewLink = `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/organizations/${organizationId}`;
@@ -441,6 +447,11 @@ export const emailEntireOrganization = async (
                 return { success: false, error: "Unable to send message, please try again" };
             }
         }
+
+        // Counted only once it has all gone, so a failed send doesn't use one up.
+        await recordUsage(organizationId, UsageKind.BULK_EMAIL);
+
+        touch(`org-${organizationId}-usage`);
 
         // Only once the mail has gone, so a failed send the sender retries
         // doesn't ring everybody's phone twice.

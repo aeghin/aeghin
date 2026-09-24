@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/accordion";
 import { cn } from "@/lib/utils";
 import type { EventDetails, EventDetailsAssignment } from "@/lib/types";
+import type { EmailAllowance } from "@/lib/billing/limits";
 import { InvitationStatus, VolunteerRole } from "@/generated/prisma/enums";
 import { statusStyles } from "@/lib/config/status";
 import { colorClasses } from "@/lib/config/service-types-config";
@@ -51,6 +52,12 @@ interface EventAssignmentsCardProps {
   canManage: boolean;
   /** Org roster for the invite pickers — empty for members, who can't invite */
   members: TeamMember[];
+  /** This month's group emails — null for members, who can't send them */
+  emailAllowance: EmailAllowance | null;
+  /** Whether the organization's plan includes auto-fill */
+  smartSchedulingAvailable: boolean;
+  /** Owners, the only ones who can upgrade */
+  canUpgrade: boolean;
 }
 
 const roleOrder: VolunteerRole[] = [
@@ -103,6 +110,9 @@ export function EventAssignmentsCard({
   currentUserId,
   canManage,
   members,
+  emailAllowance,
+  smartSchedulingAvailable,
+  canUpgrade,
 }: EventAssignmentsCardProps) {
   const serviceColors = colorClasses[event.serviceType.color];
 
@@ -224,8 +234,11 @@ export function EventAssignmentsCard({
             <div className="flex flex-wrap items-center gap-2">
               <EventSmartSchedulingToggle
                 organizationId={event.organizationId}
+                organizationName={event.organization.name}
                 eventId={event.id}
                 enabled={event.smartSchedulingEnabled}
+                available={smartSchedulingAvailable}
+                canUpgrade={canUpgrade}
               />
               <AddEventRolesDialog
                 organizationId={event.organizationId}
@@ -234,13 +247,16 @@ export function EventAssignmentsCard({
                 memberCountByRole={memberCountByRole}
                 serviceColor={event.serviceType.color}
               />
-              {acceptedCount > 0 && (
+              {acceptedCount > 0 && emailAllowance && (
                 <EmailTeamDialog
                   organizationId={event.organizationId}
+                  organizationName={event.organization.name}
                   eventId={event.id}
                   eventName={event.name}
                   recipientCount={acceptedCount}
                   serviceColor={event.serviceType.color}
+                  allowance={emailAllowance}
+                  canUpgrade={canUpgrade}
                 />
               )}
             </div>

@@ -6,6 +6,7 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { InvitationStatus } from "@/generated/prisma/enums";
 import { volunteerRoleLabels } from "@/lib/activity";
+import { PAID_ENTITLEMENTS } from "@/lib/billing/entitlements";
 import EventInviteExpiredEmail, {
     type LapsedInvite,
 } from "@/components/email/event-invite-expired-template";
@@ -400,6 +401,11 @@ const sendLastCalls = async (now: Date): Promise<NotifyResult> => {
 
     const events = await prisma.event.findMany({
         where: {
+            // Part of Smart Scheduling, which every paid plan has and Free
+            // doesn't. Filtered here rather than skipped below, so Free events
+            // never crowd paid ones out of the batch. Their stage is left
+            // unclaimed, so an upgrade before the event still gets its email.
+            organization: { entitlements: { hasSome: PAID_ENTITLEMENTS } },
             lastCallStage: { lt: LAST_CALL_DAYS.length },
             dates: {
                 some: {
