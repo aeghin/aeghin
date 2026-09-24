@@ -106,7 +106,7 @@ export function PremiumNav() {
         >
           <span className="text-sm font-medium">Premium</span>
           <span className="text-xs text-muted-foreground">
-            Unlimited members + AI setlists
+            Unlimited members & songs, AI setlists
           </span>
         </DropdownMenuItem>
         <DropdownMenuItem

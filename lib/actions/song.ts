@@ -7,9 +7,10 @@ import { UTApi } from "uploadthing/server";
 import { OrgRole } from "@/generated/prisma/enums";
 import { revalidatePath, updateTag } from "next/cache";
 import { Prisma } from "@/generated/prisma/client";
+import { songLimitError } from "@/lib/billing/limits";
 
 
-type ActionResponse = { success: true } | { success: false; error: string };
+type ActionResponse = { success: true } | { success: false; error: string; code?: "SONG_LIMIT" };
 
 /**
  * How an action expires its cache tags.
@@ -67,6 +68,10 @@ export const addSongToLibrary = async (
     if (songExists && songExists.deletedAt === null) {
         return { success: false, error: "Song already exists" };
     };
+
+    const limitError = await songLimitError(organizationId, membership.role === OrgRole.OWNER);
+
+    if (limitError) return { success: false, error: limitError, code: "SONG_LIMIT" };
 
     if (songExists) {
         await prisma.song.update({

@@ -41,6 +41,8 @@ interface SongLibraryProps {
   orgId: string
   orgName: string
   canManage: boolean
+  songLimit: number | null
+  canUpgrade: boolean
 };
 
 type SortKey = "title" | "artist" | "bpm";
@@ -122,7 +124,11 @@ function SongAttachments({ song, max }: { song: Song; max?: number }) {
   )
 }
 
-export function SongLibrary({ songs, orgId, orgName, canManage }: SongLibraryProps) {
+export function SongLibrary({ songs, orgId, orgName, canManage, songLimit, canUpgrade }: SongLibraryProps) {
+
+  // Only managers add songs, so only they see the cap.
+  const showSongLimit = canManage && songLimit !== null;
+  const songLimitReached = songLimit !== null && songs.length >= songLimit;
 
   const [query, setQuery] = useState("")
   const [selectedThemes, setSelectedThemes] = useState<Set<string>>(new Set())
@@ -226,12 +232,25 @@ export function SongLibrary({ songs, orgId, orgName, canManage }: SongLibraryPro
               Song Library
             </h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              {songs.length} song{songs.length === 1 ? "" : "s"} · search by title, artist or theme
+              {showSongLimit ? (
+                <span className={songLimitReached ? "font-medium text-amber-600 dark:text-amber-400" : undefined}>
+                  {songs.length} / {songLimit} songs{songLimitReached ? " · Free limit reached" : ""}
+                </span>
+              ) : (
+                `${songs.length} song${songs.length === 1 ? "" : "s"}`
+              )}
+              {" · search by title, artist or theme"}
             </p>
           </div>
 
           {canManage && (
-            <SongModal orgId={orgId} />
+            <SongModal
+              orgId={orgId}
+              orgName={orgName}
+              songLimit={songLimit}
+              limitReached={songLimitReached}
+              canUpgrade={canUpgrade}
+            />
           )}
         </div>
       </div>

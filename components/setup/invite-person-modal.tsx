@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { UserPlus, Check, Users, Sparkles } from "lucide-react";
+import { UserPlus, Check, Users } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 
 import {
@@ -31,21 +31,13 @@ import { VolunteerRole } from "@/generated/prisma/enums";
 import { volunteerRoleConfig } from "@/lib/config/roles";
 
 import { inviteMember } from "@/lib/actions/invitation";
-import { startAiSetlistCheckout } from "@/lib/actions/billing";
-import { PLAN_PRICES } from "@/lib/config/plans";
+import { PlanLimitReached } from "@/components/dashboard/plan-limit-reached";
 
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { OrgInvitationInput, orgInvitationSchema } from "@/lib/validations/invitations";
 
 import { toast } from "sonner";
-
-// What the limit screen says Premium adds. Keep it to what Premium does today.
-const PREMIUM_PERKS = [
-  "Unlimited members and invites",
-  "AI setlist generation from your song library",
-  "Billed per organization, cancel anytime",
-];
 
 interface InvitePersonModalProps {
   open: boolean
@@ -68,7 +60,6 @@ export function InvitePersonModal({
 
   const [isPending, startTransition] = useTransition();
   const [isSuccess, setIsSuccess] = useState(false);
-  const [isUpgrading, startUpgrade] = useTransition();
   // The server's refusal, for when it knew the org was full and this page didn't.
   const [limitMessage, setLimitMessage] = useState<string | null>(null);
 
@@ -111,21 +102,6 @@ export function InvitePersonModal({
     });
   };
 
-  const handleUpgrade = () => {
-    if (!organizationId) return;
-
-    startUpgrade(async () => {
-      const result = await startAiSetlistCheckout(organizationId);
-
-      if (result.success) {
-        // Full navigation — Stripe Checkout is an external URL.
-        window.location.href = result.url;
-      } else {
-        toast.error(result.error, { position: "top-center" });
-      }
-    });
-  };
-
   const handleClose = () => {
   if (!isPending) {
     onOpenChange(false);
@@ -160,61 +136,24 @@ export function InvitePersonModal({
     return (
       <Dialog open={open} onOpenChange={handleClose}>
         <DialogContent className="sm:max-w-120">
-          <div className="flex flex-col items-center pt-4 text-center">
-            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
-              <Users className="h-8 w-8 text-primary" />
-            </div>
-            <DialogTitle className="mb-2 text-xl">Member limit reached</DialogTitle>
-            <DialogDescription className="text-center">
-              {seatUsage
+          <PlanLimitReached
+            icon={Users}
+            title="Member limit reached"
+            description={
+              seatUsage
                 ? `${organizationName ?? "Your organization"} has reached the Free plan's ${seatUsage.limit}-member limit. Pending invites count toward it.`
-                : limitMessage}
-            </DialogDescription>
-          </div>
-
-          <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
-            <div className="flex items-baseline justify-between gap-2">
-              <p className="flex items-center gap-1.5 font-semibold">
-                <Sparkles className="h-4 w-4 text-primary" />
-                Premium
-              </p>
-              <p className="text-sm text-muted-foreground">
-                <span className="font-semibold text-foreground">{PLAN_PRICES.premium}</span>/month
-              </p>
-            </div>
-            <ul className="mt-3 space-y-2 text-sm">
-              {PREMIUM_PERKS.map((perk) => (
-                <li key={perk} className="flex items-start gap-2">
-                  <Check className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-                  {perk}
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          {seatUsage && seatUsage.pendingInvites > 0 && (
-            <p className="text-center text-xs text-muted-foreground">
-              Or cancel a pending invite in the Invitations tab to free a spot.
-            </p>
-          )}
-
-          {!canUpgrade && (
-            <p className="text-center text-sm text-muted-foreground">
-              Only an owner can upgrade. Ask an owner of {organizationName ?? "your organization"} to upgrade to Premium.
-            </p>
-          )}
-
-          <DialogFooter className="gap-2 sm:justify-center">
-            <Button variant="outline" onClick={handleClose} className="w-full cursor-pointer sm:w-auto">
-              {canUpgrade ? "Not now" : "Close"}
-            </Button>
-            {canUpgrade && (
-              <Button onClick={handleUpgrade} disabled={isUpgrading} className="w-full cursor-pointer sm:w-auto">
-                <Sparkles className="mr-2 h-4 w-4" />
-                {isUpgrading ? "Redirecting…" : "Upgrade to Premium"}
-              </Button>
-            )}
-          </DialogFooter>
+                : limitMessage ?? ""
+            }
+            hint={
+              seatUsage && seatUsage.pendingInvites > 0
+                ? "Or cancel a pending invite in the Invitations tab to free a spot."
+                : undefined
+            }
+            organizationId={organizationId}
+            organizationName={organizationName}
+            canUpgrade={canUpgrade}
+            onClose={handleClose}
+          />
         </DialogContent>
       </Dialog>
     );

@@ -15,6 +15,7 @@ const plans = [
       "Event templates & service types",
       "Blockout dates & smart scheduling",
       "Song library with charts and audio",
+      `Up to ${PLAN_LIMITS.free.songs} songs in your library`,
       "Setlists & per-song assignments",
       "Event chat and email notifications",
     ],
@@ -28,7 +29,7 @@ const plans = [
     description: "Let AI build the setlist from your catalog",
     features: [
       "Everything in Free",
-      "Unlimited members",
+      "Unlimited members and songs",
       "AI setlist generation",
       "Matches themes, keys, and tempo arc",
       "Works strictly from your song catalog",

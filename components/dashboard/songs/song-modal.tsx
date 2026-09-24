@@ -41,6 +41,7 @@ import { SongAttachments } from "@/components/dashboard/songs/song-attachments";
 import { Pitch, KeyQuality } from "@/generated/prisma/enums";
 import { songSchema, songSchemaInput } from "@/lib/validations/song";
 import { addSongToLibrary, updateSongInLibrary } from "@/lib/actions/song";
+import { PlanLimitReached } from "@/components/dashboard/plan-limit-reached";
 import { toast } from "sonner";
 
 import type { LibrarySong } from "@/lib/types";
@@ -102,14 +103,21 @@ interface SongModalProps {
   song?: LibrarySong;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  // Adding only: the Free plan's cap, and whether the library is at it.
+  orgName?: string;
+  songLimit?: number | null;
+  limitReached?: boolean;
+  canUpgrade?: boolean;
 };
 
-export function SongModal({ orgId, song, open, onOpenChange }: SongModalProps) {
+export function SongModal({ orgId, song, open, onOpenChange, orgName, songLimit = null, limitReached = false, canUpgrade = false }: SongModalProps) {
 
   const isEditing = Boolean(song);
 
   const [themeInput, setThemeInput] = useState("");
   const [isPending, startTransition] = useTransition();
+  // The server's refusal, for when it knew the library was full and this page didn't.
+  const [limitMessage, setLimitMessage] = useState<string | null>(null);
 
   const form = useForm<songSchemaInput>({
     resolver: zodResolver(songSchema),
@@ -143,6 +151,7 @@ export function SongModal({ orgId, song, open, onOpenChange }: SongModalProps) {
     if (!next) {
         form.reset();
         setThemeInput("");
+        setLimitMessage(null);
       }
       setOpen(next);
   };
@@ -187,25 +196,54 @@ export function SongModal({ orgId, song, open, onOpenChange }: SongModalProps) {
             { position: "top-center" },
           );
           handleClose(false);
+        } else if (result.code === "SONG_LIMIT") {
+          setLimitMessage(result.error);
         } else {
           toast.error(result.error, { position: "top-center" });
         };
       });
   };
 
+  const trigger = !isControlled && (
+    <DialogTrigger asChild>
+      <Button
+        size="sm"
+        className="gap-2 shadow-lg shadow-primary/20 transition-all hover:scale-105 hover:shadow-primary/30"
+      >
+        <Plus className="h-4 w-4" />
+        Add Song
+      </Button>
+    </DialogTrigger>
+  );
+
+  // Adding only — an edit never takes a new spot.
+  if (!isEditing && (limitReached || limitMessage !== null)) {
+    return (
+      <Dialog open={isOpen} onOpenChange={handleClose}>
+        {trigger}
+        <DialogContent className="sm:max-w-120">
+          <PlanLimitReached
+            icon={Music}
+            title="Song limit reached"
+            description={
+              songLimit !== null
+                ? `${orgName ?? "Your organization"} has reached the Free plan's ${songLimit}-song limit.`
+                : limitMessage ?? ""
+            }
+            hint="Or remove a song you no longer use to free a spot."
+            organizationId={orgId}
+            organizationName={orgName}
+            canUpgrade={canUpgrade}
+            onClose={() => handleClose(false)}
+          />
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      {!isControlled && (
-        <DialogTrigger asChild>
-          <Button
-            size="sm"
-            className="gap-2 shadow-lg shadow-primary/20 transition-all hover:scale-105 hover:shadow-primary/30"
-          >
-            <Plus className="h-4 w-4" />
-            Add Song
-          </Button>
-        </DialogTrigger>
-      )}
+      {trigger}
       <DialogContent className="sm:max-w-140 max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">

@@ -3,6 +3,7 @@ export type OrgPlan = "free" | "premium" | "pro";
 /** One cap per plan. `null` means no cap. */
 type PlanLimits = {
   members: number | null;
+  songs: number | null;
 };
 
 /**
@@ -10,9 +11,9 @@ type PlanLimits = {
  * pricing page all read from here, so they can't disagree.
  */
 export const PLAN_LIMITS: Record<OrgPlan, PlanLimits> = {
-  free: { members: 20 },
-  premium: { members: null },
-  pro: { members: null },
+  free: { members: 20, songs: 40 },
+  premium: { members: null, songs: null },
+  pro: { members: null, songs: null },
 };
 
 /**

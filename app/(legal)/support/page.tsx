@@ -86,7 +86,8 @@ export default function SupportPage() {
         with the Upgrade button in the top bar while viewing their organization, and manage an
         existing plan from that organization&apos;s Settings tab. Payments are processed by
         Stripe. Free organizations can have up to {PLAN_LIMITS.free.members} members, including
-        pending invites; Premium and Pro have no member limit. A plan applies to an organization
+        pending invites, and {PLAN_LIMITS.free.songs} songs in the library; Premium and Pro have no
+        limit on either. A plan applies to an organization
         rather than to an individual, so upgrading
         unlocks the paid features for everyone in that organization — including in the mobile
         app, where the features are available but not sold. Only an organization owner can change

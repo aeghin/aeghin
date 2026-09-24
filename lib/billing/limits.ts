@@ -2,10 +2,23 @@ import "server-only";
 
 import prisma from "@/lib/prisma";
 import { InvitationStatus } from "@/generated/prisma/enums";
-import { PLAN_LIMITS } from "@/lib/config/plans";
+import { PLAN_LIMITS, type OrgPlan } from "@/lib/config/plans";
 import { getOrgPlan, planFromEntitlements } from "@/lib/billing/entitlements";
 import { getOrgMemberCountById } from "@/lib/services/organization";
 import { getOrgPendingInvitationCount } from "@/lib/services/invitation";
+
+/**
+ * The org's plan, read live rather than cached: a write is about to be allowed
+ * on it, and a church that paid a minute ago must not hit a stale plan.
+ */
+async function getLivePlan(organizationId: string): Promise<OrgPlan> {
+  const organization = await prisma.organization.findUnique({
+    where: { id: organizationId },
+    select: { entitlements: true },
+  });
+
+  return planFromEntitlements(organization?.entitlements ?? []);
+}
 
 type MemberSeats = {
   members: number;
@@ -25,11 +38,8 @@ async function getMemberSeats(
   organizationId: string,
   exceptEmail?: string,
 ): Promise<MemberSeats> {
-  const [organization, members, pendingInvites] = await Promise.all([
-    prisma.organization.findUnique({
-      where: { id: organizationId },
-      select: { entitlements: true },
-    }),
+  const [plan, members, pendingInvites] = await Promise.all([
+    getLivePlan(organizationId),
     prisma.membership.count({ where: { organizationId } }),
     prisma.invitation.count({
       where: {
@@ -42,9 +52,29 @@ async function getMemberSeats(
     }),
   ]);
 
-  const plan = planFromEntitlements(organization?.entitlements ?? []);
-
   return { members, pendingInvites, limit: PLAN_LIMITS[plan].members };
+}
+
+/** Why one more song can't be added to the library, or null when there's room. */
+export async function songLimitError(
+  organizationId: string,
+  isOwner: boolean,
+): Promise<string | null> {
+  const [plan, songs] = await Promise.all([
+    getLivePlan(organizationId),
+    // Deleted songs are out of the library, so they don't hold a spot.
+    prisma.song.count({ where: { organizationId, deletedAt: null } }),
+  ]);
+
+  const limit = PLAN_LIMITS[plan].songs;
+
+  if (limit === null || songs < limit) return null;
+
+  const next = isOwner
+    ? "Upgrade to Premium to add more."
+    : "Ask an owner to upgrade to Premium to add more.";
+
+  return `Free organizations can have up to ${limit} songs in the library. ${next}`;
 }
 
 /** Why one more person can't be invited, or null when there's room. */
