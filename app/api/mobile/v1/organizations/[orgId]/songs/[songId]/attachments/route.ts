@@ -2,6 +2,7 @@ import { UTApi } from "uploadthing/server";
 
 import prisma from "@/lib/prisma";
 import { addSongAttachments } from "@/lib/actions/song";
+import { storageLimitError } from "@/lib/billing/limits";
 import {
     canManage,
     clerkIdOf,
@@ -114,7 +115,7 @@ function readStored(body: unknown): Stored {
  * builds upload to UploadThing themselves. It stays for as long as those builds
  * are installed — an app already on a phone cannot be forced to update.
  */
-async function forwardUpload(req: Request): Promise<Stored> {
+async function forwardUpload(req: Request, orgId: string): Promise<Stored> {
     const form = await req.formData().catch(() => null);
 
     if (!form) return { status: 400, error: "Expected a file upload." };
@@ -138,6 +139,12 @@ async function forwardUpload(req: Request): Promise<Stored> {
             return { status: 400, error: `${file.name} is over the ${megabytes(limit)} limit.` };
         }
     }
+
+    // These bytes skip the file router, so its storage check happens here.
+    const incoming = posted.reduce((total, file) => total + file.size, 0);
+    const storageError = await storageLimitError(orgId, incoming);
+
+    if (storageError) return { status: 409, error: storageError };
 
     const results = await new UTApi().uploadFiles(posted);
     const uploaded = results.flatMap((result) => (result.data ? [result.data] : []));
@@ -192,7 +199,7 @@ export const POST = route<Params>(".../songs/[id]/attachments", async (req, { pa
 
     const stored = req.headers.get("content-type")?.includes("application/json")
         ? readStored(await readJson(req))
-        : await forwardUpload(req);
+        : await forwardUpload(req, orgId);
 
     if ("error" in stored) return fail(stored.status, stored.error);
 

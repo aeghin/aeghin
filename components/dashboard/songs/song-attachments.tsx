@@ -2,7 +2,7 @@
 
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { AudioLines, FileText, Trash2, Upload } from "lucide-react";
+import { AudioLines, FileText, Sparkles, Trash2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
@@ -10,13 +10,17 @@ import { toast } from "sonner";
 
 import { useUploadThing } from "@/lib/uploadthing";
 import { addSongAttachments, deleteSongAttachment } from "@/lib/actions/song";
+import { startAiSetlistCheckout, startAiSetlistProCheckout } from "@/lib/actions/billing";
+import { PLAN_LIMITS, formatStorage } from "@/lib/config/plans";
 
-import type { SongAttachment } from "@/lib/types";
+import type { SongAttachment, StorageUsage } from "@/lib/types";
 
 interface SongAttachmentsProps {
     songId: string;
     organizationId: string;
     attachments: SongAttachment[];
+    // Null for anyone who can't upload.
+    storage: StorageUsage | null;
 };
 
 const formatFileSize = (bytes: number) => {
@@ -24,12 +28,15 @@ const formatFileSize = (bytes: number) => {
     return `${Math.max(1, Math.round(bytes / 1024))} KB`;
 };
 
-export const SongAttachments = ({ songId, organizationId, attachments }: SongAttachmentsProps) => {
+export const SongAttachments = ({ songId, organizationId, attachments, storage }: SongAttachmentsProps) => {
 
     const router = useRouter();
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [deletingId, setDeletingId] = useState<string | null>(null);
     const [isSaving, startSaving] = useTransition();
+    const [isUpgrading, startUpgrade] = useTransition();
+    // A pick that didn't fit, in bytes, until the next pick or a removal.
+    const [tooBig, setTooBig] = useState<number | null>(null);
 
     const { startUpload, isUploading } = useUploadThing("songAttachment", {
         onClientUploadComplete: (uploaded) => {
@@ -61,10 +68,42 @@ export const SongAttachments = ({ songId, organizationId, attachments }: SongAtt
 
     const isBusy = isUploading || isSaving;
 
+    // Over counts too: a plan that shrank keeps its files but can't add more.
+    const isFull = storage !== null && storage.used >= storage.limit;
+    const nextPlan = storage?.nextPlan ?? null;
+    // Full, or the last pick didn't fit: either way the upgrade belongs here.
+    const isShort = isFull || tooBig !== null;
+
+    const handleUpgrade = (plan: "premium" | "pro") => {
+        startUpgrade(async () => {
+            const start = plan === "pro" ? startAiSetlistProCheckout : startAiSetlistCheckout;
+            const result = await start(organizationId);
+
+            if (result.success) {
+                // Full navigation — Stripe is an external URL.
+                window.location.href = result.url;
+            } else {
+                toast.error(result.error, { position: "top-center" });
+            }
+        });
+    };
+
     const handleFilesSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
         const files = Array.from(e.target.files ?? []);
         e.target.value = "";
         if (files.length === 0) return;
+
+        // Checked here as well as on the server so an owner can upgrade from the
+        // modal; the server's refusal is shared with the iPhone and can't offer
+        // one. Shown inline because a toast can't be clicked while it's open.
+        const incoming = files.reduce((total, file) => total + file.size, 0);
+
+        if (storage && storage.used + incoming > storage.limit) {
+            setTooBig(incoming);
+            return;
+        }
+
+        setTooBig(null);
         startUpload(files, { songId });
     };
 
@@ -74,6 +113,7 @@ export const SongAttachments = ({ songId, organizationId, attachments }: SongAtt
             const result = await deleteSongAttachment(attachmentId, organizationId);
 
             if (result.success) {
+                setTooBig(null);
                 toast.success("Attachment removed", { position: "top-center" });
                 router.refresh();
             } else {
@@ -151,14 +191,40 @@ export const SongAttachments = ({ songId, organizationId, attachments }: SongAtt
                 variant="outline"
                 className="w-full gap-2 border-dashed"
                 onClick={() => fileInputRef.current?.click()}
-                disabled={isBusy}
+                disabled={isBusy || isFull}
             >
                 {isBusy ? <Spinner className="h-4 w-4" /> : <Upload className="h-4 w-4" />}
-                {isUploading ? "Uploading..." : isSaving ? "Saving..." : "Upload PDF or audio"}
+                {isUploading ? "Uploading..." : isSaving ? "Saving..." : isFull ? "Storage full" : "Upload PDF or audio"}
             </Button>
             <p className="text-xs text-muted-foreground">
                 Chord charts (PDF, up to 16MB) and audio like MP3, WAV or M4A (up to 64MB).
             </p>
+            {storage && (
+                <p className={cn("text-xs", isShort ? "font-medium text-amber-600 dark:text-amber-400" : "text-muted-foreground")}>
+                    {tooBig !== null
+                        ? `Not enough storage. This upload is ${formatStorage(tooBig)}, and ${storage.limit > storage.used ? formatStorage(storage.limit - storage.used) : "none"} of ${formatStorage(storage.limit)} is left.`
+                        : `${formatStorage(storage.used)} of ${formatStorage(storage.limit)} used`}
+                    {isFull && tooBig === null && " · remove files you no longer use to make room"}
+                    {tooBig !== null && !nextPlan && " Remove files you no longer use to make room."}
+                </p>
+            )}
+            {storage && isShort && nextPlan && (storage.canUpgrade ? (
+                <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="gap-2"
+                    onClick={() => handleUpgrade(nextPlan)}
+                    disabled={isUpgrading}
+                >
+                    <Sparkles className="h-3.5 w-3.5" />
+                    {isUpgrading
+                        ? "Redirecting…"
+                        : `Upgrade to ${nextPlan === "pro" ? "Pro" : "Premium"} for ${formatStorage(PLAN_LIMITS[nextPlan].storage)}`}
+                </Button>
+            ) : (
+                <p className="text-xs text-muted-foreground">Ask an owner to upgrade for more room.</p>
+            ))}
         </div>
     );
 };

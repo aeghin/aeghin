@@ -27,14 +27,15 @@ import { SongModal } from "@/components/dashboard/songs/song-modal";
 
 import { deleteSongFromLibrary } from "@/lib/actions/song";
 
-import type { LibrarySong } from "@/lib/types";
+import type { LibrarySong, StorageUsage } from "@/lib/types";
 
 interface EditSongDetailsProps {
     song: LibrarySong;
     orgId: string;
+    storage: StorageUsage | null;
 };
 
-export const EditSongDetails = ({ song, orgId }: EditSongDetailsProps) => {
+export const EditSongDetails = ({ song, orgId, storage }: EditSongDetailsProps) => {
 
     const [open, setOpen] = useState(false);
     const [confirmOpen, setConfirmOpen] = useState(false);
@@ -99,6 +100,7 @@ export const EditSongDetails = ({ song, orgId }: EditSongDetailsProps) => {
                 song={song}
                 open={open}
                 onOpenChange={setOpen}
+                storage={storage}
             />
 
             <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>

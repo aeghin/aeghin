@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { PLAN_LIMITS } from "@/lib/config/plans";
+import { PLAN_LIMITS, formatStorage } from "@/lib/config/plans";
 
 export const metadata: Metadata = {
   title: "Support | Aeghin",
@@ -87,7 +87,9 @@ export default function SupportPage() {
         existing plan from that organization&apos;s Settings tab. Payments are processed by
         Stripe. Free organizations can have up to {PLAN_LIMITS.free.members} members, including
         pending invites, and {PLAN_LIMITS.free.songs} songs in the library; Premium and Pro have no
-        limit on either. A plan applies to an organization
+        limit on either. Attachment storage is {formatStorage(PLAN_LIMITS.free.storage)} on Free,{" "}
+        {formatStorage(PLAN_LIMITS.premium.storage)} on Premium and {formatStorage(PLAN_LIMITS.pro.storage)} on
+        Pro. A plan applies to an organization
         rather than to an individual, so upgrading
         unlocks the paid features for everyone in that organization — including in the mobile
         app, where the features are available but not sold. Only an organization owner can change

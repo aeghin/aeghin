@@ -44,7 +44,7 @@ import { addSongToLibrary, updateSongInLibrary } from "@/lib/actions/song";
 import { PlanLimitReached } from "@/components/dashboard/plan-limit-reached";
 import { toast } from "sonner";
 
-import type { LibrarySong } from "@/lib/types";
+import type { LibrarySong, StorageUsage } from "@/lib/types";
 
 const PITCH_LABELS: Record<Pitch, string> = {
   C: "C",
@@ -108,9 +108,11 @@ interface SongModalProps {
   songLimit?: number | null;
   limitReached?: boolean;
   canUpgrade?: boolean;
+  // Editing only: the library's storage, for the attachments section.
+  storage?: StorageUsage | null;
 };
 
-export function SongModal({ orgId, song, open, onOpenChange, orgName, songLimit = null, limitReached = false, canUpgrade = false }: SongModalProps) {
+export function SongModal({ orgId, song, open, onOpenChange, orgName, songLimit = null, limitReached = false, canUpgrade = false, storage = null }: SongModalProps) {
 
   const isEditing = Boolean(song);
 
@@ -450,6 +452,7 @@ export function SongModal({ orgId, song, open, onOpenChange, orgName, songLimit 
                   songId={song.id}
                   organizationId={orgId}
                   attachments={song.attachments}
+                  storage={storage}
                 />
               )}
 

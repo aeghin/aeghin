@@ -126,6 +126,15 @@ export type SongAttachment = {
   createdAt: Date
 }
 
+/** A library's storage for charts and audio, as the song screens show it. */
+export type StorageUsage = {
+  used: number
+  limit: number
+  /** The plan with more room, or null on Pro. */
+  nextPlan: "premium" | "pro" | null
+  canUpgrade: boolean
+}
+
 export type EventTemplateDay = {
   dayOffset: number
   startTime: string

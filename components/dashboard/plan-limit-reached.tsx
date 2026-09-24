@@ -7,11 +7,12 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { DialogDescription, DialogFooter, DialogTitle } from "@/components/ui/dialog";
 import { startAiSetlistCheckout } from "@/lib/actions/billing";
-import { PLAN_PRICES } from "@/lib/config/plans";
+import { PLAN_LIMITS, PLAN_PRICES, formatStorage } from "@/lib/config/plans";
 
 // What the limit screens say Premium adds. Keep it to what Premium does today.
 const PREMIUM_PERKS = [
   "Unlimited members and songs",
+  `${formatStorage(PLAN_LIMITS.premium.storage)} of storage for charts and audio`,
   "AI setlist generation from your song library",
   "Billed per organization, cancel anytime",
 ];

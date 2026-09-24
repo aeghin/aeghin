@@ -33,8 +33,9 @@ import { EditSongDetails } from "@/components/dashboard/songs/song-edit";
 
 import { KeyQuality } from "@/generated/prisma/enums";
 import { formatKey } from "@/lib/constants/key";
+import { PLAN_LIMITS, type OrgPlan } from "@/lib/config/plans";
 import { YoutubeIcon, SpotifyIcon } from "@/components/icons/brand-icons";
-import type { LibrarySong as Song } from "@/lib/types";
+import type { LibrarySong as Song, StorageUsage } from "@/lib/types";
 
 interface SongLibraryProps {
   songs: Song[]
@@ -43,6 +44,7 @@ interface SongLibraryProps {
   canManage: boolean
   songLimit: number | null
   canUpgrade: boolean
+  plan: OrgPlan
 };
 
 type SortKey = "title" | "artist" | "bpm";
@@ -124,11 +126,21 @@ function SongAttachments({ song, max }: { song: Song; max?: number }) {
   )
 }
 
-export function SongLibrary({ songs, orgId, orgName, canManage, songLimit, canUpgrade }: SongLibraryProps) {
+export function SongLibrary({ songs, orgId, orgName, canManage, songLimit, canUpgrade, plan }: SongLibraryProps) {
 
   // Only managers add songs, so only they see the cap.
   const showSongLimit = canManage && songLimit !== null;
   const songLimitReached = songLimit !== null && songs.length >= songLimit;
+
+  // Only managers upload, so only they get it.
+  const storage: StorageUsage | null = canManage
+    ? {
+        used: songs.reduce((total, song) => total + song.attachments.reduce((sum, file) => sum + file.size, 0), 0),
+        limit: PLAN_LIMITS[plan].storage,
+        nextPlan: plan === "free" ? "premium" : plan === "premium" ? "pro" : null,
+        canUpgrade,
+      }
+    : null;
 
   const [query, setQuery] = useState("")
   const [selectedThemes, setSelectedThemes] = useState<Set<string>>(new Set())
@@ -463,7 +475,7 @@ export function SongLibrary({ songs, orgId, orgName, canManage, songLimit, canUp
                       <SongLinks song={song} />
                       <SongAttachments song={song} max={3} />
                     </div>
-                    {canManage && <EditSongDetails song={song} orgId={orgId} />}
+                    {canManage && <EditSongDetails song={song} orgId={orgId} storage={storage} />}
                   </div>
                   {song.themes.length > 0 && (
                     <div className="mt-2 flex flex-wrap items-center gap-1">
@@ -555,7 +567,7 @@ export function SongLibrary({ songs, orgId, orgName, canManage, songLimit, canUp
                 {/* Actions */}
                 {canManage && (
                   <div className="flex md:justify-center">
-                    <EditSongDetails song={song} orgId={orgId} />
+                    <EditSongDetails song={song} orgId={orgId} storage={storage} />
                   </div>
                 )}
                 </div>

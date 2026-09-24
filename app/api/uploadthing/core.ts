@@ -5,6 +5,7 @@ import { z } from "zod/v4";
 
 import prisma from "@/lib/prisma";
 import { OrgRole } from "@/generated/prisma/enums";
+import { storageLimitError } from "@/lib/billing/limits";
 
 const f = createUploadthing();
 
@@ -21,7 +22,7 @@ export const fileRouter = {
         { awaitServerData: false },
     )
         .input(z.object({ songId: z.uuid() }))
-        .middleware(async ({ input }) => {
+        .middleware(async ({ input, files }) => {
             const { userId: clerkId } = await auth();
 
             if (!clerkId) throw new UploadThingError("Unauthorized");
@@ -48,6 +49,11 @@ export const fileRouter = {
             if (!membership || membership.role === OrgRole.MEMBER) {
                 throw new UploadThingError("Unauthorized");
             }
+
+            const incoming = files.reduce((total, file) => total + file.size, 0);
+            const storageError = await storageLimitError(song.organizationId, incoming);
+
+            if (storageError) throw new UploadThingError(storageError);
 
             return { songId: song.id };
         })

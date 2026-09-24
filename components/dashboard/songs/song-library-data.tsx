@@ -35,6 +35,7 @@ export async function SongLibraryData({ orgId }: { orgId: string }) {
             canManage={canManage}
             songLimit={PLAN_LIMITS[plan].songs}
             canUpgrade={currentUserRole === OrgRole.OWNER}
+            plan={plan}
         />
     )
 }

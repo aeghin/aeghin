@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button"
 import { Check, Sparkles } from "lucide-react"
 import Link from "next/link"
-import { PLAN_LIMITS, PLAN_PRICES } from "@/lib/config/plans"
+import { PLAN_LIMITS, PLAN_PRICES, formatStorage } from "@/lib/config/plans"
 
 const plans = [
   {
@@ -16,6 +16,7 @@ const plans = [
       "Blockout dates & smart scheduling",
       "Song library with charts and audio",
       `Up to ${PLAN_LIMITS.free.songs} songs in your library`,
+      `${formatStorage(PLAN_LIMITS.free.storage)} of storage for charts and audio`,
       "Setlists & per-song assignments",
       "Event chat and email notifications",
     ],
@@ -30,6 +31,7 @@ const plans = [
     features: [
       "Everything in Free",
       "Unlimited members and songs",
+      `${formatStorage(PLAN_LIMITS.premium.storage)} of storage for charts and audio`,
       "AI setlist generation",
       "Matches themes, keys, and tempo arc",
       "Works strictly from your song catalog",
@@ -46,6 +48,7 @@ const plans = [
     description: "Drafts whole events, and researches beyond your catalog",
     features: [
       "Everything in Premium",
+      `${formatStorage(PLAN_LIMITS.pro.storage)} of storage for charts and audio`,
       "AI event drafting with volunteer picks",
       "Upgraded, more capable AI model",
       "Web search for songs and artists",

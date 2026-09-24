@@ -2,7 +2,7 @@ import "server-only";
 
 import prisma from "@/lib/prisma";
 import { InvitationStatus } from "@/generated/prisma/enums";
-import { PLAN_LIMITS, type OrgPlan } from "@/lib/config/plans";
+import { PLAN_LIMITS, formatStorage, type OrgPlan } from "@/lib/config/plans";
 import { getOrgPlan, planFromEntitlements } from "@/lib/billing/entitlements";
 import { getOrgMemberCountById } from "@/lib/services/organization";
 import { getOrgPendingInvitationCount } from "@/lib/services/invitation";
@@ -75,6 +75,42 @@ export async function songLimitError(
     : "Ask an owner to upgrade to Premium to add more.";
 
   return `Free organizations can have up to ${limit} songs in the library. ${next}`;
+}
+
+/**
+ * Bytes of charts and audio on the library's songs, read live. Files a deleted
+ * song keeps for past setlists are out of sight and out of reach, so they don't
+ * count.
+ */
+export async function getStorageUsed(organizationId: string): Promise<number> {
+  const { _sum } = await prisma.songAttachment.aggregate({
+    where: { song: { organizationId, deletedAt: null } },
+    _sum: { size: true },
+  });
+
+  return _sum.size ?? 0;
+}
+
+/**
+ * Why an upload of `incoming` bytes doesn't fit, or null when it does. Neutral
+ * on purpose: the iPhone shows this too, and it can't point anyone at an upgrade.
+ */
+export async function storageLimitError(
+  organizationId: string,
+  incoming: number,
+): Promise<string | null> {
+  const [plan, used] = await Promise.all([
+    getLivePlan(organizationId),
+    getStorageUsed(organizationId),
+  ]);
+
+  const limit = PLAN_LIMITS[plan].storage;
+
+  if (used + incoming <= limit) return null;
+
+  const left = limit > used ? formatStorage(limit - used) : "none";
+
+  return `Not enough storage. This upload is ${formatStorage(incoming)}, and ${left} of this organization's ${formatStorage(limit)} is left.`;
 }
 
 /** Why one more person can't be invited, or null when there's room. */
