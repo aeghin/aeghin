@@ -7,7 +7,7 @@ type Status = "success" | "cancel" | "portal";
 const COPY: Record<Status, { title: string; body: string }> = {
   success: {
     title: "You're all set",
-    body: "Your AI plan is active. Head back to the app to start building setlists.",
+    body: "Your plan is active. Head back to the app to pick up where you left off.",
   },
   cancel: {
     title: "Checkout canceled",

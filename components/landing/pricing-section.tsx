@@ -23,10 +23,10 @@ const plans = [
     popular: false,
   },
   {
-    name: "AI Setlist Premium",
+    name: "Premium",
     price: PLAN_PRICES.premium,
     period: "/month",
-    description: "Let AI build the setlist from your catalog",
+    description: "Lifts the Free limits, plus AI setlists",
     features: [
       "Everything in Free",
       "Unlimited members and songs",
@@ -40,7 +40,7 @@ const plans = [
     popular: true,
   },
   {
-    name: "AI Setlist Pro",
+    name: "Pro",
     price: PLAN_PRICES.pro,
     period: "/month",
     description: "Drafts whole events, and researches beyond your catalog",
@@ -66,8 +66,8 @@ export function PricingSection() {
           <p className="text-sm font-semibold text-primary mb-4 tracking-wide uppercase">Pricing</p>
           <h2 className="text-4xl font-bold tracking-tight sm:text-5xl text-balance">Simple, transparent pricing</h2>
           <p className="mt-6 text-lg text-muted-foreground">
-            Start free. The AI plans add setlist generation and event drafting
-            on top.
+            Start free. Premium lifts the limits and adds AI setlists; Pro adds
+            AI event drafting on top.
           </p>
         </div>
 
