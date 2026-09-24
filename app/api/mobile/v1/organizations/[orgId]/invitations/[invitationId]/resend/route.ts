@@ -6,6 +6,7 @@ import {
     expireTag,
     fail,
     json,
+    limitFailure,
     membershipFor,
     route,
 } from "@/lib/mobile/route";
@@ -54,6 +55,7 @@ export const POST = route<Params>("POST .../invitations/[id]/resend", async (_re
         if (result.error === "User is member") {
             return fail(409, "That person has already joined.");
         }
+        if (result.code === "MEMBER_LIMIT") return limitFailure(result.code);
         return actionFailure(result.error);
     }
 

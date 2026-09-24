@@ -1,5 +1,7 @@
 import prisma from "@/lib/prisma";
 import { OrgRole } from "@/generated/prisma/enums";
+import { planFromEntitlements } from "@/lib/billing/entitlements";
+import { PLAN_LIMITS } from "@/lib/config/plans";
 import { clerkIdOf, fail, json, membershipFor, route } from "@/lib/mobile/route";
 
 /**
@@ -13,6 +15,8 @@ type BillingStatus = {
     canSubscribe: boolean;
     /** Whether a Stripe customer exists, so the portal has something to open. */
     hasBillingAccount: boolean;
+    /** The caps on the organization's plan. `null` means no cap. */
+    limits: { members: number | null; songs: number | null };
 };
 
 type Params = { orgId: string };
@@ -20,9 +24,9 @@ type Params = { orgId: string };
 /**
  * GET /api/mobile/v1/organizations/[orgId]/billing
  *
- * The organization's AI entitlements as the caller sees them. Read straight
- * from the row rather than through the dashboard's cached reader, so a
- * checkout that just finished shows up on the first refetch.
+ * The organization's plan as the caller sees it: its AI entitlements and its
+ * caps. Read straight from the row rather than through the dashboard's cached
+ * reader, so a checkout that just finished shows up on the first refetch.
  */
 export const GET = route<Params>("GET .../billing", async (_req, { params }) => {
     const clerkId = await clerkIdOf();
@@ -47,6 +51,7 @@ export const GET = route<Params>("GET .../billing", async (_req, { params }) => 
         hasPro: org.entitlements.includes("ai_pro"),
         canSubscribe: membership.role === OrgRole.OWNER,
         hasBillingAccount: org.stripeCustomerId !== null,
+        limits: PLAN_LIMITS[planFromEntitlements(org.entitlements)],
     };
 
     return json(status);

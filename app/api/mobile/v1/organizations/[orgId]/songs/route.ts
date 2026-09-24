@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 
 import prisma from "@/lib/prisma";
 import { addSongToLibrary } from "@/lib/actions/song";
+import { limitFailure } from "@/lib/mobile/route";
 import type { songSchemaInput } from "@/lib/validations/song";
 import type { KeyQuality, Pitch } from "@/generated/prisma/enums";
 
@@ -207,6 +208,8 @@ export async function POST(
         );
 
         if (!result.success) {
+            if (result.code === "SONG_LIMIT") return limitFailure(result.code);
+
             return NextResponse.json(
                 { error: result.error },
                 {

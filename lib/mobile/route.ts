@@ -6,6 +6,7 @@ import { NextResponse } from "next/server";
 
 import prisma from "@/lib/prisma";
 import { OrgRole } from "@/generated/prisma/enums";
+import { PLAN_LIMITS } from "@/lib/config/plans";
 
 /**
  * Shared plumbing for `app/api/mobile/v1/*`.
@@ -37,6 +38,20 @@ export const json = <T>(body: T, status = 200) =>
     NextResponse.json(body, { status, headers: NO_STORE });
 
 export const fail = (status: number, error: string) => json({ error }, status);
+
+/**
+ * The phone's wording for a plan-limit refusal. The actions end theirs with
+ * "Upgrade to Premium…", which the iOS app can't say while it sells nothing
+ * (Guideline 3.1.1), so it gets the rule alone. Only Free has caps.
+ */
+const LIMIT_MESSAGES: Record<"MEMBER_LIMIT" | "SONG_LIMIT", string> = {
+    MEMBER_LIMIT: `Free organizations can have up to ${PLAN_LIMITS.free.members} members, including pending invites.`,
+    SONG_LIMIT: `Free organizations can have up to ${PLAN_LIMITS.free.songs} songs in the library.`,
+};
+
+/** A plan-limit refusal, with `code` so the app can tell it from other conflicts. */
+export const limitFailure = (code: "MEMBER_LIMIT" | "SONG_LIMIT") =>
+    json({ error: LIMIT_MESSAGES[code], code }, 409);
 
 /** The verified Clerk id, or null when there is no session. */
 export const clerkIdOf = async () => (await auth()).userId;
