@@ -20,6 +20,7 @@ import {
 } from "@/lib/email/recipients";
 import { sendEmailBatches } from "@/lib/email/send";
 import { syncEventNotifications } from "@/lib/notifications/sync";
+import { sendDayBeforeReminders, sendExpiryNudges } from "@/lib/push/reminders";
 import { sendPushNotices, type PushNotice } from "@/lib/push/send";
 
 /**
@@ -699,6 +700,36 @@ export async function GET(req: Request) {
             );
         }
 
+        // The pushes with no email behind them: volunteers' day-before
+        // reminders, and nudges for invitations about to lapse. Each claims
+        // its rows before sending, so a slow tick overlapping the next can't
+        // double them.
+        let reminders = 0;
+        let remindersFailed = false;
+
+        try {
+            reminders = await sendDayBeforeReminders(now);
+        } catch (err) {
+            remindersFailed = true;
+            console.error(
+                "GET /api/cron/expire-invitations: day-before reminders failed —",
+                err,
+            );
+        }
+
+        let nudges = 0;
+        let nudgesFailed = false;
+
+        try {
+            nudges = await sendExpiryNudges(now);
+        } catch (err) {
+            nudgesFailed = true;
+            console.error(
+                "GET /api/cron/expire-invitations: expiry nudges failed —",
+                err,
+            );
+        }
+
         // The bell, last. It is the one piece of this tick that can afford to be
         // late: a reconcile is idempotent and the next tick heals whatever this
         // one misses, where the mail above cannot be retried — those rows are
@@ -773,6 +804,10 @@ export async function GET(req: Request) {
             lastCall: lastCall.emails,
             lastCallEvents: lastCall.events,
             lastCallFailed,
+            reminders,
+            remindersFailed,
+            nudges,
+            nudgesFailed,
             reconciled: toReconcile.length,
             reconcileSkipped,
             // A full page on either table means there is very likely more

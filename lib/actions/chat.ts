@@ -1,5 +1,7 @@
 "use server";
 
+import { after } from "next/server";
+
 import prisma from "@/lib/prisma";
 import {
   sendMessageSchema,
@@ -12,6 +14,7 @@ import {
 } from "@/lib/services/chat";
 import { publishMessage } from "@/lib/realtime";
 import type { ChatMessage } from "@/lib/realtime/types";
+import { pushChatMessage } from "@/lib/push/chat";
 
 type SendMessageResult =
   | { success: true; message: ChatMessage }
@@ -51,6 +54,16 @@ export async function sendMessage(
 
     // Neon is the source of truth; the transport is only fan-out.
     await publishMessage(eventId, message);
+
+    // After the response: the sender's message shouldn't wait on Expo.
+    after(() =>
+      pushChatMessage({
+        eventId,
+        authorId: ctx.user.id,
+        authorName: `${ctx.user.firstName} ${ctx.user.lastName}`,
+        body: message.body,
+      }),
+    );
 
     return { success: true, message };
   } catch {

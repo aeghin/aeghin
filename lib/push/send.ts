@@ -21,16 +21,20 @@ const expo = new Expo({ accessToken: process.env.EXPO_ACCESS_TOKEN });
  *   to open.
  * - `organization-invite`: an invitation to join, which has no organization to
  *   switch to yet.
+ * - `chat`: the event's chat — only for people on its team. Builds that predate
+ *   it open the organization instead.
  */
 export type PushData =
   | { type: "event"; organizationId: string; eventId: string }
   | { type: "invitation"; organizationId: string; eventId: string }
   | { type: "organization"; organizationId: string }
-  | { type: "organization-invite"; token: string };
+  | { type: "organization-invite"; token: string }
+  | { type: "chat"; organizationId: string; eventId: string };
 
 /**
- * One notification for one person, addressed by the same email the matching
- * email goes to — so every push reaches exactly the people that mail does.
+ * One notification for one person, addressed by their account email. Where a
+ * push goes with an email, it is the address that email goes to, so the two
+ * reach exactly the same people; chat, reminders and nudges are push-only.
  */
 export type PushNotice = {
   email: string;
@@ -42,11 +46,13 @@ export type PushNotice = {
 
 /**
  * Well inside Expo's 4096-byte payload limit even at four bytes a character.
- * Team and organization messages can run to 5000 characters; the email carries
- * the whole thing.
+ * A chat message can run to 2000 characters; the chat has the whole thing.
  */
 const TITLE_LIMIT = 120;
 const BODY_LIMIT = 400;
+
+/** The Android channel the app creates for chat, in `obtainPushToken` (`src/lib/push.ts`). */
+const CHAT_CHANNEL = "chat";
 
 /** Cut on characters, not UTF-16 units, so an emoji is never split in half. */
 const clip = (text: string, limit: number) => {
@@ -101,6 +107,14 @@ export async function sendPushNotices(
           body: clip(notice.body, BODY_LIMIT),
           data: notice.data,
           sound: "default",
+          // Chat has its own Android channel, so it can be silenced without
+          // everything else, and one iOS thread per event, so a conversation
+          // stacks as one. A build too old to have created the channel shows
+          // it in expo-notifications' fallback channel instead.
+          ...(notice.data.type === "chat" && {
+            channelId: CHAT_CHANNEL,
+            threadId: `chat-${notice.data.eventId}`,
+          }),
         }),
       ),
     );

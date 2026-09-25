@@ -336,6 +336,15 @@ model EventAssignment {
   // True when this assignment was created by smart scheduling (auto-refill).
   autoAssigned Boolean @default(false)
 
+  // Claims for the pushes that have no email to hang off, so each goes out once
+  // however many ticks or sends race for it. `chatPushedAt` is the last chat
+  // push, and throttles the next; `reminderSentAt` is the day-before reminder,
+  // cleared when the event moves; `nudgedAt` is the "still need your answer"
+  // push, cleared on a re-invite.
+  chatPushedAt   DateTime?
+  reminderSentAt DateTime?
+  nudgedAt       DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   expiresAt DateTime
@@ -632,6 +641,11 @@ model Notification {
 model PushToken {
   id    String @id @default(uuid())
   token String @unique
+
+  // The phone's IANA zone as of its last launch, e.g. "America/Chicago". Event
+  // times are floating wall clock, so this is the only way to know when "24
+  // hours before" is for the person holding it. Null from builds that predate it.
+  timeZone String?
 
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)

@@ -22,6 +22,8 @@ export type ConnectionStatus = "connecting" | "connected" | "disconnected";
 /** Server-side fan-out contract. Each transport implements this. */
 export interface RealtimeAdapter {
   publishMessage(eventId: string, message: ChatMessage): Promise<void>;
+  /** User ids with the chat open right now — whoever entered presence. */
+  presentUserIds(eventId: string): Promise<string[]>;
 }
 
 export interface UseEventChatOptions {
