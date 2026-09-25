@@ -1156,6 +1156,8 @@ export const resendEventInvitation = async (
         expiresAt: new Date(Date.now() + RESEND_EXPIRY_DAYS * 24 * 60 * 60 * 1000),
         assignedById: user.id,
         autoAssigned: false,
+        // A new window earns its own "still need your answer".
+        nudgedAt: null,
       },
     });
 
@@ -1735,6 +1737,7 @@ export const inviteMembersToEvent = async (
             assignedById: user.id,
             autoAssigned: false,
             expiresAt: expiry,
+            nudgedAt: null,
           },
         });
       }
@@ -2099,21 +2102,6 @@ export const emailAcceptedVolunteers = async (
 
     touch(`org-${organizationId}-usage`);
 
-    // Only once the mail has gone, so a failed send the sender retries doesn't
-    // ring everybody's phone twice.
-    after(() =>
-      sendPushNotices(
-        "emailAcceptedVolunteers message",
-        recipients.map(({ user: recipient }) => ({
-          email: recipient.email,
-          title: subject,
-          subtitle: event.name,
-          body: `${senderName}: ${body}`,
-          data: { type: "event", organizationId, eventId },
-        })),
-      ),
-    );
-
     return { success: true, sentCount: recipients.length };
 
   } catch {
@@ -2255,6 +2243,13 @@ export const editEventDetails = async (
           },
         });
 
+        // The same for the day-before reminder, which was timed off them too.
+        if (scheduleChanged) {
+          await tx.eventAssignment.updateMany({
+            where: { eventId, reminderSentAt: { not: null } },
+            data: { reminderSentAt: null },
+          });
+        }
 
         await tx.eventDate.deleteMany({ where: { eventId } });
 

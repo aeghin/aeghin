@@ -336,6 +336,19 @@ model EventAssignment {
   // True when this assignment was created by smart scheduling (auto-refill).
   autoAssigned Boolean @default(false)
 
+  // Claims for the pushes that have no email to hang off, so each goes out once
+  // however many ticks or sends race for it. `chatPushedAt` is the last chat
+  // push, and throttles the next; `reminderSentAt` is the day-before reminder,
+  // cleared when the event moves; `nudgedAt` is the "still need your answer"
+  // push, cleared on a re-invite.
+  chatPushedAt   DateTime?
+  reminderSentAt DateTime?
+  nudgedAt       DateTime?
+
+  // When the sweep turned this EXPIRED. Its push is held for the manager's
+  // morning when that was overnight, so the cron reads the lapse back from here.
+  lapsedAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   expiresAt DateTime
@@ -625,6 +638,19 @@ model Notification {
   @@index([organizationId])
 }
 
+/// A push the cron has sent one person, by key, so it goes out once however
+/// many ticks come due at the same moment. The key names the push, what it was
+/// about, the version of that (an event's start, a lapse's time) and the person,
+/// e.g. `last-call:<event>:3:<start>:<email>`, so a rescheduled event or a new
+/// lapse earns a fresh one. Kept a week, which is far longer than any key can
+/// come due again.
+model PushClaim {
+  key       String   @id
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
+
 /// One installed copy of the phone app that can be pushed to, belonging to
 /// whoever last signed in on it. Keyed by the token rather than the user, so a
 /// phone that changes hands moves to the new account instead of ringing for
@@ -632,6 +658,11 @@ model Notification {
 model PushToken {
   id    String @id @default(uuid())
   token String @unique
+
+  // The phone's IANA zone as of its last launch, e.g. "America/Chicago". Event
+  // times are floating wall clock, so this is the only way to know when "24
+  // hours before" is for the person holding it. Null from builds that predate it.
+  timeZone String?
 
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)

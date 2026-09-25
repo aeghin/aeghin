@@ -5,22 +5,26 @@ import { NextResponse } from "next/server";
 
 import prisma from "@/lib/prisma";
 import { InvitationStatus } from "@/generated/prisma/enums";
-import { volunteerRoleLabels } from "@/lib/activity";
 import { SMART_SCHEDULING_ENTITLEMENTS } from "@/lib/billing/entitlements";
-import EventInviteExpiredEmail, {
-    type LapsedInvite,
-} from "@/components/email/event-invite-expired-template";
+import EventInviteExpiredEmail from "@/components/email/event-invite-expired-template";
 import EventLastCallEmail from "@/components/email/event-last-call-template";
-import { formatEventShort, formatEventWhen } from "@/lib/email/event-when";
+import { formatEventWhen } from "@/lib/email/event-when";
 import { organizationSender } from "@/lib/email/organization";
-import {
-    eventStaffingRecipients,
-    inviteSenderRecipients,
-    type EmailRecipient,
-} from "@/lib/email/recipients";
+import { eventStaffingRecipients } from "@/lib/email/recipients";
 import { sendEmailBatches } from "@/lib/email/send";
+import {
+    LAST_CALL_DAYS,
+    lapseBuckets,
+    lapseSubject,
+    rosterGaps,
+} from "@/lib/notifications/staffing";
 import { syncEventNotifications } from "@/lib/notifications/sync";
-import { sendPushNotices, type PushNotice } from "@/lib/push/send";
+import { sendDayBeforeReminders, sendExpiryNudges } from "@/lib/push/reminders";
+import {
+    forgetOldPushClaims,
+    sendLapsePushes,
+    sendLastCallPushes,
+} from "@/lib/push/staffing";
 
 /**
  * Hourly sweep that turns lapsed invitations into `EXPIRED` rows.
@@ -71,13 +75,6 @@ export const maxDuration = 60;
  * whole cap is a few seconds.
  */
 const RECONCILE_LIMIT = 300;
-
-/**
- * Days before an event's first block that the staffing check runs, furthest
- * first. A check's stage is its position here plus one, which is the number
- * `Event.lastCallStage` records.
- */
-const LAST_CALL_DAYS = [3, 1];
 
 /**
  * Most events one tick will check. The window is three days wide and an event
@@ -132,32 +129,17 @@ const expireTag = (tag: string) => {
     revalidateTag(tag, { expire: 0 });
 };
 
-/**
- * How recently an invitation must have lapsed for anyone to be mailed about it.
- *
- * The sweep is the only writer of EXPIRED, so any interruption — a paused cron,
- * a rolled-back deploy, CRON_SECRET going missing — leaves lapses piling up as
- * PENDING, and the tick that resumes would mail every one of them at once.
- * SWEEP_LIMIT and `hasMore` exist because that backlog is expected to be
- * possible; this is the same guard applied to the mail.
- *
- * Comfortably wider than the hourly schedule, so an ordinary tick — where a
- * lapse is at most an hour old — never notices it. Older rows are still swept
- * and still turn EXPIRED in the UI; they just stop generating mail about a
- * deadline that passed long enough ago that nobody can act on it any faster
- * for having been told.
- */
-const NOTIFY_WINDOW_HOURS = 6;
-
 type NotifyResult = { emails: number; events: number };
 
 /**
- * Tells whoever asked that an event invitation went unanswered.
+ * Emails whoever asked that an event invitation went unanswered.
  *
  * A decline already emails the person managing the event; a lapse left the
  * identical hole and told nobody. The `PENDING -> EXPIRED` transition is what
  * makes this safe to do from a cron with no extra state: a flipped row can
  * never be selected again, so nobody is mailed twice about the same invitation.
+ * Who hears, and about what, is `lapseBuckets`, shared with the push that
+ * `sendLapsePushes` holds for the manager's waking hours.
  *
  * Best effort by construction. The rows are already committed as `EXPIRED`
  * before this runs, so a send that fails is never retried — `sendEmailBatches`
@@ -171,171 +153,16 @@ const notifyLapsedAssignments = async (
 
     if (sweptIds.length === 0) return { emails: 0, events: 0 };
 
-    // The rows the update actually flipped, not the ones it selected. Somebody
-    // who accepted in the gap between the two falls out of `updateMany` but is
-    // still in `staleAssignments` — mailing their admin that they never
-    // answered would be plainly wrong. Cache tags can afford to over-fire
-    // (above); email cannot.
-    //
-    // Restricted to events that have not happened yet — a past event is not
-    // something anyone can go and staff — and to lapses inside
-    // NOTIFY_WINDOW_HOURS, so a backlog is swept quietly rather than mailed.
-    const lapsed = await prisma.eventAssignment.findMany({
-        where: {
-            id: { in: sweptIds },
-            status: InvitationStatus.EXPIRED,
-            event: { dates: { some: { endTime: { gte: now } } } },
-            expiresAt: {
-                gte: new Date(now.getTime() - NOTIFY_WINDOW_HOURS * 60 * 60 * 1000),
-            },
-        },
-        select: {
-            role: true,
-            assignedById: true,
-            organizationId: true,
-            user: { select: { firstName: true, lastName: true } },
-            event: {
-                select: {
-                    id: true,
-                    name: true,
-                    createdById: true,
-                    dates: { select: { startTime: true, endTime: true } },
-                },
-            },
-            organization: { select: { name: true, logoUrl: true } },
-        },
-    });
+    // The rows the update actually flipped, not the ones it selected.
+    const buckets = await lapseBuckets({ id: { in: sweptIds } }, now);
 
-    if (lapsed.length === 0) return { emails: 0, events: 0 };
-
-    // A role somebody has since accepted is not a gap. Two admins inviting two
-    // pianists, or a smart-fill replacement that stuck, both end here — and
-    // "needs a Pianist" about an event with a confirmed pianist is the kind of
-    // wrong that stops people reading the mail.
-    const staffed = await prisma.eventAssignment.groupBy({
-        by: ["eventId", "role"],
-        where: {
-            eventId: { in: [...new Set(lapsed.map((row) => row.event.id))] },
-            status: InvitationStatus.ACCEPTED,
-        },
-        _count: { _all: true },
-    });
-
-    const filled = new Set(staffed.map((row) => `${row.eventId}:${row.role}`));
-
-    const open = lapsed.filter(
-        (row) => !filled.has(`${row.event.id}:${row.role}`),
-    );
-
-    if (open.length === 0) return { emails: 0, events: 0 };
-
-    // Matched as organization+user pairs, so a membership in a different
-    // organization can never resolve a sender.
-    const senderPairs = new Map(
-        open
-            .filter((row) => row.assignedById !== null)
-            .map((row) => [
-                `${row.organizationId}:${row.assignedById}`,
-                {
-                    organizationId: row.organizationId,
-                    userId: row.assignedById as string,
-                },
-            ]),
-    );
-
-    const senders = await inviteSenderRecipients([...senderPairs.values()]);
-
-    type Bucket = {
-        recipient: EmailRecipient;
-        organizationId: string;
-        organizationName: string;
-        logoUrl: string | null;
-        eventId: string;
-        eventName: string;
-        dates: { startTime: Date; endTime: Date }[];
-        lapsed: LapsedInvite[];
-    };
-
-    // One email per recipient per event: an admin who invited five people to
-    // one event hears once, listing five roles, and hears only about the
-    // invitations they sent.
-    const buckets = new Map<string, Bucket>();
-    const orphaned = new Map<string, typeof open>();
-
-    const entryFor = (row: (typeof open)[number]): LapsedInvite => ({
-        inviteeName: `${row.user.firstName} ${row.user.lastName}`,
-        roleLabel: volunteerRoleLabels[row.role],
-    });
-
-    const add = (recipient: EmailRecipient, row: (typeof open)[number], entries: LapsedInvite[]) => {
-        const key = `${row.event.id}:${recipient.email}`;
-        const existing = buckets.get(key);
-
-        if (existing) {
-            existing.lapsed.push(...entries);
-            return;
-        }
-
-        buckets.set(key, {
-            recipient,
-            organizationId: row.organizationId,
-            organizationName: row.organization.name,
-            logoUrl: row.organization.logoUrl,
-            eventId: row.event.id,
-            eventName: row.event.name,
-            dates: row.event.dates,
-            lapsed: [...entries],
-        });
-    };
-
-    for (const row of open) {
-        const sender = row.assignedById
-            ? senders.get(`${row.organizationId}:${row.assignedById}`)
-            : undefined;
-
-        if (sender) {
-            add(sender, row, [entryFor(row)]);
-            continue;
-        }
-
-        const pending = orphaned.get(row.event.id) ?? [];
-        pending.push(row);
-        orphaned.set(row.event.id, pending);
-    }
-
-    // Sender deleted, gone from the organization, or demoted to MEMBER. Falls
-    // through to the event's creator and then the owners, which is never an
-    // empty list — so a lapsed invitation always reaches somebody who can act.
-    // Merged into any bucket that already exists, so an owner who also sent one
-    // of these gets a single email rather than two.
-    for (const rows of orphaned.values()) {
-        const recipients = await eventStaffingRecipients(
-            rows[0].organizationId,
-            rows[0].event.createdById,
-        );
-
-        const entries = rows.map(entryFor);
-
-        for (const recipient of recipients) {
-            add(recipient, rows[0], entries);
-        }
-    }
-
-    const subjectFor = (bucket: Bucket) => {
-        const roles = [...new Set(bucket.lapsed.map((item) => item.roleLabel))];
-
-        return roles.length === 1
-            ? `Needs a ${roles[0]}: ${bucket.eventName}`
-            : `Needs ${roles.length} roles filled: ${bucket.eventName}`;
-    };
-
-    const messages = [...buckets.values()].map((bucket) => {
+    const messages = buckets.map((bucket) => {
         const when = formatEventWhen(bucket.dates);
 
         return {
             from: organizationSender(bucket.organizationName),
             to: bucket.recipient.email,
-            subject: subjectFor(bucket),
+            subject: lapseSubject(bucket.lapsed, bucket.eventName),
             react: EventInviteExpiredEmail({
                 recipientName: bucket.recipient.firstName,
                 eventName: bucket.eventName,
@@ -351,27 +178,9 @@ const notifyLapsedAssignments = async (
 
     await sendEmailBatches("expire-invitations lapsed", messages);
 
-    await sendPushNotices(
-        "expire-invitations lapsed",
-        [...buckets.values()].map((bucket) => ({
-            email: bucket.recipient.email,
-            title: subjectFor(bucket),
-            subtitle: bucket.organizationName,
-            body:
-                bucket.lapsed.length === 1
-                    ? `${bucket.lapsed[0].inviteeName}'s invitation expired without an answer.`
-                    : `${bucket.lapsed.length} invitations expired without an answer.`,
-            data: {
-                type: "event",
-                organizationId: bucket.organizationId,
-                eventId: bucket.eventId,
-            },
-        })),
-    );
-
     return {
         emails: messages.length,
-        events: new Set([...buckets.values()].map((b) => b.eventId)).size,
+        events: new Set(buckets.map((bucket) => bucket.eventId)).size,
     };
 };
 
@@ -394,8 +203,9 @@ const notifyLapsedAssignments = async (
  * Event times are floating wall clock pinned to Z (see LIVE_GRACE_MS in
  * lib/notifications/sync.ts), so "three days before" is measured against a
  * start that reads several hours early for an organization west of UTC. The
- * email lands a few hours ahead of the mark rather than on it — fine for a
- * day-granular heads-up, and not fixable without storing a time zone.
+ * email lands a few hours ahead of the mark rather than on it — fine for mail,
+ * which waits to be read. The push can't wait like that, so it doesn't go from
+ * here: `sendLastCallPushes` times it on each manager's own clock.
  */
 const sendLastCalls = async (now: Date): Promise<NotifyResult> => {
 
@@ -438,8 +248,6 @@ const sendLastCalls = async (now: Date): Promise<NotifyResult> => {
         take: LAST_CALL_LIMIT,
     });
 
-    const pushes: PushNotice[] = [];
-
     const perEvent = await Promise.all(
         events.map(async (event) => {
 
@@ -477,32 +285,9 @@ const sendLastCalls = async (now: Date): Promise<NotifyResult> => {
 
             if (event.createdAt.getTime() > dueAt) return [];
 
-            const confirmed = new Set(
-                event.assignments
-                    .filter((row) => row.status === InvitationStatus.ACCEPTED)
-                    .map((row) => row.role),
-            );
-
-            const waiting = event.assignments.filter(
-                (row) => row.status === InvitationStatus.PENDING && row.expiresAt > now,
-            );
-
-            const fullyStaffed =
-                event.rolesNeeded.every((role) => confirmed.has(role)) &&
-                waiting.length === 0;
+            const { fullyStaffed, unfilledRoles, waitingOn } = rosterGaps(event, now);
 
             if (fullyStaffed) return [];
-
-            const deciding = new Set(waiting.map((row) => row.role));
-
-            const unfilledRoles = event.rolesNeeded
-                .filter((role) => !confirmed.has(role) && !deciding.has(role))
-                .map((role) => volunteerRoleLabels[role]);
-
-            const waitingOn = waiting.map((row) => ({
-                inviteeName: `${row.user.firstName} ${row.user.lastName}`,
-                roleLabel: volunteerRoleLabels[row.role],
-            }));
 
             const recipients = await eventStaffingRecipients(
                 event.organizationId,
@@ -510,28 +295,6 @@ const sendLastCalls = async (now: Date): Promise<NotifyResult> => {
             );
 
             const when = formatEventWhen(event.dates);
-
-            const missing = [
-                unfilledRoles.length > 0 && `Open: ${unfilledRoles.join(", ")}`,
-                waitingOn.length > 0 &&
-                    `Waiting on ${waitingOn.length === 1 ? "1 reply" : `${waitingOn.length} replies`}`,
-            ].filter(Boolean);
-
-            for (const recipient of recipients) {
-                pushes.push({
-                    email: recipient.email,
-                    title: `Not fully staffed yet: ${event.name}`,
-                    subtitle: event.organization.name,
-                    body: [formatEventShort(event.dates), missing.join(" · ")]
-                        .filter(Boolean)
-                        .join("\n"),
-                    data: {
-                        type: "event",
-                        organizationId: event.organizationId,
-                        eventId: event.id,
-                    },
-                });
-            }
 
             return recipients.map((recipient) => ({
                 from: organizationSender(event.organization.name),
@@ -555,8 +318,6 @@ const sendLastCalls = async (now: Date): Promise<NotifyResult> => {
     const messages = perEvent.flat();
 
     await sendEmailBatches("expire-invitations last call", messages);
-
-    await sendPushNotices("expire-invitations last call", pushes);
 
     return {
         emails: messages.length,
@@ -619,7 +380,8 @@ export async function GET(req: Request) {
                         status: InvitationStatus.PENDING,
                         expiresAt: { lt: now },
                     },
-                    data: { status: InvitationStatus.EXPIRED },
+                    // `lapsedAt` is what the push reads back, if it waits for morning.
+                    data: { status: InvitationStatus.EXPIRED, lapsedAt: now },
                     select: { id: true },
                 })
                 : [];
@@ -699,6 +461,42 @@ export async function GET(req: Request) {
             );
         }
 
+        // The pushes this cron schedules itself. Each is timed on its
+        // recipient's own clock and only rings between 8am and 9pm there
+        // (lib/push/timing.ts), so none of them wake anybody; each claims what
+        // it sends first, so a slow tick overlapping the next can't double it.
+        // After the sweep, so a lapse it just found in waking hours goes now.
+        const pushPasses = {
+            lastCall: sendLastCallPushes,
+            lapsed: sendLapsePushes,
+            reminders: sendDayBeforeReminders,
+            nudges: sendExpiryNudges,
+        };
+
+        const pushed: Partial<Record<keyof typeof pushPasses, number>> = {};
+        const pushesFailed: string[] = [];
+
+        for (const [name, send] of Object.entries(pushPasses)) {
+            try {
+                pushed[name as keyof typeof pushPasses] = await send(now);
+            } catch (err) {
+                pushesFailed.push(name);
+                console.error(
+                    `GET /api/cron/expire-invitations: ${name} pushes failed —`,
+                    err,
+                );
+            }
+        }
+
+        try {
+            await forgetOldPushClaims(now);
+        } catch (err) {
+            console.error(
+                "GET /api/cron/expire-invitations: clearing old push claims failed —",
+                err,
+            );
+        }
+
         // The bell, last. It is the one piece of this tick that can afford to be
         // late: a reconcile is idempotent and the next tick heals whatever this
         // one misses, where the mail above cannot be retried — those rows are
@@ -773,6 +571,8 @@ export async function GET(req: Request) {
             lastCall: lastCall.emails,
             lastCallEvents: lastCall.events,
             lastCallFailed,
+            pushed,
+            pushesFailed,
             reconciled: toReconcile.length,
             reconcileSkipped,
             // A full page on either table means there is very likely more

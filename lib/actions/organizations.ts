@@ -10,10 +10,8 @@ import { bulkEmailLimitError, recordUsage } from "@/lib/billing/limits";
 import { UTApi } from "uploadthing/server";
 import { currentUser } from "../services/user";
 import { Resend } from "resend";
-import { after } from "next/server";
 import OrganizationMessageEmail from "@/components/email/organization-message-template";
 import { organizationSender } from "@/lib/email/organization";
-import { sendPushNotices } from "@/lib/push/send";
 
 /**
  * How a caller expires cache tags. `updateTag` throws inside a Route Handler,
@@ -452,21 +450,6 @@ export const emailEntireOrganization = async (
         await recordUsage(organizationId, UsageKind.BULK_EMAIL);
 
         touch(`org-${organizationId}-usage`);
-
-        // Only once the mail has gone, so a failed send the sender retries
-        // doesn't ring everybody's phone twice.
-        after(() =>
-            sendPushNotices(
-                "emailEntireOrganization message",
-                membersInfo.map(({ user: recipient }) => ({
-                    email: recipient.email,
-                    title: subject,
-                    subtitle: organizationName,
-                    body: `${senderName}: ${body}`,
-                    data: { type: "organization", organizationId },
-                })),
-            ),
-        );
 
         return { success: true, sentCount: membersInfo.length };
 
