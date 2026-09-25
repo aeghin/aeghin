@@ -208,7 +208,7 @@ export async function POST(
         );
 
         if (!result.success) {
-            if (result.code === "SONG_LIMIT") return limitFailure(result.code);
+            if (result.code === "SONG_LIMIT") return limitFailure(result.code, orgId);
 
             return NextResponse.json(
                 { error: result.error },

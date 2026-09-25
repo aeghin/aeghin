@@ -1,13 +1,13 @@
 "use server";
 
 import {
-  createAiCheckoutSession,
+  createPlanCheckoutSession,
   createPortalSession,
-  type AiPlan,
 } from "@/lib/billing/stripe-sessions";
+import { isPaidPlan, type OrgPlan, type PaidPlan } from "@/lib/config/plans";
 import { currentUser } from "@/lib/services/user";
 import { getUserMembershipRole } from "@/lib/services/organization";
-import { getAiSetlistAccess, getAiProAccess } from "@/lib/billing/entitlements";
+import { getOrgPlan } from "@/lib/billing/entitlements";
 import { OrgRole } from "@/generated/prisma/enums";
 
 type ActionResult =
@@ -26,13 +26,13 @@ async function isOrgOwner(orgId: string): Promise<boolean> {
 const dashboardUrl = (orgId: string) =>
   `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/organizations/${orgId}`;
 
-async function startCheckout(orgId: string, plan: AiPlan): Promise<ActionResult> {
+async function startCheckout(orgId: string, plan: PaidPlan): Promise<ActionResult> {
   if (!(await isOrgOwner(orgId))) {
     return { success: false, error: "Forbidden" };
   }
 
   try {
-    return await createAiCheckoutSession({
+    return await createPlanCheckoutSession({
       orgId,
       plan,
       successUrl: `${process.env.NEXT_PUBLIC_APP_URL}/api/billing/return?session_id={CHECKOUT_SESSION_ID}`,
@@ -60,6 +60,19 @@ export async function startAiSetlistProCheckout(
   return startCheckout(orgId, "pro");
 }
 
+/**
+ * Start a Checkout Session for any paid plan, or switch the org's current plan
+ * to it. The plan arrives from the browser, so it's checked first.
+ */
+export async function startPlanCheckout(
+  orgId: string,
+  plan: PaidPlan,
+): Promise<ActionResult> {
+  if (!isPaidPlan(plan)) return { success: false, error: "Unknown plan" };
+
+  return startCheckout(orgId, plan);
+}
+
 /** Open the Stripe Customer Portal for self-service subscription management. */
 export async function openBillingPortal(orgId: string): Promise<ActionResult> {
   if (!(await isOrgOwner(orgId))) {
@@ -73,18 +86,17 @@ export async function openBillingPortal(orgId: string): Promise<ActionResult> {
     : { success: false, error: "No billing account yet" };
 }
 
-/** Read-only org premium status for the navbar (badge + subscribe button). */
+/** Read-only org plan for the navbar (badge + subscribe button). */
 export async function getOrgPremiumStatus(
   orgId: string,
-): Promise<{ hasPremium: boolean; hasPro: boolean; canSubscribe: boolean }> {
+): Promise<{ plan: OrgPlan; canSubscribe: boolean }> {
   const user = await currentUser();
-  if (!user) return { hasPremium: false, hasPro: false, canSubscribe: false };
+  if (!user) return { plan: "free", canSubscribe: false };
 
-  const [hasPremium, hasPro, membership] = await Promise.all([
-    getAiSetlistAccess({ userId: user.id, orgId }),
-    getAiProAccess({ userId: user.id, orgId }),
+  const [plan, membership] = await Promise.all([
+    getOrgPlan(orgId),
     getUserMembershipRole(user.id, orgId),
   ]);
   const canSubscribe = membership?.role === OrgRole.OWNER;
-  return { hasPremium, hasPro, canSubscribe };
+  return { plan, canSubscribe };
 }

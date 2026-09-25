@@ -199,7 +199,7 @@ export const SmartSchedulingActivity = ({
               <div className="min-w-0">
                 <p className="text-sm font-semibold">Smart Scheduling</p>
                 <p className="text-xs text-muted-foreground">
-                  Auto-fill {running ? "on" : enabled ? "paused on the Free plan" : "off"}
+                  Auto-fill {running ? "on" : enabled ? "paused · part of Premium" : "off"}
                 </p>
               </div>
             </div>

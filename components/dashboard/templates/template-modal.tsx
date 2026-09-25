@@ -393,7 +393,7 @@ export function TemplateModal({
                       <p className="text-xs text-muted-foreground">
                         {smartSchedulingAvailable
                           ? "Events from this template start with auto-fill on"
-                          : "Part of Premium. Events start with auto-fill off on the Free plan."}
+                          : "Part of Premium. Events start with auto-fill off on your plan."}
                       </p>
                     </div>
                     <FormControl>

@@ -4,10 +4,10 @@ import type Stripe from "stripe";
 
 import { stripe } from "@/lib/stripe";
 import prisma from "@/lib/prisma";
+import type { PaidPlan } from "@/lib/config/plans";
 
-export type AiPlan = "premium" | "pro";
-
-const PRICE_ENV: Record<AiPlan, string> = {
+const PRICE_ENV: Record<PaidPlan, string> = {
+  starter: "STRIPE_STARTER_PRICE_ID",
   premium: "STRIPE_AI_SETLIST_PRICE_ID",
   pro: "STRIPE_AI_PRO_PRICE_ID",
 };
@@ -61,9 +61,9 @@ async function findLiveSubscription(customerId: string): Promise<Stripe.Subscrip
  * org that already has a plan changes that plan instead — sending it through
  * Checkout is how a Premium org ended up paying for Premium and Pro at once.
  */
-export async function createAiCheckoutSession(opts: {
+export async function createPlanCheckoutSession(opts: {
   orgId: string;
-  plan: AiPlan;
+  plan: PaidPlan;
   /** After Checkout starts a first subscription. */
   successUrl: string;
   /** After the portal switches an existing plan. `{SUBSCRIPTION_ID}` is filled in here — the portal has no placeholder of its own. */

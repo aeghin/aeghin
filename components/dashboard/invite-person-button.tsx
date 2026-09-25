@@ -4,12 +4,13 @@ import { useState } from "react"
 import { Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { InvitePersonModal } from "@/components/setup/invite-person-modal";
+import type { OrgPlan } from "@/lib/config/plans";
 
 interface InviteMemberButtonProps {
     organizationId: string,
     organizationName: string,
     // Null when the plan has no member cap.
-    seatUsage: { limit: number; left: number; pendingInvites: number } | null,
+    seatUsage: { plan: OrgPlan; limit: number; left: number; pendingInvites: number } | null,
     canUpgrade: boolean
 }
 

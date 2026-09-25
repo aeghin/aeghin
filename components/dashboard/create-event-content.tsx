@@ -88,6 +88,7 @@ import { createEvent } from "@/lib/actions/event";
 import { AiEventPanel } from "@/components/dashboard/events/ai-event-panel";
 import { AiSetlistProUpsell } from "@/components/dashboard/events/ai-setlist-pro-upsell";
 import { UpgradePlanButton } from "@/components/dashboard/upgrade-plan-button";
+import { NEXT_PLAN, PLAN_LIMITS, PLAN_NAMES, type OrgPlan } from "@/lib/config/plans";
 import type { EventDraft } from "@/lib/agents/event/agent";
 
 import { Switch } from "@/components/ui/switch";
@@ -268,6 +269,7 @@ interface CreateEventPageContentProps {
   canSubscribe: boolean;
   // Whether the plan includes auto-fill. Free gets the upgrade in the switch's place.
   smartSchedulingAvailable: boolean;
+  plan: OrgPlan;
 }
 
 export function CreateEventPageContent({
@@ -280,6 +282,7 @@ export function CreateEventPageContent({
   canDraftWithAi,
   canSubscribe,
   smartSchedulingAvailable,
+  plan,
 }: CreateEventPageContentProps) {
   const router = useRouter();
 
@@ -287,6 +290,12 @@ export function CreateEventPageContent({
     serviceTypes,
     (current, newType: ServiceType) => [...current, newType],
   );
+
+  // Deleted service types don't count, and the list here is the live ones.
+  const serviceTypeLimit = PLAN_LIMITS[plan].serviceTypes;
+  const serviceTypesFull =
+    serviceTypeLimit !== null && optimisticServiceTypes.length >= serviceTypeLimit;
+  const serviceTypeNextPlan = NEXT_PLAN[plan];
 
   const [step, setStep] = useState<1 | 2>(1);
   const [isCheckingAvailability, setIsCheckingAvailability] = useState(false);
@@ -1087,6 +1096,32 @@ export function CreateEventPageContent({
                                 >
                                   <Plus className="h-4 w-4" />
                                 </Button>
+                              </div>
+                            ) : serviceTypesFull ? (
+                              <div className="space-y-3 rounded-lg border p-3">
+                                <div className="flex items-start justify-between gap-2">
+                                  <p className="text-sm text-muted-foreground">
+                                    {PLAN_NAMES[plan]} includes {serviceTypeLimit} service types.
+                                    {serviceTypeNextPlan &&
+                                      (PLAN_LIMITS[serviceTypeNextPlan].serviceTypes === null
+                                        ? ` ${PLAN_NAMES[serviceTypeNextPlan]} has no limit.`
+                                        : ` ${PLAN_NAMES[serviceTypeNextPlan]} includes ${PLAN_LIMITS[serviceTypeNextPlan].serviceTypes}.`)}
+                                    {" "}Or delete one you no longer use in Settings.
+                                  </p>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => setIsCreatingNewType(false)}
+                                  >
+                                    <X className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                                {serviceTypeNextPlan && (canSubscribe ? (
+                                  <UpgradePlanButton orgId={organizationId} plan={serviceTypeNextPlan} />
+                                ) : (
+                                  <p className="text-xs text-muted-foreground">Ask an owner to upgrade</p>
+                                ))}
                               </div>
                             ) : (
                               <div className="space-y-3 rounded-lg border p-3">

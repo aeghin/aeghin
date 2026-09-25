@@ -33,7 +33,7 @@ import { EditSongDetails } from "@/components/dashboard/songs/song-edit";
 
 import { KeyQuality } from "@/generated/prisma/enums";
 import { formatKey } from "@/lib/constants/key";
-import { PLAN_LIMITS, type OrgPlan } from "@/lib/config/plans";
+import { NEXT_PLAN, PLAN_LIMITS, PLAN_NAMES, type OrgPlan } from "@/lib/config/plans";
 import { YoutubeIcon, SpotifyIcon } from "@/components/icons/brand-icons";
 import type { LibrarySong as Song, StorageUsage } from "@/lib/types";
 
@@ -137,7 +137,7 @@ export function SongLibrary({ songs, orgId, orgName, canManage, songLimit, canUp
     ? {
         used: songs.reduce((total, song) => total + song.attachments.reduce((sum, file) => sum + file.size, 0), 0),
         limit: PLAN_LIMITS[plan].storage,
-        nextPlan: plan === "free" ? "premium" : plan === "premium" ? "pro" : null,
+        nextPlan: NEXT_PLAN[plan],
         canUpgrade,
       }
     : null;
@@ -246,7 +246,7 @@ export function SongLibrary({ songs, orgId, orgName, canManage, songLimit, canUp
             <p className="mt-1 text-sm text-muted-foreground">
               {showSongLimit ? (
                 <span className={songLimitReached ? "font-medium text-amber-600 dark:text-amber-400" : undefined}>
-                  {songs.length} / {songLimit} songs{songLimitReached ? " · Free limit reached" : ""}
+                  {songs.length} / {songLimit} songs{songLimitReached ? ` · ${PLAN_NAMES[plan]} limit reached` : ""}
                 </span>
               ) : (
                 `${songs.length} song${songs.length === 1 ? "" : "s"}`
@@ -262,6 +262,7 @@ export function SongLibrary({ songs, orgId, orgName, canManage, songLimit, canUp
               songLimit={songLimit}
               limitReached={songLimitReached}
               canUpgrade={canUpgrade}
+              plan={plan}
             />
           )}
         </div>

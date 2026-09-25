@@ -12,13 +12,10 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  getOrgPremiumStatus,
-  startAiSetlistCheckout,
-  startAiSetlistProCheckout,
-} from "@/lib/actions/billing";
+import { getOrgPremiumStatus, startPlanCheckout } from "@/lib/actions/billing";
+import type { OrgPlan, PaidPlan } from "@/lib/config/plans";
 
-type Status = { hasPremium: boolean; hasPro: boolean; canSubscribe: boolean };
+type Status = { plan: OrgPlan; canSubscribe: boolean };
 
 export function PremiumNav() {
   const pathname = usePathname();
@@ -50,7 +47,7 @@ export function PremiumNav() {
   // Render nothing until we know the status (also avoids SSR/CSR mismatch).
   if (!orgId || !status) return null;
 
-  if (status.hasPro) {
+  if (status.plan === "pro") {
     return (
       <Badge
         variant="secondary"
@@ -62,7 +59,7 @@ export function PremiumNav() {
     );
   }
 
-  if (status.hasPremium) {
+  if (status.plan === "premium") {
     return (
       <Badge
         variant="secondary"
@@ -74,14 +71,24 @@ export function PremiumNav() {
     );
   }
 
+  if (status.plan === "starter") {
+    return (
+      <Badge
+        variant="secondary"
+        className="gap-1 border-sky-500/30 bg-sky-500/10 text-sky-600 dark:text-sky-400"
+      >
+        <Sparkles className="h-3 w-3" />
+        Starter
+      </Badge>
+    );
+  }
+
   
   if (!status.canSubscribe) return null;
 
-  const subscribe = (plan: "premium" | "pro") => {
+  const subscribe = (plan: PaidPlan) => {
     startTransition(async () => {
-      const start =
-        plan === "pro" ? startAiSetlistProCheckout : startAiSetlistCheckout;
-      const result = await start(orgId);
+      const result = await startPlanCheckout(orgId, plan);
       if (result.success) {
         window.location.href = result.url;
       } else {
@@ -100,6 +107,15 @@ export function PremiumNav() {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">
+        <DropdownMenuItem
+          onClick={() => subscribe("starter")}
+          className="flex-col items-start gap-0.5 cursor-pointer"
+        >
+          <span className="text-sm font-medium">Starter</span>
+          <span className="text-xs text-muted-foreground">
+            More members, songs and service types
+          </span>
+        </DropdownMenuItem>
         <DropdownMenuItem
           onClick={() => subscribe("premium")}
           className="flex-col items-start gap-0.5 cursor-pointer"

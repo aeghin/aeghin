@@ -5,7 +5,7 @@ import prisma from "@/lib/prisma";
 import { SERVICE_TYPE_COLORS } from "@/lib/config/service-colors";
 import { createServiceType } from "@/lib/actions/service-type";
 import { serviceTypeSchema } from "@/lib/validations/service-types";
-import { expireTag } from "@/lib/mobile/route";
+import { expireTag, limitFailure } from "@/lib/mobile/route";
 
 
 /**
@@ -173,6 +173,8 @@ export async function POST(
         );
 
         if (!result.success) {
+            if (result.code === "SERVICE_TYPE_LIMIT") return limitFailure(result.code, orgId);
+
             return NextResponse.json(
                 { error: result.error },
                 {

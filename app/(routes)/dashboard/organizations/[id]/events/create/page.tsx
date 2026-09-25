@@ -55,6 +55,7 @@ export default async function CreateEventPage({
       canDraftWithAi={hasAiPro}
       canSubscribe={membership?.role === OrgRole.OWNER}
       smartSchedulingAvailable={PLAN_LIMITS[plan].smartScheduling}
+      plan={plan}
     />
   )
 }

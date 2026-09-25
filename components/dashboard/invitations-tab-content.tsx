@@ -6,6 +6,8 @@ import { InvitationActionsMenu } from "@/components/dashboard/invitation-actions
 import { cn } from "@/lib/utils";
 import { organizationInvitations } from "@/lib/services/invitation";
 import { InvitationStatus } from "@/generated/prisma/enums";
+import { getOrgPlan } from "@/lib/billing/entitlements";
+import { NEXT_PLAN } from "@/lib/config/plans";
 
 const getStatusConfig = (status: InvitationStatus) => {
   switch (status) {
@@ -57,7 +59,10 @@ export const InvitationsTabContent = async ({
 }: InvitationsTabContentProps) => {
   
 
-  const invitations = await organizationInvitations(organizationId);
+  const [invitations, plan] = await Promise.all([
+    organizationInvitations(organizationId),
+    getOrgPlan(organizationId),
+  ]);
 
   const pendingCount = invitations.filter(
     (inv) => inv.status === InvitationStatus.PENDING
@@ -146,6 +151,7 @@ export const InvitationsTabContent = async ({
                       email={invitation.email}
                       status={invitation.status}
                       canUpgrade={canUpgrade}
+                      upgradeTo={NEXT_PLAN[plan]}
                     />
                   </div>
                 </AnimatedInvitationRow>

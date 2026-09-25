@@ -83,15 +83,19 @@ export default function SupportPage() {
       <h2>Billing and subscriptions</h2>
       <p>
         Paid plans are purchased on <a href="https://aeghin.com">aeghin.com</a>: owners upgrade
-        with the Upgrade button in the top bar while viewing their organization, and manage an
+        with the Upgrade button in the top bar or from Plan &amp; usage in the organization&apos;s Settings tab, and manage an
         existing plan from that organization&apos;s Settings tab. Payments are processed by
         Stripe. Free organizations can have up to {PLAN_LIMITS.free.members} members, including
-        pending invites, and {PLAN_LIMITS.free.songs} songs in the library; Premium and Pro have no
-        limit on either. Attachment storage is {formatStorage(PLAN_LIMITS.free.storage)} on Free,{" "}
-        {formatStorage(PLAN_LIMITS.premium.storage)} on Premium and {formatStorage(PLAN_LIMITS.pro.storage)} on
-        Pro. Group emails (Message All and Email Team) are limited to {PLAN_LIMITS.free.bulkEmails} a
-        month on Free, {PLAN_LIMITS.premium.bulkEmails} on Premium and {PLAN_LIMITS.pro.bulkEmails} on
-        Pro; automatic emails never count. Premium and Pro include {PLAN_LIMITS.premium.aiRuns} AI
+        pending invites, {PLAN_LIMITS.free.songs} songs in the library and{" "}
+        {PLAN_LIMITS.free.serviceTypes} service types; Starter raises those to{" "}
+        {PLAN_LIMITS.starter.members}, {PLAN_LIMITS.starter.songs} and {PLAN_LIMITS.starter.serviceTypes},
+        and Premium and Pro have no limit on any of them. Attachment storage is{" "}
+        {formatStorage(PLAN_LIMITS.free.storage)} on Free, {formatStorage(PLAN_LIMITS.starter.storage)} on
+        Starter, {formatStorage(PLAN_LIMITS.premium.storage)} on Premium and{" "}
+        {formatStorage(PLAN_LIMITS.pro.storage)} on Pro. Group emails (Message All and Email Team) are
+        limited to {PLAN_LIMITS.free.bulkEmails} a month on Free, {PLAN_LIMITS.starter.bulkEmails} on
+        Starter, {PLAN_LIMITS.premium.bulkEmails} on Premium and {PLAN_LIMITS.pro.bulkEmails} on Pro;
+        automatic emails never count. Premium and Pro include {PLAN_LIMITS.premium.aiRuns} AI
         requests a month, and Smart Scheduling with its last-call staffing alerts. Monthly counts
         start over on the 1st (UTC). A plan applies to an organization
         rather than to an individual, so upgrading

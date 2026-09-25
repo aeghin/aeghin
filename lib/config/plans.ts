@@ -1,4 +1,12 @@
-export type OrgPlan = "free" | "premium" | "pro";
+export type OrgPlan = "free" | "starter" | "premium" | "pro";
+
+/** The plans an organization can pay for. */
+export type PaidPlan = "starter" | "premium" | "pro";
+
+/** Whether a value from a request names a paid plan. */
+export function isPaidPlan(value: unknown): value is PaidPlan {
+  return value === "starter" || value === "premium" || value === "pro";
+}
 
 const MB = 1024 * 1024;
 const GB = 1024 * MB;
@@ -10,11 +18,13 @@ const GB = 1024 * MB;
 type PlanLimits = {
   members: number | null;
   songs: number | null;
+  /** Service types in use. Deleted ones stay for past events and don't count. */
+  serviceTypes: number | null;
   /** Bytes of song charts and audio. */
   storage: number;
   /** Message All and Email Team sends a calendar month. Automatic emails never count. */
   bulkEmails: number;
-  /** Messages to the setlist and event AI a calendar month. Free has no AI at all. */
+  /** Messages to the setlist and event AI a calendar month. Free and Starter have no AI at all. */
   aiRuns: number;
   /** Auto-filling declines, and the last-call emails before an event that isn't staffed. */
   smartScheduling: boolean;
@@ -25,16 +35,18 @@ type PlanLimits = {
  * pricing page all read from here, so they can't disagree.
  */
 export const PLAN_LIMITS: Record<OrgPlan, PlanLimits> = {
-  free: { members: 20, songs: 40, storage: 500 * MB, bulkEmails: 6, aiRuns: 0, smartScheduling: false },
-  premium: { members: null, songs: null, storage: 5 * GB, bulkEmails: 40, aiRuns: 200, smartScheduling: true },
-  pro: { members: null, songs: null, storage: 10 * GB, bulkEmails: 80, aiRuns: 200, smartScheduling: true },
+  free: { members: 30, songs: 40, serviceTypes: 2, storage: 500 * MB, bulkEmails: 10, aiRuns: 0, smartScheduling: false },
+  starter: { members: 60, songs: 80, serviceTypes: 4, storage: 2 * GB, bulkEmails: 20, aiRuns: 0, smartScheduling: false },
+  premium: { members: null, songs: null, serviceTypes: null, storage: 5 * GB, bulkEmails: 40, aiRuns: 200, smartScheduling: true },
+  pro: { members: null, songs: null, serviceTypes: null, storage: 10 * GB, bulkEmails: 80, aiRuns: 200, smartScheduling: true },
 };
 
-export const PLAN_NAMES: Record<OrgPlan, string> = { free: "Free", premium: "Premium", pro: "Pro" };
+export const PLAN_NAMES: Record<OrgPlan, string> = { free: "Free", starter: "Starter", premium: "Premium", pro: "Pro" };
 
 /** The plan an upgrade goes to next. Pro is the top. */
-export const NEXT_PLAN: Record<OrgPlan, "premium" | "pro" | null> = {
-  free: "premium",
+export const NEXT_PLAN: Record<OrgPlan, PaidPlan | null> = {
+  free: "starter",
+  starter: "premium",
   premium: "pro",
   pro: null,
 };
@@ -70,6 +82,7 @@ export function formatResetDate(resetsAt: Date): string {
  * price — change both together.
  */
 export const PLAN_PRICES = {
+  starter: "$24.99",
   premium: "$39.99",
-  pro: "$49.99",
+  pro: "$59.99",
 };

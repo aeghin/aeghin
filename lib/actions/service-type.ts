@@ -5,6 +5,7 @@ import { ServiceType, OrgRole } from "@/generated/prisma/client";
 import { currentUser } from "@/lib/services/user";
 import { revalidatePath, updateTag } from "next/cache";
 import { editServiceTypeSchema, type EditServiceTypeInput } from "@/lib/validations/service-types";
+import { serviceTypeLimitError } from "@/lib/billing/limits";
 
 /**
  * How a caller expires cache tags. `updateTag` throws inside a Route Handler,
@@ -18,7 +19,7 @@ type TagInvalidator = (tag: string) => void;
 
 type ActionResponse = 
   | { success: true; serviceType?: ServiceType }
-  | { success: false; error: string };
+  | { success: false; error: string; code?: "SERVICE_TYPE_LIMIT" };
 
 
 export async function createServiceType(name: string, color: string, organizationId: string, touch: TagInvalidator = updateTag): Promise<ActionResponse> {
@@ -58,6 +59,10 @@ export async function createServiceType(name: string, color: string, organizatio
         if (existingServiceType && existingServiceType.deletedAt === null) {
             return { success: false, error: "Service Type exists" };
         };
+
+        const limitError = await serviceTypeLimitError(organizationId, userRole.role === OrgRole.OWNER);
+
+        if (limitError) return { success: false, error: limitError, code: "SERVICE_TYPE_LIMIT" };
 
         let serviceType: ServiceType;
 

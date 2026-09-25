@@ -775,7 +775,7 @@ export const declineEventInvitation = async (
 
       notifyShortage(
         autoFillPaused
-          ? "Auto-fill is paused while this organization is on the Free plan, so no replacement was invited."
+          ? "Auto-fill is paused because this organization's plan doesn't include Smart Scheduling, so no replacement was invited."
           : "Auto-fill is off for this event, so no replacement was invited.",
       );
 

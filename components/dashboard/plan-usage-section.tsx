@@ -17,11 +17,11 @@ const WARN_AT = 0.8;
 
 /** What a plan includes, from the same numbers the checks use. */
 function planSummary(plan: OrgPlan): string {
-  const { members, songs, storage, bulkEmails, aiRuns } = PLAN_LIMITS[plan];
+  const { members, songs, serviceTypes, storage, bulkEmails, aiRuns } = PLAN_LIMITS[plan];
 
-  return members !== null && songs !== null
-    ? `${PLAN_NAMES[plan]} includes up to ${members} members, ${songs} songs, ${formatStorage(storage)} of storage and ${bulkEmails} group emails a month.`
-    : `${PLAN_NAMES[plan]} has no member or song limit, with ${formatStorage(storage)} of storage, ${bulkEmails} group emails and ${aiRuns} AI requests a month.`;
+  return members !== null && songs !== null && serviceTypes !== null
+    ? `${PLAN_NAMES[plan]} includes up to ${members} members, ${songs} songs, ${serviceTypes} service types, ${formatStorage(storage)} of storage and ${bulkEmails} group emails a month.`
+    : `${PLAN_NAMES[plan]} has no member, song or service type limit, with ${formatStorage(storage)} of storage, ${bulkEmails} group emails and ${aiRuns} AI requests a month.`;
 }
 
 interface PlanUsageSectionProps {
@@ -31,7 +31,7 @@ interface PlanUsageSectionProps {
 
 /** The organization's plan and how much of it is in use. Owners and admins see it. */
 export const PlanUsageSection = async ({ organizationId, isOwner }: PlanUsageSectionProps) => {
-  const { plan, members, songs, storage, bulkEmails, aiRuns, resetsAt } = await getPlanUsage(organizationId);
+  const { plan, members, songs, serviceTypes, storage, bulkEmails, aiRuns, resetsAt } = await getPlanUsage(organizationId);
 
   const nextPlan = NEXT_PLAN[plan];
 
@@ -71,6 +71,17 @@ export const PlanUsageSection = async ({ organizationId, isOwner }: PlanUsageSec
           }
           used={songs.used}
           limit={songs.limit}
+        />
+        <UsageRow
+          label="Service types"
+          value={serviceTypes.limit === null ? `${serviceTypes.used}` : `${serviceTypes.used} / ${serviceTypes.limit}`}
+          detail={
+            serviceTypes.limit === null
+              ? "No limit"
+              : serviceTypes.used >= serviceTypes.limit ? "Limit reached" : `${serviceTypes.limit - serviceTypes.used} left`
+          }
+          used={serviceTypes.used}
+          limit={serviceTypes.limit}
         />
         <UsageRow
           label="Storage"

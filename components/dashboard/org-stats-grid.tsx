@@ -4,6 +4,7 @@ import { StatsCard } from "@/components/dashboard/stats-card";
 import { getOrgMemberCountById, getUserVolunteerRolesByOrg } from "@/lib/services/organization";
 import { userEventsTotalCount, getUserEvents } from "@/lib/services/events";
 import { getSeatUsage } from "@/lib/billing/limits";
+import { PLAN_NAMES } from "@/lib/config/plans";
 import { InvitationStatus } from "@/generated/prisma/enums";
 
 
@@ -43,7 +44,8 @@ export const OrganizationStatsGrid = async ({
   let membersHighlight = false;
 
   if (canManage && seatUsage) {
-    const left = seatUsage.left === 0 ? "Free limit reached" : `${seatUsage.left} left on Free`;
+    const planName = PLAN_NAMES[seatUsage.plan];
+    const left = seatUsage.left === 0 ? `${planName} limit reached` : `${seatUsage.left} left on ${planName}`;
 
     membersValue = `${memberCount} / ${seatUsage.limit}`;
     membersDescription =

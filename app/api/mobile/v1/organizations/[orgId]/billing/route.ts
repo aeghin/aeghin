@@ -1,7 +1,7 @@
 import prisma from "@/lib/prisma";
 import { OrgRole } from "@/generated/prisma/enums";
 import { planFromEntitlements } from "@/lib/billing/entitlements";
-import { PLAN_LIMITS } from "@/lib/config/plans";
+import { PLAN_LIMITS, type OrgPlan } from "@/lib/config/plans";
 import { clerkIdOf, fail, json, membershipFor, route } from "@/lib/mobile/route";
 
 /**
@@ -9,6 +9,8 @@ import { clerkIdOf, fail, json, membershipFor, route } from "@/lib/mobile/route"
  * the Expo app (`src/types/billing.ts`) — keep the two in sync.
  */
 type BillingStatus = {
+    /** The organization's plan. `hasPremium` and `hasPro` stay for builds that predate it. */
+    plan: OrgPlan;
     hasPremium: boolean;
     hasPro: boolean;
     /** Owners only — the dashboard's rule for who may start a subscription. */
@@ -22,6 +24,7 @@ type BillingStatus = {
     limits: {
         members: number | null;
         songs: number | null;
+        serviceTypes: number | null;
         storage: number;
         bulkEmails: number;
         aiRuns: number;
@@ -56,12 +59,15 @@ export const GET = route<Params>("GET .../billing", async (_req, { params }) => 
 
     if (!org) return fail(404, "Not Found");
 
+    const plan = planFromEntitlements(org.entitlements);
+
     const status: BillingStatus = {
+        plan,
         hasPremium: org.entitlements.includes("ai_setlist"),
         hasPro: org.entitlements.includes("ai_pro"),
         canSubscribe: membership.role === OrgRole.OWNER,
         hasBillingAccount: org.stripeCustomerId !== null,
-        limits: PLAN_LIMITS[planFromEntitlements(org.entitlements)],
+        limits: PLAN_LIMITS[plan],
     };
 
     return json(status);

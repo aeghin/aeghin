@@ -42,6 +42,7 @@ import { Pitch, KeyQuality } from "@/generated/prisma/enums";
 import { songSchema, songSchemaInput } from "@/lib/validations/song";
 import { addSongToLibrary, updateSongInLibrary } from "@/lib/actions/song";
 import { PlanLimitReached } from "@/components/dashboard/plan-limit-reached";
+import { NEXT_PLAN, PLAN_NAMES, type OrgPlan } from "@/lib/config/plans";
 import { toast } from "sonner";
 
 import type { LibrarySong, StorageUsage } from "@/lib/types";
@@ -103,16 +104,17 @@ interface SongModalProps {
   song?: LibrarySong;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
-  // Adding only: the Free plan's cap, and whether the library is at it.
+  // Adding only: the plan, its cap, and whether the library is at it.
   orgName?: string;
   songLimit?: number | null;
   limitReached?: boolean;
   canUpgrade?: boolean;
+  plan?: OrgPlan;
   // Editing only: the library's storage, for the attachments section.
   storage?: StorageUsage | null;
 };
 
-export function SongModal({ orgId, song, open, onOpenChange, orgName, songLimit = null, limitReached = false, canUpgrade = false, storage = null }: SongModalProps) {
+export function SongModal({ orgId, song, open, onOpenChange, orgName, songLimit = null, limitReached = false, canUpgrade = false, plan, storage = null }: SongModalProps) {
 
   const isEditing = Boolean(song);
 
@@ -228,14 +230,15 @@ export function SongModal({ orgId, song, open, onOpenChange, orgName, songLimit 
             icon={Music}
             title="Song limit reached"
             description={
-              songLimit !== null
-                ? `${orgName ?? "Your organization"} has reached the Free plan's ${songLimit}-song limit.`
+              songLimit !== null && plan
+                ? `${orgName ?? "Your organization"} has reached the ${PLAN_NAMES[plan]} plan's ${songLimit}-song limit.`
                 : limitMessage ?? ""
             }
             hint="Or remove a song you no longer use to free a spot."
             organizationId={orgId}
             organizationName={orgName}
             canUpgrade={canUpgrade}
+            upgradeTo={plan ? NEXT_PLAN[plan] : undefined}
             onClose={() => handleClose(false)}
           />
         </DialogContent>

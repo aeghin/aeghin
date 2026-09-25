@@ -6,7 +6,8 @@ import { NextResponse } from "next/server";
 
 import prisma from "@/lib/prisma";
 import { OrgRole } from "@/generated/prisma/enums";
-import { PLAN_LIMITS } from "@/lib/config/plans";
+import { PLAN_LIMITS, PLAN_NAMES, type OrgPlan } from "@/lib/config/plans";
+import { planFromEntitlements } from "@/lib/billing/entitlements";
 
 /**
  * Shared plumbing for `app/api/mobile/v1/*`.
@@ -39,19 +40,36 @@ export const json = <T>(body: T, status = 200) =>
 
 export const fail = (status: number, error: string) => json({ error }, status);
 
+type LimitCode = "MEMBER_LIMIT" | "SONG_LIMIT" | "SERVICE_TYPE_LIMIT";
+
 /**
- * The phone's wording for a plan-limit refusal. The actions end theirs with
- * "Upgrade to Premium…", which the iOS app can't say while it sells nothing
- * (Guideline 3.1.1), so it gets the rule alone. Only Free has caps.
+ * The phone's wording for a plan-limit refusal, for the plan the organization
+ * is on. The actions end theirs with "Upgrade to …", which the iOS app can't
+ * say while it sells nothing (Guideline 3.1.1), so it gets the rule alone.
  */
-const LIMIT_MESSAGES: Record<"MEMBER_LIMIT" | "SONG_LIMIT", string> = {
-    MEMBER_LIMIT: `Free organizations can have up to ${PLAN_LIMITS.free.members} members, including pending invites.`,
-    SONG_LIMIT: `Free organizations can have up to ${PLAN_LIMITS.free.songs} songs in the library.`,
+const LIMIT_MESSAGES: Record<LimitCode, (plan: OrgPlan) => string> = {
+    MEMBER_LIMIT: (plan) =>
+        `${PLAN_NAMES[plan]} organizations can have up to ${PLAN_LIMITS[plan].members} members, including pending invites.`,
+    SONG_LIMIT: (plan) =>
+        `${PLAN_NAMES[plan]} organizations can have up to ${PLAN_LIMITS[plan].songs} songs in the library.`,
+    SERVICE_TYPE_LIMIT: (plan) =>
+        `${PLAN_NAMES[plan]} organizations can have up to ${PLAN_LIMITS[plan].serviceTypes} service types.`,
 };
 
-/** A plan-limit refusal, with `code` so the app can tell it from other conflicts. */
-export const limitFailure = (code: "MEMBER_LIMIT" | "SONG_LIMIT") =>
-    json({ error: LIMIT_MESSAGES[code], code }, 409);
+/**
+ * A plan-limit refusal, with `code` so the app can tell it from other
+ * conflicts. The plan is read live, like the check that refused.
+ */
+export const limitFailure = async (code: LimitCode, organizationId: string) => {
+    const org = await prisma.organization.findUnique({
+        where: { id: organizationId },
+        select: { entitlements: true },
+    });
+
+    const plan = planFromEntitlements(org?.entitlements ?? []);
+
+    return json({ error: LIMIT_MESSAGES[code](plan), code }, 409);
+};
 
 /**
  * The monthly group-email allowance, which every plan has. Its action already

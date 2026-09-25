@@ -32,6 +32,7 @@ import { volunteerRoleConfig } from "@/lib/config/roles";
 
 import { inviteMember } from "@/lib/actions/invitation";
 import { PlanLimitReached } from "@/components/dashboard/plan-limit-reached";
+import { NEXT_PLAN, PLAN_NAMES, type OrgPlan } from "@/lib/config/plans";
 
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -45,7 +46,7 @@ interface InvitePersonModalProps {
   organizationId?: string
   organizationName?: string
   // Null when the plan has no member cap.
-  seatUsage?: { limit: number; left: number; pendingInvites: number } | null
+  seatUsage?: { plan: OrgPlan; limit: number; left: number; pendingInvites: number } | null
   canUpgrade?: boolean
 };
 
@@ -141,7 +142,7 @@ export function InvitePersonModal({
             title="Member limit reached"
             description={
               seatUsage
-                ? `${organizationName ?? "Your organization"} has reached the Free plan's ${seatUsage.limit}-member limit. Pending invites count toward it.`
+                ? `${organizationName ?? "Your organization"} has reached the ${PLAN_NAMES[seatUsage.plan]} plan's ${seatUsage.limit}-member limit. Pending invites count toward it.`
                 : limitMessage ?? ""
             }
             hint={
@@ -152,6 +153,7 @@ export function InvitePersonModal({
             organizationId={organizationId}
             organizationName={organizationName}
             canUpgrade={canUpgrade}
+            upgradeTo={seatUsage ? NEXT_PLAN[seatUsage.plan] : undefined}
             onClose={handleClose}
           />
         </DialogContent>

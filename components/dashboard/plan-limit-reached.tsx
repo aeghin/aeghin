@@ -6,13 +6,20 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { DialogDescription, DialogFooter, DialogTitle } from "@/components/ui/dialog";
-import { startAiSetlistCheckout, startAiSetlistProCheckout } from "@/lib/actions/billing";
-import { PLAN_LIMITS, PLAN_NAMES, PLAN_PRICES, formatStorage } from "@/lib/config/plans";
+import { startPlanCheckout } from "@/lib/actions/billing";
+import { PLAN_LIMITS, PLAN_NAMES, PLAN_PRICES, formatStorage, type PaidPlan } from "@/lib/config/plans";
 
 // What the limit screens say each paid plan adds. Keep it to what the plan does today.
-const PLAN_PERKS: Record<"premium" | "pro", string[]> = {
+const PLAN_PERKS: Record<PaidPlan, string[]> = {
+  starter: [
+    `Up to ${PLAN_LIMITS.starter.members} members and ${PLAN_LIMITS.starter.songs} songs`,
+    `${PLAN_LIMITS.starter.serviceTypes} service types`,
+    `${PLAN_LIMITS.starter.bulkEmails} group emails a month`,
+    `${formatStorage(PLAN_LIMITS.starter.storage)} of storage for charts and audio`,
+    "Billed per organization, cancel anytime",
+  ],
   premium: [
-    "Unlimited members and songs",
+    "Unlimited members, songs and service types",
     "Smart Scheduling fills declines for you",
     `${PLAN_LIMITS.premium.bulkEmails} group emails a month`,
     `${formatStorage(PLAN_LIMITS.premium.storage)} of storage for charts and audio`,
@@ -38,7 +45,7 @@ interface PlanLimitReachedProps {
   organizationName?: string;
   canUpgrade: boolean;
   // The plan that lifts this limit. Null when none does, like Pro's allowances.
-  upgradeTo?: "premium" | "pro" | null;
+  upgradeTo?: PaidPlan | null;
   onClose: () => void;
 }
 
@@ -65,8 +72,7 @@ export function PlanLimitReached({
     if (!organizationId || upgradeTo === null) return;
 
     startUpgrade(async () => {
-      const start = upgradeTo === "pro" ? startAiSetlistProCheckout : startAiSetlistCheckout;
-      const result = await start(organizationId);
+      const result = await startPlanCheckout(organizationId, upgradeTo);
 
       if (result.success) {
         // Full navigation — Stripe is an external URL.

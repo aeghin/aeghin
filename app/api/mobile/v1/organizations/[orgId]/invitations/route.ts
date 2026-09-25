@@ -114,7 +114,7 @@ export const POST = route<Params>("POST .../invitations", async (req, { params }
         if (result.error === "User is member") {
             return fail(409, "That person is already a member.");
         }
-        if (result.code === "MEMBER_LIMIT") return limitFailure(result.code);
+        if (result.code === "MEMBER_LIMIT") return limitFailure(result.code, orgId);
         return actionFailure(result.error);
     }
 

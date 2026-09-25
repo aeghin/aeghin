@@ -1,5 +1,6 @@
 import { OrgRole } from "@/generated/prisma/enums";
-import { createAiCheckoutSession, type AiPlan } from "@/lib/billing/stripe-sessions";
+import { createPlanCheckoutSession } from "@/lib/billing/stripe-sessions";
+import { isPaidPlan } from "@/lib/config/plans";
 import {
     clerkIdOf,
     fail,
@@ -12,8 +13,6 @@ import {
 
 type Params = { orgId: string };
 
-const isPlan = (value: unknown): value is AiPlan => value === "premium" || value === "pro";
-
 /** Where Stripe sends the phone afterwards: a page that deep-links back into the app. */
 const returnUrl = (status: "success" | "cancel" | "portal") =>
     `${process.env.NEXT_PUBLIC_APP_URL}/mobile/billing/return?status=${status}`;
@@ -21,7 +20,7 @@ const returnUrl = (status: "success" | "cancel" | "portal") =>
 /**
  * POST /api/mobile/v1/organizations/[orgId]/billing/checkout
  *
- * Starts a subscription Checkout Session: `{ plan: "premium" | "pro" }` →
+ * Starts a subscription Checkout Session: `{ plan: "starter" | "premium" | "pro" }` →
  * `{ url }` — or, for an org that already has a plan, Stripe's confirm page
  * for switching it, so nobody ends up with two subscriptions. A 409 means it's
  * already on that plan. Owners only, as on the dashboard. The phone opens the URL in an
@@ -45,11 +44,11 @@ export const POST = route<Params>("POST .../billing/checkout", async (req, { par
 
     const body = await readJson(req);
 
-    if (!isObject(body) || !isPlan(body.plan)) {
-        return fail(400, "Expected a plan of \"premium\" or \"pro\".");
+    if (!isObject(body) || !isPaidPlan(body.plan)) {
+        return fail(400, "Expected a plan of \"starter\", \"premium\" or \"pro\".");
     }
 
-    const result = await createAiCheckoutSession({
+    const result = await createPlanCheckoutSession({
         orgId,
         plan: body.plan,
         successUrl: returnUrl("success"),

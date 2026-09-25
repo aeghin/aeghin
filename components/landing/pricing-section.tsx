@@ -12,7 +12,7 @@ const plans = [
     features: [
       "Create organizations, invite members, schedule events",
       `Up to ${PLAN_LIMITS.free.members} members per organization`,
-      "Event templates & service types",
+      `Event templates and ${PLAN_LIMITS.free.serviceTypes} service types`,
       "Blockout dates",
       "Song library with charts and audio",
       `Up to ${PLAN_LIMITS.free.songs} songs in your library`,
@@ -25,13 +25,30 @@ const plans = [
     popular: false,
   },
   {
+    name: "Starter",
+    price: PLAN_PRICES.starter,
+    period: "/month",
+    description: "Room to grow past the Free limits",
+    features: [
+      "Everything in Free",
+      `Up to ${PLAN_LIMITS.starter.members} members per organization`,
+      `Up to ${PLAN_LIMITS.starter.songs} songs in your library`,
+      `${PLAN_LIMITS.starter.serviceTypes} service types`,
+      `${formatStorage(PLAN_LIMITS.starter.storage)} of storage for charts and audio`,
+      `${PLAN_LIMITS.starter.bulkEmails} group emails a month`,
+      "Billed per organization",
+    ],
+    cta: "Get started free",
+    popular: false,
+  },
+  {
     name: "Premium",
     price: PLAN_PRICES.premium,
     period: "/month",
-    description: "Lifts the Free limits, plus AI setlists",
+    description: "No size limits, plus Smart Scheduling and AI setlists",
     features: [
-      "Everything in Free",
-      "Unlimited members and songs",
+      "Everything in Starter",
+      "Unlimited members, songs and service types",
       "Smart Scheduling and last-call staffing alerts",
       `${formatStorage(PLAN_LIMITS.premium.storage)} of storage for charts and audio`,
       `${PLAN_LIMITS.premium.bulkEmails} group emails a month`,
@@ -73,22 +90,22 @@ export function PricingSection() {
           <p className="text-sm font-semibold text-primary mb-4 tracking-wide uppercase">Pricing</p>
           <h2 className="text-4xl font-bold tracking-tight sm:text-5xl text-balance">Simple, transparent pricing</h2>
           <p className="mt-6 text-lg text-muted-foreground">
-            Start free. Premium lifts the limits and adds Smart Scheduling and AI
-            setlists; Pro adds AI event drafting on top.
+            Start free. Starter raises the limits, Premium removes them and adds Smart
+            Scheduling and AI setlists, and Pro adds AI event drafting on top.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 max-w-6xl mx-auto">
+        <div className="grid grid-cols-1 md:grid-cols-2 md:auto-rows-fr xl:grid-cols-4 gap-8 max-w-6xl xl:max-w-7xl mx-auto">
           {plans.map((plan) => (
             <div
               key={plan.name}
               className={`relative rounded-2xl border bg-card p-8 flex flex-col ${
-                plan.popular ? "border-primary shadow-xl shadow-primary/10 scale-105 lg:scale-110" : "border-border"
+                plan.popular ? "border-primary shadow-xl shadow-primary/10" : "border-border"
               }`}
             >
               {plan.popular && (
                 <div className="absolute -top-4 left-1/2 -translate-x-1/2">
-                  <span className="inline-flex items-center gap-1.5 rounded-full bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground shadow-lg">
+                  <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground shadow-lg">
                     <Sparkles className="h-3.5 w-3.5" />
                     Most popular
                   </span>
@@ -101,7 +118,7 @@ export function PricingSection() {
                   <span className="text-5xl font-bold">{plan.price}</span>
                   {plan.period && <span className="text-muted-foreground">{plan.period}</span>}
                 </div>
-                <p className="mt-3 text-sm text-muted-foreground">{plan.description}</p>
+                <p className="mt-3 text-sm text-muted-foreground md:min-h-10">{plan.description}</p>
               </div>
 
               <ul className="space-y-4 mb-8 flex-1">

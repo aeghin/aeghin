@@ -5,6 +5,7 @@ import type {
   Pitch,
   VolunteerRole,
 } from "@/generated/prisma/enums";
+import type { PaidPlan } from "@/lib/config/plans";
 
 export type EventDetailsAssignment = {
   id: string
@@ -131,7 +132,7 @@ export type StorageUsage = {
   used: number
   limit: number
   /** The plan with more room, or null on Pro. */
-  nextPlan: "premium" | "pro" | null
+  nextPlan: PaidPlan | null
   canUpgrade: boolean
 }
 

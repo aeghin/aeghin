@@ -10,11 +10,13 @@ import {
   formatStorage,
   usageMonth,
   type OrgPlan,
+  type PaidPlan,
 } from "@/lib/config/plans";
 import { getOrgPlan, planFromEntitlements } from "@/lib/billing/entitlements";
 import { getOrgMemberCountById } from "@/lib/services/organization";
 import { getOrgPendingInvitationCount } from "@/lib/services/invitation";
 import { getOrganizationSongs } from "@/lib/services/songs";
+import { getOrgServiceTypes } from "@/lib/services/service-types";
 import { getOrgUsageCount } from "@/lib/services/usage";
 
 /**
@@ -31,6 +33,7 @@ async function getLivePlan(organizationId: string): Promise<OrgPlan> {
 }
 
 type MemberSeats = {
+  plan: OrgPlan;
   members: number;
   pendingInvites: number;
   limit: number | null;
@@ -62,7 +65,21 @@ async function getMemberSeats(
     }),
   ]);
 
-  return { members, pendingInvites, limit: PLAN_LIMITS[plan].members };
+  return { plan, members, pendingInvites, limit: PLAN_LIMITS[plan].members };
+}
+
+/**
+ * What a dashboard refusal says after the rule: the plan that lifts the limit,
+ * or who to ask for it, since only an owner can upgrade.
+ */
+function upgradeSentence(plan: OrgPlan, isOwner: boolean, action: string): string {
+  const next = NEXT_PLAN[plan];
+
+  if (next === null) return "";
+
+  return isOwner
+    ? `Upgrade to ${PLAN_NAMES[next]} to ${action}.`
+    : `Ask an owner to upgrade to ${PLAN_NAMES[next]} to ${action}.`;
 }
 
 /** Why one more song can't be added to the library, or null when there's room. */
@@ -80,11 +97,25 @@ export async function songLimitError(
 
   if (limit === null || songs < limit) return null;
 
-  const next = isOwner
-    ? "Upgrade to Premium to add more."
-    : "Ask an owner to upgrade to Premium to add more.";
+  return `${PLAN_NAMES[plan]} organizations can have up to ${limit} songs in the library. ${upgradeSentence(plan, isOwner, "add more")}`;
+}
 
-  return `Free organizations can have up to ${limit} songs in the library. ${next}`;
+/** Why one more service type can't be added, or null when there's room. */
+export async function serviceTypeLimitError(
+  organizationId: string,
+  isOwner: boolean,
+): Promise<string | null> {
+  const [plan, serviceTypes] = await Promise.all([
+    getLivePlan(organizationId),
+    // Deleted ones stay on their past events but are out of use, so they don't hold a spot.
+    prisma.serviceType.count({ where: { organizationId, deletedAt: null } }),
+  ]);
+
+  const limit = PLAN_LIMITS[plan].serviceTypes;
+
+  if (limit === null || serviceTypes < limit) return null;
+
+  return `${PLAN_NAMES[plan]} organizations can have up to ${limit} service types. ${upgradeSentence(plan, isOwner, "add more")}`;
 }
 
 /**
@@ -165,7 +196,7 @@ export async function bulkEmailLimitError(organizationId: string): Promise<strin
 
 /**
  * Why the AI can't take another message this month, or null when there's room.
- * Every paid plan gets the same allowance, so there is nothing to upgrade to —
+ * Every plan with AI gets the same allowance, so there is nothing to upgrade to —
  * only a date to wait for.
  */
 export async function aiRunLimitError(organizationId: string): Promise<string | null> {
@@ -201,23 +232,18 @@ export async function hasSmartScheduling(organizationId: string): Promise<boolea
 }
 
 /** Why auto-fill can't be switched on. Neutral, because the iPhone shows it too. */
-export const SMART_SCHEDULING_PLAN_ERROR = "Smart Scheduling isn't included in the Free plan.";
+export const SMART_SCHEDULING_PLAN_ERROR = "Smart Scheduling isn't included in this organization's plan.";
 
 /** Why one more person can't be invited, or null when there's room. */
 export async function inviteLimitError(
   organizationId: string,
   opts: { isOwner: boolean; exceptEmail?: string },
 ): Promise<string | null> {
-  const { members, pendingInvites, limit } = await getMemberSeats(organizationId, opts.exceptEmail);
+  const { plan, members, pendingInvites, limit } = await getMemberSeats(organizationId, opts.exceptEmail);
 
   if (limit === null || members + pendingInvites < limit) return null;
 
-  // Only an owner can upgrade, so an admin is told who to ask.
-  const next = opts.isOwner
-    ? "Upgrade to Premium to invite more."
-    : "Ask an owner to upgrade to Premium to invite more.";
-
-  return `Free organizations can have up to ${limit} members, including pending invites. ${next}`;
+  return `${PLAN_NAMES[plan]} organizations can have up to ${limit} members, including pending invites. ${upgradeSentence(plan, opts.isOwner, "invite more")}`;
 }
 
 /**
@@ -239,6 +265,7 @@ export async function joinLimitError(
 
 /** What the dashboard shows about seats. */
 export type SeatUsage = {
+  plan: OrgPlan;
   limit: number;
   members: number;
   pendingInvites: number;
@@ -262,6 +289,7 @@ export async function getSeatUsage(organizationId: string): Promise<SeatUsage | 
   if (limit === null) return null;
 
   return {
+    plan,
     limit,
     members,
     pendingInvites,
@@ -276,7 +304,7 @@ export type EmailAllowance = {
   /** "October 1" */
   resetsOn: string;
   /** Where a full allowance can upgrade to; null on Pro. */
-  upgradeTo: "premium" | "pro" | null;
+  upgradeTo: PaidPlan | null;
 };
 
 /**
@@ -308,6 +336,7 @@ export type PlanUsage = {
   plan: OrgPlan;
   members: { used: number; pending: number; limit: number | null };
   songs: { used: number; limit: number | null };
+  serviceTypes: { used: number; limit: number | null };
   storage: { used: number; limit: number };
   /** Group emails sent this calendar month. */
   bulkEmails: { used: number; limit: number };
@@ -325,11 +354,12 @@ export type PlanUsage = {
 export async function getPlanUsage(organizationId: string): Promise<PlanUsage> {
   const { start, resetsAt } = usageMonth();
 
-  const [plan, members, pending, songs, bulkEmails, aiRuns] = await Promise.all([
+  const [plan, members, pending, songs, serviceTypes, bulkEmails, aiRuns] = await Promise.all([
     getOrgPlan(organizationId),
     getOrgMemberCountById(organizationId),
     getOrgPendingInvitationCount(organizationId),
     getOrganizationSongs(organizationId),
+    getOrgServiceTypes(organizationId),
     getOrgUsageCount(organizationId, UsageKind.BULK_EMAIL, start.toISOString()),
     getOrgUsageCount(organizationId, UsageKind.AI_RUN, start.toISOString()),
   ]);
@@ -340,6 +370,7 @@ export async function getPlanUsage(organizationId: string): Promise<PlanUsage> {
     plan,
     members: { used: members, pending, limit: limits.members },
     songs: { used: songs.length, limit: limits.songs },
+    serviceTypes: { used: serviceTypes.length, limit: limits.serviceTypes },
     storage: {
       used: songs.reduce(
         (total, song) => total + song.attachments.reduce((sum, file) => sum + file.size, 0),

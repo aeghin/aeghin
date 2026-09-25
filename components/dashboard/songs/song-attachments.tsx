@@ -10,8 +10,8 @@ import { toast } from "sonner";
 
 import { useUploadThing } from "@/lib/uploadthing";
 import { addSongAttachments, deleteSongAttachment } from "@/lib/actions/song";
-import { startAiSetlistCheckout, startAiSetlistProCheckout } from "@/lib/actions/billing";
-import { PLAN_LIMITS, formatStorage } from "@/lib/config/plans";
+import { startPlanCheckout } from "@/lib/actions/billing";
+import { PLAN_LIMITS, PLAN_NAMES, formatStorage, type PaidPlan } from "@/lib/config/plans";
 
 import type { SongAttachment, StorageUsage } from "@/lib/types";
 
@@ -74,10 +74,9 @@ export const SongAttachments = ({ songId, organizationId, attachments, storage }
     // Full, or the last pick didn't fit: either way the upgrade belongs here.
     const isShort = isFull || tooBig !== null;
 
-    const handleUpgrade = (plan: "premium" | "pro") => {
+    const handleUpgrade = (plan: PaidPlan) => {
         startUpgrade(async () => {
-            const start = plan === "pro" ? startAiSetlistProCheckout : startAiSetlistCheckout;
-            const result = await start(organizationId);
+            const result = await startPlanCheckout(organizationId, plan);
 
             if (result.success) {
                 // Full navigation — Stripe is an external URL.
@@ -220,7 +219,7 @@ export const SongAttachments = ({ songId, organizationId, attachments, storage }
                     <Sparkles className="h-3.5 w-3.5" />
                     {isUpgrading
                         ? "Redirecting…"
-                        : `Upgrade to ${nextPlan === "pro" ? "Pro" : "Premium"} for ${formatStorage(PLAN_LIMITS[nextPlan].storage)}`}
+                        : `Upgrade to ${PLAN_NAMES[nextPlan]} for ${formatStorage(PLAN_LIMITS[nextPlan].storage)}`}
                 </Button>
             ) : (
                 <p className="text-xs text-muted-foreground">Ask an owner to upgrade for more room.</p>

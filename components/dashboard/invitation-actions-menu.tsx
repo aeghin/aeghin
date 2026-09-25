@@ -11,7 +11,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cancelOrgInvite, resendInvitation } from "@/lib/actions/invitation";
-import { startAiSetlistCheckout } from "@/lib/actions/billing";
+import { startPlanCheckout } from "@/lib/actions/billing";
+import type { PaidPlan } from "@/lib/config/plans";
 import { InvitationStatus } from "@/generated/prisma/enums";
 
 interface InvitationActionsMenuProps {
@@ -19,6 +20,8 @@ interface InvitationActionsMenuProps {
   email: string;
   status: InvitationStatus;
   canUpgrade: boolean;
+  // The plan that lifts the member limit. Null on a plan with no next step.
+  upgradeTo: PaidPlan | null;
 }
 
 export const InvitationActionsMenu = ({
@@ -26,6 +29,7 @@ export const InvitationActionsMenu = ({
   email,
   status,
   canUpgrade,
+  upgradeTo,
 }: InvitationActionsMenuProps) => {
   const [isCanceling, startCancel] = useTransition();
   const [isResending, startResend] = useTransition();
@@ -40,7 +44,9 @@ export const InvitationActionsMenu = ({
   };
 
   const handleUpgrade = async () => {
-    const result = await startAiSetlistCheckout(organizationId);
+    if (upgradeTo === null) return;
+
+    const result = await startPlanCheckout(organizationId, upgradeTo);
 
     if (result.success) {
       window.location.href = result.url;
@@ -55,7 +61,7 @@ export const InvitationActionsMenu = ({
 
       if (result.success) {
         toast.success(message, { position: "top-center" });
-      } else if (result.code === "MEMBER_LIMIT" && canUpgrade) {
+      } else if (result.code === "MEMBER_LIMIT" && canUpgrade && upgradeTo !== null) {
         toast.error(result.error, {
           position: "top-center",
           action: { label: "Upgrade", onClick: handleUpgrade },

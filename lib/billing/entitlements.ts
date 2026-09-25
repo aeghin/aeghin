@@ -37,15 +37,17 @@ export async function getAiProAccess(params: {
 };
 
 /**
- * The entitlements that put an org on Premium or Pro — `planFromEntitlements`
- * as a list, for a query that has to pick paid organizations out in SQL.
+ * The entitlements whose plans include Smart Scheduling (Premium and Pro), for
+ * a query that has to pick those organizations out in SQL. Starter is paid but
+ * doesn't include it, so its key stays out of this list.
  */
-export const PAID_ENTITLEMENTS = ["ai_setlist", "ai_pro"];
+export const SMART_SCHEDULING_ENTITLEMENTS = ["ai_setlist", "ai_pro"];
 
-/** The plan an org is on, read off its Stripe entitlements. Pro wins when it holds both. */
+/** The plan an org is on, read off its Stripe entitlements. The highest plan wins when it holds more than one. */
 export function planFromEntitlements(entitlements: string[]): OrgPlan {
   if (entitlements.includes("ai_pro")) return "pro";
   if (entitlements.includes("ai_setlist")) return "premium";
+  if (entitlements.includes("starter")) return "starter";
   return "free";
 }
 
