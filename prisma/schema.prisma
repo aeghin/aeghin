@@ -345,6 +345,10 @@ model EventAssignment {
   reminderSentAt DateTime?
   nudgedAt       DateTime?
 
+  // When the sweep turned this EXPIRED. Its push is held for the manager's
+  // morning when that was overnight, so the cron reads the lapse back from here.
+  lapsedAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   expiresAt DateTime
@@ -632,6 +636,19 @@ model Notification {
   @@index([userId, updatedAt])
   @@index([eventId])
   @@index([organizationId])
+}
+
+/// A push the cron has sent one person, by key, so it goes out once however
+/// many ticks come due at the same moment. The key names the push, what it was
+/// about, the version of that (an event's start, a lapse's time) and the person,
+/// e.g. `last-call:<event>:3:<start>:<email>`, so a rescheduled event or a new
+/// lapse earns a fresh one. Kept a week, which is far longer than any key can
+/// come due again.
+model PushClaim {
+  key       String   @id
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
 }
 
 /// One installed copy of the phone app that can be pushed to, belonging to

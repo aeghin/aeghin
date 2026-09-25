@@ -5,29 +5,31 @@ import { InvitationStatus } from "@/generated/prisma/enums";
 import { volunteerRoleLabels } from "@/lib/activity";
 import { formatEventShort, formatRehearsal } from "@/lib/email/event-when";
 import { sendPushNotices, type PushNotice } from "@/lib/push/send";
+import {
+  daysBefore,
+  inZone,
+  isDue,
+  wakingSameDay,
+  wallClock,
+  zonesByEmail,
+} from "@/lib/push/timing";
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
 
 /**
- * How late a tick may be and still send what came due before it. The cron is
- * hourly, so this rides out two missed ticks; anything older is dropped rather
- * than delivered hours late.
+ * How far ahead the reminder query looks. Wide enough for every zone and for
+ * the move into waking hours; the exact test is made per person.
  */
-const GRACE_MS = 3 * HOUR_MS;
+const REMINDER_HORIZON_MS = 2 * DAY_MS;
 
 /**
- * The furthest a stored event time sits from the instant it names: UTC−12 to
- * UTC+14. Widens the reminder query so every zone is in it; the exact test is
- * made per person.
+ * The deadlines the nudge query looks at. A nudge is planned a day before the
+ * deadline and moved into waking hours, which leaves it 16 to 28 hours out;
+ * this is a little wider, for zones and daylight saving.
  */
-const ZONE_SPREAD_MS = 14 * HOUR_MS;
-
-/** How long before the first block the reminder goes out. */
-const REMINDER_LEAD_MS = DAY_MS;
-
-/** How long before an invitation lapses the nudge goes out. */
-const NUDGE_LEAD_MS = DAY_MS;
+const NUDGE_DEADLINE_FROM_MS = 12 * HOUR_MS;
+const NUDGE_DEADLINE_UNTIL_MS = 30 * HOUR_MS;
 
 /**
  * The least time an invitation must have had before its nudge, so one sent
@@ -45,101 +47,32 @@ const REMINDER_PAGE = 500;
  */
 const NUDGE_LIMIT = 1000;
 
-const partsFormatters = new Map<string, Intl.DateTimeFormat>();
-
-/** How far `timeZone` runs ahead of UTC at `instant`, in ms. */
-const offsetAt = (instant: number, timeZone: string) => {
-  let format = partsFormatters.get(timeZone);
-
-  if (!format) {
-    format = new Intl.DateTimeFormat("en-US", {
-      timeZone,
-      hourCycle: "h23",
-      year: "numeric",
-      month: "numeric",
-      day: "numeric",
-      hour: "numeric",
-      minute: "numeric",
-      second: "numeric",
-    });
-    partsFormatters.set(timeZone, format);
-  }
-
-  const parts: Record<string, number> = {};
-
-  for (const { type, value } of format.formatToParts(instant)) {
-    parts[type] = Number(value);
-  }
-
-  const wall = Date.UTC(
-    parts.year,
-    parts.month - 1,
-    parts.day,
-    parts.hour,
-    parts.minute,
-    parts.second,
-  );
-
-  return wall - Math.floor(instant / 1000) * 1000;
-};
-
-/**
- * The real instant a stored event time names in `timeZone`.
- *
- * Event times are floating wall clock pinned to Z (see `lib/email/event-when`),
- * so `09:00Z` means 9am wherever the organization is. Read in the zone of the
- * phone being reminded, which is where its owner is. Two passes, so a time on
- * either side of a daylight-saving change gets its own offset.
- */
-export function inZone(floating: Date, timeZone: string): Date {
-  const wall = floating.getTime();
-  const guess = wall - offsetAt(wall, timeZone);
-
-  return new Date(wall - offsetAt(guess, timeZone));
-}
-
-/** Each user's zone, from whichever of their phones reported one most recently. */
-const zonesFor = async (userIds: string[]) => {
-  const tokens = await prisma.pushToken.findMany({
-    where: { userId: { in: userIds }, timeZone: { not: null } },
-    orderBy: { updatedAt: "desc" },
-    select: { userId: true, timeZone: true },
-  });
-
-  const zones = new Map<string, string>();
-
-  for (const { userId, timeZone } of tokens) {
-    if (timeZone && !zones.has(userId)) zones.set(userId, timeZone);
-  }
-
-  return zones;
-};
-
 const firstStartOf = (dates: { startTime: Date }[]) =>
-  Math.min(...dates.map((date) => date.startTime.getTime()));
+  new Date(Math.min(...dates.map((date) => date.startTime.getTime())));
 
 /**
- * Reminds everybody who accepted an event, a day before its first block:
+ * Reminds everybody who accepted an event, the day before its first block:
  * "Tomorrow: Sunday Service".
  *
- * Timed in each person's own zone, as their phone last reported it, so a 9am
- * service reminds at 9am the day before wherever the church is. Somebody whose
- * phone hasn't reported one (a build older than this) isn't reminded at all,
- * rather than at whatever hour UTC happens to land on.
+ * At the event's own time of day, on each person's phone: a 9am service
+ * reminds at 9am the day before, wherever the church is. Kept inside 8am to
+ * 8pm — a 6am service reminds at 8am, an 11pm one at 8pm — and always on the
+ * day before, so "Tomorrow" stays true. Somebody whose phone hasn't reported a
+ * zone (a build older than this) isn't reminded, rather than reminded at
+ * whatever hour UTC lands on.
  *
  * Claimed on `reminderSentAt` before sending, so overlapping ticks can't both
  * send it, and sent once per schedule: moving the event clears the claim. One
- * that came due more than `GRACE_MS` ago is skipped rather than sent late,
- * which also covers accepting within the day — they know it's tomorrow.
+ * that came due too long ago is skipped rather than sent late, which also
+ * covers accepting within the day — they know it's tomorrow.
  *
  * Paged rather than capped: the window holds every accepted spot for the next
- * day and a half, most not due yet, and a cap would let those crowd out the
- * ones that are.
+ * two days, most not due yet, and a cap would let those crowd out the ones
+ * that are.
  *
  * Returns how many were sent.
  */
 export async function sendDayBeforeReminders(now: Date): Promise<number> {
-  const target = now.getTime() + REMINDER_LEAD_MS;
   let sent = 0;
   let after: string | undefined;
 
@@ -153,8 +86,8 @@ export async function sendDayBeforeReminders(now: Date): Promise<number> {
           dates: {
             some: {
               startTime: {
-                gt: new Date(target - GRACE_MS - ZONE_SPREAD_MS),
-                lte: new Date(target + ZONE_SPREAD_MS),
+                gt: now,
+                lte: new Date(now.getTime() + REMINDER_HORIZON_MS),
               },
             },
           },
@@ -162,7 +95,6 @@ export async function sendDayBeforeReminders(now: Date): Promise<number> {
       },
       select: {
         id: true,
-        userId: true,
         role: true,
         user: { select: { email: true } },
         event: {
@@ -184,21 +116,20 @@ export async function sendDayBeforeReminders(now: Date): Promise<number> {
 
     if (rows.length === 0) return sent;
 
-    const zones = await zonesFor([...new Set(rows.map((row) => row.userId))]);
+    const zones = await zonesByEmail(rows.map((row) => row.user.email));
 
     const due = rows.flatMap((row) => {
-      const timeZone = zones.get(row.userId);
+      const timeZone = zones.get(row.user.email);
 
       if (!timeZone || row.event.dates.length === 0) return [];
 
       try {
-        const dueAt =
-          inZone(new Date(firstStartOf(row.event.dates)), timeZone).getTime() -
-          REMINDER_LEAD_MS;
+        const sendAt = inZone(
+          wakingSameDay(daysBefore(firstStartOf(row.event.dates), 1)),
+          timeZone,
+        );
 
-        return dueAt <= now.getTime() && dueAt > now.getTime() - GRACE_MS
-          ? [{ ...row, timeZone }]
-          : [];
+        return isDue(sendAt, now, timeZone) ? [{ ...row, timeZone }] : [];
       } catch {
         // A zone this runtime can't resolve: no reminder, rather than no tick.
         return [];
@@ -264,23 +195,26 @@ export async function sendDayBeforeReminders(now: Date): Promise<number> {
  * Nudges whoever is still sitting on an event invitation, a day before it
  * lapses: "Still need your answer: Sunday Service".
  *
- * `expiresAt` is a real instant, so this needs no zone: it lands at the time
- * of day the invitation was sent. Skipped for one that hasn't had
- * `NUDGE_MIN_AGE_MS` to be answered, and for an event already under way, which
- * the Pending list no longer shows.
+ * Planned 24 hours before the deadline on the invitee's own clock and kept
+ * inside 8am to 8pm, so an invitation sent at 11pm is nudged at 8pm, not 11.
+ * The push names the deadline itself, in their zone, since the move can put it
+ * anywhere from 16 to 28 hours away. No zone, no nudge, as with reminders.
  *
- * Claimed on `nudgedAt`, which a re-invite clears: a new window earns its own.
+ * Skipped for one that hasn't had `NUDGE_MIN_AGE_MS` to be answered, and for
+ * an event already under way, which the Pending list no longer shows. Claimed
+ * on `nudgedAt`, which a re-invite clears: a new window earns its own.
  *
  * Returns how many were sent.
  */
 export async function sendExpiryNudges(now: Date): Promise<number> {
-  const target = now.getTime() + NUDGE_LEAD_MS;
-
   const rows = await prisma.eventAssignment.findMany({
     where: {
       status: InvitationStatus.PENDING,
       nudgedAt: null,
-      expiresAt: { gt: new Date(target - GRACE_MS), lte: new Date(target) },
+      expiresAt: {
+        gt: new Date(now.getTime() + NUDGE_DEADLINE_FROM_MS),
+        lte: new Date(now.getTime() + NUDGE_DEADLINE_UNTIL_MS),
+      },
     },
     select: {
       id: true,
@@ -301,13 +235,37 @@ export async function sendExpiryNudges(now: Date): Promise<number> {
     take: NUDGE_LIMIT,
   });
 
-  const due = rows.filter(
-    (row) =>
-      row.expiresAt.getTime() - NUDGE_LEAD_MS - row.createdAt.getTime() >=
-        NUDGE_MIN_AGE_MS &&
-      row.event.dates.length > 0 &&
-      firstStartOf(row.event.dates) > now.getTime(),
-  );
+  if (rows.length === 0) return 0;
+
+  const zones = await zonesByEmail(rows.map((row) => row.user.email));
+
+  const due = rows.flatMap((row) => {
+    const timeZone = zones.get(row.user.email);
+
+    if (
+      !timeZone ||
+      row.event.dates.length === 0 ||
+      firstStartOf(row.event.dates).getTime() <= now.getTime()
+    ) {
+      return [];
+    }
+
+    try {
+      const sendAt = inZone(
+        wakingSameDay(
+          wallClock(new Date(row.expiresAt.getTime() - DAY_MS), timeZone),
+        ),
+        timeZone,
+      );
+
+      return isDue(sendAt, now, timeZone) &&
+        sendAt.getTime() - row.createdAt.getTime() >= NUDGE_MIN_AGE_MS
+        ? [{ ...row, timeZone }]
+        : [];
+    } catch {
+      return [];
+    }
+  });
 
   if (due.length === 0) return 0;
 
@@ -326,22 +284,33 @@ export async function sendExpiryNudges(now: Date): Promise<number> {
 
   const notices: PushNotice[] = due
     .filter((row) => claimedIds.has(row.id))
-    .map(({ event, role, user }) => ({
-      email: user.email,
-      title: `Still need your answer: ${event.name}`,
-      subtitle: event.organization.name,
-      body: [
-        [volunteerRoleLabels[role], formatEventShort(event.dates)]
-          .filter(Boolean)
-          .join(" · "),
-        "Your invitation expires in a day. Tap to accept or decline.",
-      ].join("\n"),
-      data: {
-        type: "invitation",
-        organizationId: event.organizationId,
-        eventId: event.id,
-      },
-    }));
+    .map(({ event, role, user, expiresAt, timeZone }) => {
+      // `expiresAt` is a real instant, so unlike event times it is shown in
+      // the invitee's zone: "Sat 10:30 PM".
+      const deadline = expiresAt.toLocaleString("en-US", {
+        timeZone,
+        weekday: "short",
+        hour: "numeric",
+        minute: "2-digit",
+      });
+
+      return {
+        email: user.email,
+        title: `Still need your answer: ${event.name}`,
+        subtitle: event.organization.name,
+        body: [
+          [volunteerRoleLabels[role], formatEventShort(event.dates)]
+            .filter(Boolean)
+            .join(" · "),
+          `Expires ${deadline}. Tap to accept or decline.`,
+        ].join("\n"),
+        data: {
+          type: "invitation",
+          organizationId: event.organizationId,
+          eventId: event.id,
+        },
+      };
+    });
 
   await sendPushNotices("expiry nudge", notices);
 
