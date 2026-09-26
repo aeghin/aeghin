@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { CurrentYear } from "@/components/year-date";
+import { AppBadges } from "@/components/landing/app-badges";
 
 const footerLinks = {
   product: [
@@ -49,6 +50,7 @@ export function Footer() {
               The modern platform for volunteer coordination. Built for worship teams, churches, and community
               organizations.
             </p>
+            <AppBadges className="mt-6" />
           </div>
 
           <div>
@@ -161,6 +163,15 @@ export function Footer() {
             </Link>
           </div>
         </div>
+
+        <p className="mt-6 text-xs text-muted-foreground/70 text-center md:text-left">
+          Android is a trademark of Google LLC. The Android robot is reproduced or modified from work created and shared by
+          Google and used according to terms described in the{" "}
+          <a href="https://creativecommons.org/licenses/by/3.0/" className="underline hover:text-foreground">
+            Creative Commons 3.0 Attribution License
+          </a>
+          .
+        </p>
       </div>
     </footer>
   )
