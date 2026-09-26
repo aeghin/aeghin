@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { CurrentYear } from "@/components/year-date";
+import { AppStoreBadges } from "@/components/landing/app-store-badges";
 
 const footerLinks = {
   product: [
@@ -49,6 +50,7 @@ export function Footer() {
               The modern platform for volunteer coordination. Built for worship teams, churches, and community
               organizations.
             </p>
+            <AppStoreBadges className="mt-6" />
           </div>
 
           <div>

@@ -1,6 +1,7 @@
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { ArrowRight, Sparkles, Users, Calendar, Music } from "lucide-react"
+import { AppStoreBadges } from "@/components/landing/app-store-badges"
 
 export function HeroSection() {
   return (
@@ -55,6 +56,8 @@ export function HeroSection() {
           <p className="mt-8 text-sm text-muted-foreground">
             Free to get started. No credit card required.
           </p>
+
+          <AppStoreBadges className="mt-10 justify-center" />
         </div>
 
         {/* Feature preview cards */}
