@@ -22,7 +22,7 @@ import {
  * Wire contract for the events screen's All tab. Mirrors `OrganizationEvent`
  * and friends in the Expo app (`src/types/event.ts`) — keep the two in sync,
  * and with the user-events route beside this one, which returns the same shape
- * without `filledRoleCount`.
+ * without `filledRoleCount` and `awaitingRoleCount`.
  */
 type EventDate = {
     id: string;
@@ -59,6 +59,12 @@ type OrganizationEvent = {
      * answer.
      */
     filledRoleCount: number;
+    /**
+     * Roles in `rolesNeeded` with an invitation still waiting on an answer —
+     * what tells "invited, nobody has answered yet" apart from "nobody
+     * invited" when nothing is filled.
+     */
+    awaitingRoleCount: number;
 };
 
 
@@ -70,7 +76,7 @@ const NO_STORE = { "Cache-Control": "private, no-store" };
  *
  * Every event in one organization — the query `getOrgEvents`
  * (lib/services/events.ts) runs for the web dashboard, plus the staffing
- * number the mobile card's meter reads.
+ * numbers the mobile card's meter reads.
  *
  * Owners and admins only, matching the web: the dashboard only asks for this
  * list behind `canManage`, and a plain member's own events are what the
@@ -246,6 +252,9 @@ export async function GET(
                     (role) =>
                         (tally?.confirmed.has(role) ?? false) &&
                         !(tally?.deciding.has(role) ?? false),
+                ).length,
+                awaitingRoleCount: event.rolesNeeded.filter(
+                    (role) => tally?.deciding.has(role) ?? false,
                 ).length,
             };
         });
