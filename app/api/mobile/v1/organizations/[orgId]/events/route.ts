@@ -22,7 +22,7 @@ import {
  * Wire contract for the events screen's All tab. Mirrors `OrganizationEvent`
  * and friends in the Expo app (`src/types/event.ts`) — keep the two in sync,
  * and with the user-events route beside this one, which returns the same shape
- * without `filledRoleCount`.
+ * without `filledRoleCount` and `awaitingRoleCount`.
  */
 type EventDate = {
     id: string;
@@ -52,7 +52,19 @@ type OrganizationEvent = {
     assignments: EventAssignment[];
     rolesNeeded: VolunteerRole[];
     smartSchedulingEnabled: boolean;
+    /**
+     * Roles in `rolesNeeded` that are settled: somebody accepted and nobody on
+     * the role is still deciding. The bell's "fully staffed" test, per role —
+     * three BGVs invited and one accepted is not filled until the other two
+     * answer.
+     */
     filledRoleCount: number;
+    /**
+     * Roles in `rolesNeeded` with an invitation still waiting on an answer —
+     * what tells "invited, nobody has answered yet" apart from "nobody
+     * invited" when nothing is filled.
+     */
+    awaitingRoleCount: number;
 };
 
 
@@ -64,7 +76,7 @@ const NO_STORE = { "Cache-Control": "private, no-store" };
  *
  * Every event in one organization — the query `getOrgEvents`
  * (lib/services/events.ts) runs for the web dashboard, plus the staffing
- * number the mobile card's meter reads.
+ * numbers the mobile card's meter reads.
  *
  * Owners and admins only, matching the web: the dashboard only asks for this
  * list behind `canManage`, and a plain member's own events are what the
@@ -121,11 +133,13 @@ export async function GET(
             );
         };
 
+        const now = new Date();
+
         // Two questions of the same table: which events there are, and — for
-        // the staffing meter — which of the roles each one asked for has
-        // somebody on it. Grouping by role rather than counting rows keeps two
+        // the staffing meter — who has said yes or is still deciding on each
+        // role. Grouping by role rather than counting rows keeps two
         // guitarists from reading as a filled drum stool.
-        const [events, acceptedRoles] = await Promise.all([
+        const [events, liveRoles] = await Promise.all([
             prisma.event.findMany({
                 where: {
                     organizationId: orgId,
@@ -177,10 +191,18 @@ export async function GET(
                 },
             }),
             prisma.eventAssignment.groupBy({
-                by: ["eventId", "role"],
+                by: ["eventId", "role", "status"],
                 where: {
                     organizationId: orgId,
-                    status: InvitationStatus.ACCEPTED,
+                    OR: [
+                        { status: InvitationStatus.ACCEPTED },
+                        // Past its deadline is nobody deciding, even before
+                        // the hourly sweep writes EXPIRED.
+                        {
+                            status: InvitationStatus.PENDING,
+                            expiresAt: { gt: now },
+                        },
+                    ],
                 },
                 _count: {
                     _all: true,
@@ -188,16 +210,30 @@ export async function GET(
             }),
         ]);
 
-        const rolesByEvent = new Map<string, Set<VolunteerRole>>();
+        type Tally = {
+            confirmed: Set<VolunteerRole>;
+            deciding: Set<VolunteerRole>;
+        };
 
-        for (const row of acceptedRoles) {
-            const roles = rolesByEvent.get(row.eventId) ?? new Set<VolunteerRole>();
-            roles.add(row.role);
-            rolesByEvent.set(row.eventId, roles);
+        const tallies = new Map<string, Tally>();
+
+        for (const row of liveRoles) {
+            const tally = tallies.get(row.eventId) ?? {
+                confirmed: new Set<VolunteerRole>(),
+                deciding: new Set<VolunteerRole>(),
+            };
+
+            if (row.status === InvitationStatus.ACCEPTED) {
+                tally.confirmed.add(row.role);
+            } else {
+                tally.deciding.add(row.role);
+            };
+
+            tallies.set(row.eventId, tally);
         }
 
         const orgEvents: OrganizationEvent[] = events.map((event) => {
-            const filled = rolesByEvent.get(event.id);
+            const tally = tallies.get(event.id);
 
             return {
                 ...event,
@@ -213,7 +249,12 @@ export async function GET(
                     expiresAt: assignment.expiresAt.toISOString(),
                 })),
                 filledRoleCount: event.rolesNeeded.filter(
-                    (role) => filled?.has(role) ?? false,
+                    (role) =>
+                        (tally?.confirmed.has(role) ?? false) &&
+                        !(tally?.deciding.has(role) ?? false),
+                ).length,
+                awaitingRoleCount: event.rolesNeeded.filter(
+                    (role) => tally?.deciding.has(role) ?? false,
                 ).length,
             };
         });
