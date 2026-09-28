@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -12,6 +12,111 @@ import { cn } from "@/lib/utils";
 import { colorClasses } from "@/lib/config/service-types-config";
 import { useEventChat } from "@/lib/realtime/use-event-chat";
 import type { ChatMessage } from "@/lib/realtime/types";
+
+/** One person's messages this close together read as a single run. */
+const RUN_MINUTES = 5;
+/** A pause this long, or a new day, earns a time divider. */
+const DIVIDER_MINUTES = 15;
+
+const TIME: Intl.DateTimeFormatOptions = { hour: "numeric", minute: "2-digit" };
+
+function minutesApart(a: string, b: string): number {
+  return Math.abs(Date.parse(b) - Date.parse(a)) / 60_000;
+}
+
+function startOfDay(date: Date): number {
+  return new Date(
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate(),
+  ).getTime();
+}
+
+/**
+ * `"Today 3:42 PM"`, `"Yesterday 9:10 AM"`, `"Saturday 3:42 PM"` within the
+ * week, then `"Sat, Sep 20 · 3:42 PM"`. The viewer's time zone.
+ */
+function formatDivider(value: string, now = new Date()): string {
+  const date = new Date(value);
+  const time = date.toLocaleTimeString("en-US", TIME);
+  const days = Math.round((startOfDay(now) - startOfDay(date)) / 86_400_000);
+
+  if (days === 0) return `Today ${time}`;
+  if (days === 1) return `Yesterday ${time}`;
+  if (days > 1 && days < 7) {
+    return `${date.toLocaleDateString("en-US", { weekday: "long" })} ${time}`;
+  }
+
+  const day = date.toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    ...(date.getFullYear() === now.getFullYear() ? {} : { year: "numeric" }),
+  });
+
+  return `${day} · ${time}`;
+}
+
+/**
+ * Where a message falls on a calendar depends on the viewer's time zone, which
+ * the server rendering this panel doesn't know. Until hydration is over, the
+ * day rule sits out and dividers hold their line without a label.
+ */
+function needsDivider(
+  before: ChatMessage | undefined,
+  message: ChatMessage,
+  hydrated: boolean,
+): boolean {
+  return (
+    !before ||
+    minutesApart(before.createdAt, message.createdAt) >= DIVIDER_MINUTES ||
+    (hydrated &&
+      startOfDay(new Date(before.createdAt)) !==
+        startOfDay(new Date(message.createdAt)))
+  );
+}
+
+function startsRun(
+  before: ChatMessage | undefined,
+  message: ChatMessage,
+  hydrated: boolean,
+): boolean {
+  return (
+    !before ||
+    needsDivider(before, message, hydrated) ||
+    before.author.id !== message.author.id ||
+    minutesApart(before.createdAt, message.createdAt) >= RUN_MINUTES
+  );
+}
+
+/**
+ * Where a message sits among its neighbours: `first` heads a run of one
+ * person's messages and carries their name, `last` ends it and carries their
+ * avatar, and `divider` puts a time above it.
+ */
+function placeMessage(
+  before: ChatMessage | undefined,
+  message: ChatMessage,
+  after: ChatMessage | undefined,
+  hydrated: boolean,
+) {
+  return {
+    first: startsRun(before, message, hydrated),
+    last: !after || startsRun(message, after, hydrated),
+    divider: needsDivider(before, message, hydrated),
+  };
+}
+
+const noSubscription = () => () => {};
+
+/** False while server-rendering and hydrating, true once in the browser. */
+function useHydrated(): boolean {
+  return useSyncExternalStore(
+    noSubscription,
+    () => true,
+    () => false,
+  );
+}
 
 interface EventChatPanelProps {
   eventId: string;
@@ -31,6 +136,7 @@ export function EventChatPanel({
   serviceColor,
 }: EventChatPanelProps) {
   const serviceColors = colorClasses[serviceColor];
+  const hydrated = useHydrated();
 
   const { messages, presence, status, sendOptimistic, loadOlder, hasMore } =
     useEventChat(eventId, {
@@ -90,44 +196,105 @@ export function EventChatPanel({
             </button>
           )}
 
-          <div className="space-y-3">
-            {messages.map((m) => {
+          {/* Laid out the way messaging apps group them: a run of one
+              person's messages carries their name above the first bubble and
+              their avatar beside the last, and times live in dividers between
+              pauses rather than on every message. Hovering shows a bubble's
+              own time. The viewer's own sit right in the service colour with
+              no name or avatar — the side and the colour say whose they are. */}
+          <div>
+            {messages.map((m, i) => {
               const isMe = m.author.id === currentUserId;
+              const pending = m.id.startsWith("temp-");
+              const place = placeMessage(
+                messages[i - 1],
+                m,
+                messages[i + 1],
+                hydrated,
+              );
+
               return (
                 <div
                   key={m.id}
-                  className={cn(
-                    "flex items-end gap-2.5",
-                    isMe && "flex-row-reverse",
-                  )}
+                  className={place.first ? "mt-3 first:mt-0" : "mt-0.5"}
                 >
-                  <Avatar className="h-7 w-7 shrink-0">
-                    <AvatarImage
-                      src={m.author.userImageUrl ?? undefined}
-                      alt={`${m.author.firstName} ${m.author.lastName}`}
-                    />
-                    <AvatarFallback className="text-[10px] font-medium">
-                      {m.author.firstName.charAt(0)}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className={cn("max-w-[75%]", isMe && "text-right")}>
-                    <p className="text-[11px] text-muted-foreground">
-                      {isMe
-                        ? "You"
-                        : `${m.author.firstName} ${m.author.lastName}`}
+                  {place.divider && (
+                    <p className="mt-2 mb-3 text-center text-[11px] font-medium text-muted-foreground">
+                      {hydrated ? formatDivider(m.createdAt) : "\u00a0"}
                     </p>
+                  )}
+
+                  {!isMe && place.first && (
+                    <p className="mb-1 ml-12 truncate text-xs font-medium text-muted-foreground">
+                      {m.author.firstName} {m.author.lastName}
+                    </p>
+                  )}
+
+                  <div
+                    className={cn(
+                      "flex items-end gap-2",
+                      isMe && "justify-end",
+                    )}
+                  >
+                    {!isMe &&
+                      (place.last ? (
+                        <Avatar className="h-7 w-7 shrink-0">
+                          <AvatarImage
+                            src={m.author.userImageUrl ?? undefined}
+                            alt={`${m.author.firstName} ${m.author.lastName}`}
+                          />
+                          <AvatarFallback className="text-[10px] font-medium">
+                            {m.author.firstName.charAt(0)}
+                          </AvatarFallback>
+                        </Avatar>
+                      ) : (
+                        <div className="w-7 shrink-0" />
+                      ))}
+
                     <div
+                      title={
+                        hydrated && !pending
+                          ? new Date(m.createdAt).toLocaleString("en-US", {
+                              weekday: "short",
+                              month: "short",
+                              day: "numeric",
+                              ...TIME,
+                            })
+                          : undefined
+                      }
                       className={cn(
-                        "mt-0.5 inline-block rounded-2xl px-3 py-1.5 text-sm",
+                        "max-w-[75%] rounded-2xl px-3 py-1.5 text-sm whitespace-pre-wrap break-words",
+                        // Square where bubbles in a run meet on the sender's
+                        // side; the foot stays squared as the tail.
                         isMe
-                          ? cn(serviceColors.solid, "text-primary-foreground")
-                          : "bg-muted text-foreground",
-                        m.id.startsWith("temp-") && "opacity-60",
+                          ? cn(
+                              "rounded-br-md",
+                              !place.first && "rounded-tr-md",
+                              serviceColors.solid,
+                              "text-primary-foreground",
+                            )
+                          : cn(
+                              "rounded-bl-md",
+                              !place.first && "rounded-tl-md",
+                              "bg-border text-foreground",
+                            ),
+                        pending && "opacity-60",
                       )}
                     >
                       {m.body}
                     </div>
                   </div>
+
+                  {pending && place.last && (
+                    <p
+                      className={cn(
+                        "mt-1 text-[11px] text-muted-foreground",
+                        isMe ? "mr-1 text-right" : "ml-12",
+                      )}
+                    >
+                      Sending…
+                    </p>
+                  )}
                 </div>
               );
             })}
