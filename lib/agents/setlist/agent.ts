@@ -35,7 +35,7 @@ export type SetlistTier = "premium" | "pro";
 
 const TIER_MODEL: Record<SetlistTier, string> = {
   premium: "anthropic/claude-haiku-4.5",
-  pro: "anthropic/claude-sonnet-5",
+  pro: "anthropic/claude-sonnet-5.5",
 };
 
 function buildInstructions(orgName: string, catalog: AgentCatalogSong[], tier: SetlistTier) {

@@ -419,7 +419,7 @@ export function createEventDraftAgent(opts: {
   });
 
   return new ToolLoopAgent({
-    model: "anthropic/claude-sonnet-5",
+    model: "anthropic/claude-sonnet-5.5",
     instructions: buildInstructions({
       orgName,
       today,
