@@ -3,6 +3,10 @@ import { NextResponse } from "next/server";
 
 import prisma from "@/lib/prisma";
 import { SMART_SCHEDULING_ACTIVITY_TYPES } from "@/lib/services/activity";
+import {
+    getTeamNotificationSettings,
+    isWatchingEvent,
+} from "@/lib/services/team-notifications";
 import { deleteEvent, editEventDetails, setEventSmartScheduling } from "@/lib/actions/event";
 import type { EditEventDetailsInput } from "@/lib/validations/event";
 import { expireTag, isObject } from "@/lib/mobile/route";
@@ -12,6 +16,7 @@ import {
     type ActivityType,
     type KeyQuality,
     type Pitch,
+    type RoleCategory,
     type VolunteerRole,
 } from "@/generated/prisma/enums";
 
@@ -50,6 +55,17 @@ type EventDetailsAssignment = {
         lastName: string;
         userImageUrl: string | null;
     };
+    /** Who sent it. Null once they have left the organization. */
+    invitedBy: {
+        firstName: string;
+        lastName: string;
+    } | null;
+};
+
+type TeamLead = {
+    userId: string;
+    firstName: string;
+    lastName: string;
 };
 
 type EventDetailsAttachment = {
@@ -117,7 +133,14 @@ type EventDetails = {
         canManage: boolean;
         /** Accepted, not merely invited — the same right that opens this page. */
         isAssigned: boolean;
+        /** Getting a heads-up about this event's staffing alerts. Managers only. */
+        watching: boolean;
     };
+    /**
+     * Each team's lead, named when a second invite is about to go into one of
+     * their roles. Managers only; empty for everybody else.
+     */
+    teamLeads: Partial<Record<RoleCategory, TeamLead>>;
     /** Managers only; empty for everybody else. */
     smartSchedulingActivity: EventDetailsActivityItem[];
     /** Managers only; 0 for everybody else. */
@@ -236,6 +259,12 @@ export async function GET(
                                 userImageUrl: true,
                             },
                         },
+                        assignedBy: {
+                            select: {
+                                firstName: true,
+                                lastName: true,
+                            },
+                        },
                     },
                 },
                 setlistSongs: {
@@ -348,6 +377,19 @@ export async function GET(
             ).length
             : 0;
 
+        // Staffing alerts are a managers' concern, like the invite pickers the
+        // leads are named in.
+        const [teamSettings, watching] = canManage
+            ? await Promise.all([
+                getTeamNotificationSettings(orgId),
+                isWatchingEvent(eventId, membership.userId),
+            ])
+            : [null, false];
+
+        const teamLeads: Partial<Record<RoleCategory, TeamLead>> = Object.fromEntries(
+            (teamSettings?.teams ?? []).flatMap(({ team, lead }) => (lead ? [[team, lead]] : [])),
+        );
+
         const details: EventDetails = {
             id: event.id,
             name: event.name,
@@ -364,9 +406,10 @@ export async function GET(
             })),
             rehearsalStart: event.rehearsalStart?.toISOString() ?? null,
             rehearsalEnd: event.rehearsalEnd?.toISOString() ?? null,
-            assignments: event.assignments.map((assignment) => ({
+            assignments: event.assignments.map(({ assignedBy, ...assignment }) => ({
                 ...assignment,
                 expiresAt: assignment.expiresAt.toISOString(),
+                invitedBy: assignedBy,
             })),
             setlist: event.setlistSongs.map((entry) => ({
                 id: entry.id,
@@ -393,7 +436,9 @@ export async function GET(
                 userId: membership.userId,
                 canManage,
                 isAssigned,
+                watching,
             },
+            teamLeads,
             smartSchedulingActivity: activity.map((item) => ({
                 ...item,
                 createdAt: item.createdAt.toISOString(),
