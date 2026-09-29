@@ -141,10 +141,12 @@ export default function EventDepartureEmail({
                 </Button>
               ) : null}
 
-              <Text className="mt-6 text-xs text-gray-500 m-0">
-                From each event&apos;s Team card you can invite somebody else
-                into the role.
-              </Text>
+              {headsUp ? null : (
+                <Text className="mt-6 text-xs text-gray-500 m-0">
+                  From each event&apos;s Team card you can invite somebody else
+                  into the role.
+                </Text>
+              )}
 
             </Section>
 
