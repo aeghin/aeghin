@@ -10,11 +10,18 @@ import {
 import EventFullyStaffedEmail from "@/components/email/event-fully-staffed-template";
 import { formatEventShort, formatEventWhen } from "@/lib/email/event-when";
 import { organizationSender } from "@/lib/email/organization";
-import {
-  eventStaffingRecipients,
-  eventStaffingWatcherIds,
-} from "@/lib/email/recipients";
 import { sendEmailBatches } from "@/lib/email/send";
+import {
+  eventAudience,
+  eventOwners,
+  reasonLine,
+  roleOwners,
+} from "@/lib/notifications/audience";
+import {
+  bellDirectory,
+  loadStaffingDirectory,
+  type BellDirectories,
+} from "@/lib/notifications/directory";
 import { sendPushNotices } from "@/lib/push/send";
 
 /** Same shape the actions already pass around, so `touch` threads straight through. */
@@ -70,8 +77,9 @@ type StaffedEvent = {
 };
 
 /**
- * The one email and push a fill-up sends, to whoever the roster belongs to —
- * the same creator-then-owners rule every other staffing email follows.
+ * The one email and push a fill-up sends: to whoever owns the event — its
+ * creator, else the owners — and to anybody watching it. Team leads aren't
+ * told; their bell rows simply clear as their roles fill.
  *
  * Best effort, like the rest of this file: the claim on `fullyStaffedAt` has
  * already committed, so a send that fails is logged and not retried. Retrying
@@ -79,10 +87,18 @@ type StaffedEvent = {
  * there either way.
  */
 const announceFullyStaffed = async (eventId: string, event: StaffedEvent) => {
-  const recipients = await eventStaffingRecipients(
-    event.organizationId,
-    event.createdById,
-  );
+  const directory = await loadStaffingDirectory(event.organizationId, {
+    eventIds: [eventId],
+  });
+
+  if (!directory) return;
+
+  const audience = eventAudience(directory, {
+    eventId,
+    createdById: event.createdById,
+  });
+
+  const recipients = [...audience.owners, ...audience.copied];
 
   if (recipients.length === 0) return;
 
@@ -90,18 +106,19 @@ const announceFullyStaffed = async (eventId: string, event: StaffedEvent) => {
 
   await sendEmailBatches(
     "syncEventNotifications fully staffed",
-    recipients.map((recipient) => ({
+    recipients.map(({ person, reason }) => ({
       from: organizationSender(event.organization.name),
-      to: recipient.email,
+      to: person.email,
       subject: `Fully staffed: ${event.name}`,
       react: EventFullyStaffedEmail({
-        recipientName: recipient.firstName,
+        recipientName: person.firstName,
         eventName: event.name,
         organizationName: event.organization.name,
         logoUrl: event.organization.logoUrl,
         eventDate: when?.date ?? null,
         eventTime: when?.time ?? null,
         viewLink: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/organizations/${event.organizationId}/events/${eventId}`,
+        footer: reasonLine(reason, event.organization.name),
       }),
     })),
   );
@@ -111,7 +128,7 @@ const announceFullyStaffed = async (eventId: string, event: StaffedEvent) => {
   after(() =>
     sendPushNotices(
       "syncEventNotifications fully staffed",
-      recipients.map((recipient) => ({
+      recipients.map(({ person: recipient }) => ({
         email: recipient.email,
         title: `Fully staffed: ${event.name}`,
         subtitle: event.organization.name,
@@ -150,6 +167,7 @@ const announceFullyStaffed = async (eventId: string, event: StaffedEvent) => {
 export const syncEventNotifications = async (
   eventId: string,
   touch: TagInvalidator,
+  directories?: BellDirectories,
 ): Promise<void> => {
   try {
     const now = new Date();
@@ -165,11 +183,14 @@ export const syncEventNotifications = async (
         dates: { select: { startTime: true, endTime: true } },
         organization: { select: { name: true, logoUrl: true } },
         assignments: {
+          // Newest last, so the last row seen for a role is its latest invite.
+          orderBy: { updatedAt: "asc" },
           select: {
             userId: true,
             role: true,
             status: true,
             expiresAt: true,
+            assignedById: true,
           },
         },
       },
@@ -196,9 +217,7 @@ export const syncEventNotifications = async (
         .map((assignment) => assignment.role),
     );
 
-    const openCount = event.rolesNeeded.filter(
-      (role) => !covered.has(role),
-    ).length;
+    const openRoles = event.rolesNeeded.filter((role) => !covered.has(role));
 
     // Every role has somebody who said yes, and nobody is still deciding. The
     // second half is the organization's rule: three BGVs invited and one
@@ -243,28 +262,61 @@ export const syncEventNotifications = async (
 
     const desired = new Map<string, Desired>();
 
-    // Admin side: one row per watcher. Missing people carries the count; fully
-    // staffed carries nothing, and the two can't both be true. In between —
-    // every role taken but somebody still deciding — is no row at all: a
-    // pending invite is not an admin's problem yet, and the lapse sweep and
-    // the cron's last-call check are what catch one that never gets answered.
-    if (!over && (openCount > 0 || fullyStaffed)) {
-      const watchers = await eventStaffingWatcherIds(
-        event.organizationId,
-        event.createdById,
-      );
+    // Admin side: the rows go to whoever owns each alert, the same people the
+    // emails do (lib/notifications/audience.ts), so the bell and the inbox
+    // can't disagree about whose problem a hole is. Missing people carries a
+    // count — each owner's count is the open roles that are theirs, so a band
+    // lead sees the band's holes and the creator sees the rest. Fully staffed
+    // carries nothing and goes to the event's owner. In between — every role
+    // taken but somebody still deciding — is no row at all: a pending invite
+    // is not an admin's problem yet, and the lapse sweep and the cron's
+    // last-call check are what catch one that never gets answered.
+    if (!over && (openRoles.length > 0 || fullyStaffed)) {
+      const directory = await bellDirectory(event.organizationId, directories);
 
-      const category = fullyStaffed
-        ? NotificationCategory.FULLY_STAFFED
-        : NotificationCategory.ROSTER_ATTENTION;
+      if (directory && fullyStaffed) {
+        for (const { userId } of eventOwners(directory, event.createdById).people) {
+          desired.set(`${userId}:${NotificationCategory.FULLY_STAFFED}`, {
+            userId,
+            category: NotificationCategory.FULLY_STAFFED,
+            count: 1,
+            quiet: !justFilled,
+          });
+        }
+      }
 
-      for (const userId of watchers) {
-        desired.set(`${userId}:${category}`, {
-          userId,
-          category,
-          count: fullyStaffed ? 1 : openCount,
-          quiet: fullyStaffed && !justFilled,
-        });
+      if (directory && openRoles.length > 0) {
+        // Who sent each role's latest invitation. An open role's invitations
+        // are all dead by definition, but the last of them is whose the hole
+        // was — the same sender the decline or the lapse mail went to.
+        const senders = new Map(
+          event.assignments.map((assignment) => [
+            assignment.role,
+            assignment.assignedById,
+          ]),
+        );
+
+        const counts = new Map<string, number>();
+
+        for (const role of openRoles) {
+          const { people } = roleOwners(directory, {
+            role,
+            senderId: senders.get(role) ?? null,
+            createdById: event.createdById,
+          });
+
+          for (const { userId } of people) {
+            counts.set(userId, (counts.get(userId) ?? 0) + 1);
+          }
+        }
+
+        for (const [userId, count] of counts) {
+          desired.set(`${userId}:${NotificationCategory.ROSTER_ATTENTION}`, {
+            userId,
+            category: NotificationCategory.ROSTER_ATTENTION,
+            count,
+          });
+        }
       }
     }
 
@@ -420,12 +472,12 @@ const ORG_RECONCILE_BATCH = 10;
 /**
  * Reconciles every upcoming event in one organization.
  *
- * Membership and role changes move the *watcher* set without touching any
- * roster, so nothing in the event actions fires for them — and the watcher set
- * is what decides who a hole belongs to. Without this: a demoted admin keeps
- * rows they can no longer act on; owners never inherit the events of a creator
- * who left; and removing the drummer from three upcoming services opens three
- * roles that no bell ever mentions.
+ * Membership, role and team-lead changes move who owns each hole without
+ * touching any roster, so nothing in the event actions fires for them. Without
+ * this: a demoted admin keeps rows they can no longer act on; owners never
+ * inherit the events of a creator who left; a new band lead's bell stays empty
+ * while the old one's still counts; and removing the drummer from three
+ * upcoming services opens three roles that no bell ever mentions.
  *
  * Scoped to upcoming events because past ones produce nothing anyway. Capped,
  * because this runs inline in an admin action — anything past the cap is picked
@@ -453,11 +505,15 @@ export const syncOrganizationNotifications = async (
       ORG_RECONCILE_LIMIT,
     );
 
+    // Every event here is the same organization's, so one read of its admins
+    // and leads serves them all.
+    const directories: BellDirectories = new Map();
+
     for (let i = 0; i < eventIds.length; i += ORG_RECONCILE_BATCH) {
       await Promise.all(
         eventIds
           .slice(i, i + ORG_RECONCILE_BATCH)
-          .map((eventId) => syncEventNotifications(eventId, touch)),
+          .map((eventId) => syncEventNotifications(eventId, touch, directories)),
       );
     }
   } catch (err) {

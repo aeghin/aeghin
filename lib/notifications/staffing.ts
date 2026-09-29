@@ -6,10 +6,12 @@ import type { Prisma } from "@/generated/prisma/client";
 import type { LapsedInvite } from "@/components/email/event-invite-expired-template";
 import { volunteerRoleLabels } from "@/lib/activity";
 import {
-  eventStaffingRecipients,
-  inviteSenderRecipients,
-  type EmailRecipient,
-} from "@/lib/email/recipients";
+  reasonLine,
+  roleAudience,
+  type Addressee,
+  type Person,
+} from "@/lib/notifications/audience";
+import { directoriesFor } from "@/lib/notifications/directory";
 
 /**
  * What the cron tells an event's managers about its roster. Shared by the
@@ -92,7 +94,11 @@ export type Lapse = LapsedInvite & {
 
 /** Everything one person is told about one event's lapsed invitations. */
 export type LapseBucket = {
-  recipient: EmailRecipient;
+  recipient: Person;
+  /** "You're receiving this because …", for the first lapse they own, else the first they're copied on. */
+  footer: string;
+  /** Whether any lapse here is theirs to act on, rather than a heads-up. */
+  owns: boolean;
   organizationId: string;
   organizationName: string;
   logoUrl: string | null;
@@ -111,8 +117,32 @@ export function lapseSubject(lapsed: LapsedInvite[], eventName: string) {
     : `Needs ${roles.length} roles filled: ${eventName}`;
 }
 
+/** The push's body: whose invitation lapsed, and who has it when that isn't them. */
+export function lapseBody(lapsed: LapsedInvite[]) {
+  const what =
+    lapsed.length === 1
+      ? `${lapsed[0].inviteeName}'s invitation expired without an answer.`
+      : `${lapsed.length} invitations expired without an answer.`;
+
+  const headsUps = [...new Set(lapsed.map((item) => item.headsUp ?? null))];
+
+  // Only when none of it is theirs: a heads-up on one line of several they
+  // own reads as though the whole push were somebody else's.
+  if (headsUps.includes(null)) return what;
+
+  return headsUps.length === 1
+    ? `${what} ${headsUps[0]}`
+    : `${what} Others have been asked to fill them.`;
+}
+
 /**
  * Who hears about which lapsed invitations: one bucket per person per event.
+ *
+ * Each lapse is owned by its role's team lead, else whoever sent the
+ * invitation, else the event's creator, else the owners — and copies in
+ * whoever follows it (lib/notifications/audience.ts). An admin who sent five
+ * invitations to one event hears once, listing five roles; a band lead hears
+ * about the band's and not the ushers'.
  *
  * `where` picks the lapses — the rows a sweep just flipped, for the email, or
  * everything flipped lately, for the push that may have waited overnight. Only
@@ -181,90 +211,76 @@ export async function lapseBuckets(
 
   if (open.length === 0) return [];
 
-  // Matched as organization+user pairs, so a membership in a different
-  // organization can never resolve a sender.
-  const senderPairs = new Map(
-    open
-      .filter((row) => row.assignedById !== null)
-      .map((row) => [
-        `${row.organizationId}:${row.assignedById}`,
-        {
-          organizationId: row.organizationId,
-          userId: row.assignedById as string,
-        },
-      ]),
+  const directoryFor = directoriesFor(
+    open.map((row) => ({
+      organizationId: row.organizationId,
+      eventId: row.event.id,
+    })),
   );
 
-  const senders = await inviteSenderRecipients([...senderPairs.values()]);
-
-  // One bucket per recipient per event: an admin who invited five people to
-  // one event hears once, listing five roles, and hears only about the
-  // invitations they sent.
   const buckets = new Map<string, LapseBucket>();
-  const orphaned = new Map<string, typeof open>();
-
-  const entryFor = (row: (typeof open)[number]): Lapse => ({
-    inviteeName: `${row.user.firstName} ${row.user.lastName}`,
-    roleLabel: volunteerRoleLabels[row.role],
-    assignmentId: row.id,
-    lapsedAt: row.lapsedAt,
-  });
 
   const add = (
-    recipient: EmailRecipient,
+    { person, reason }: Addressee,
     row: (typeof open)[number],
-    entries: Lapse[],
+    headsUp: string | null,
+    organizationName: string,
   ) => {
-    const key = `${row.event.id}:${recipient.email}`;
+    const lapse: Lapse = {
+      inviteeName: `${row.user.firstName} ${row.user.lastName}`,
+      roleLabel: volunteerRoleLabels[row.role],
+      assignmentId: row.id,
+      lapsedAt: row.lapsedAt,
+      headsUp,
+    };
+
+    const footer = reasonLine(reason, organizationName, row.role);
+    const key = `${row.event.id}:${person.email}`;
     const existing = buckets.get(key);
 
-    if (existing) {
-      existing.lapsed.push(...entries);
+    if (!existing) {
+      buckets.set(key, {
+        recipient: person,
+        footer,
+        owns: headsUp === null,
+        organizationId: row.organizationId,
+        organizationName: row.organization.name,
+        logoUrl: row.organization.logoUrl,
+        eventId: row.event.id,
+        eventName: row.event.name,
+        dates: row.event.dates,
+        lapsed: [lapse],
+      });
       return;
     }
 
-    buckets.set(key, {
-      recipient,
-      organizationId: row.organizationId,
-      organizationName: row.organization.name,
-      logoUrl: row.organization.logoUrl,
-      eventId: row.event.id,
-      eventName: row.event.name,
-      dates: row.event.dates,
-      lapsed: [...entries],
-    });
+    existing.lapsed.push(lapse);
+
+    // The footer names the reason they own something, when they do.
+    if (headsUp === null && !existing.owns) {
+      existing.owns = true;
+      existing.footer = footer;
+    }
   };
 
   for (const row of open) {
-    const sender = row.assignedById
-      ? senders.get(`${row.organizationId}:${row.assignedById}`)
-      : undefined;
+    const directory = await directoryFor(row.organizationId);
 
-    if (sender) {
-      add(sender, row, [entryFor(row)]);
-      continue;
+    if (!directory) continue;
+
+    const audience = roleAudience(directory, {
+      eventId: row.event.id,
+      createdById: row.event.createdById,
+      role: row.role,
+      senderId: row.assignedById,
+    });
+
+    for (const owner of audience.owners) {
+      add(owner, row, null, directory.organizationName);
     }
 
-    const pending = orphaned.get(row.event.id) ?? [];
-    pending.push(row);
-    orphaned.set(row.event.id, pending);
-  }
-
-  // Sender deleted, gone from the organization, or demoted to MEMBER. Falls
-  // through to the event's creator and then the owners, which is never an
-  // empty list — so a lapsed invitation always reaches somebody who can act.
-  // Merged into any bucket that already exists, so an owner who also sent one
-  // of these hears once rather than twice.
-  for (const orphans of orphaned.values()) {
-    const recipients = await eventStaffingRecipients(
-      orphans[0].organizationId,
-      orphans[0].event.createdById,
-    );
-
-    const entries = orphans.map(entryFor);
-
-    for (const recipient of recipients) {
-      add(recipient, orphans[0], entries);
+    for (const copied of audience.copied) {
+      add(copied, row, audience.headsUp, directory.organizationName);
     }
   }
 

@@ -177,6 +177,7 @@ export async function POST(req: NextRequest) {
         role: true,
         status: true,
         expiresAt: true,
+        assignedById: true,
       },
     });
 

@@ -89,8 +89,8 @@ export const updateUserRole = async (data: UserRoleInput, touch: TagInvalidator 
         
         // A demotion to MEMBER takes away the right to staff an event, so the
         // rows saying one needs staffing have to go with it — and a promotion
-        // earns them. `eventStaffingWatcherIds` already encodes both; this is
-        // what makes it run.
+        // earns them, a team lead's included. `roleOwners` already encodes
+        // both; this is what makes it run.
         await syncOrganizationNotifications(organizationId, touch);
 
         await logActivity({
@@ -165,7 +165,7 @@ export const removeMember = async (userId: string, organizationId: string, touch
                 organizationId,
                 event: { dates: { some: { endTime: { gte: new Date() } } } },
             },
-            select: { eventId: true, role: true, status: true, expiresAt: true },
+            select: { eventId: true, role: true, status: true, expiresAt: true, assignedById: true },
         });
 
         await prisma.$transaction([
@@ -349,7 +349,7 @@ export const leaveOrganization = async (organizationId: string, touch: TagInvali
           organizationId,
           event: { dates: { some: { endTime: { gte: new Date() } } } },
       },
-      select: { eventId: true, role: true, status: true, expiresAt: true },
+      select: { eventId: true, role: true, status: true, expiresAt: true, assignedById: true },
   });   
 
         

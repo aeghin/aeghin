@@ -41,7 +41,6 @@ import EventAssignmentEmail from "@/components/email/event-email-template";
 import EventCanceledEmail from "@/components/email/event-canceled-template";
 import EventMessageEmail from "@/components/email/event-message-template";
 import EventRemovedEmail from "@/components/email/event-removed-template";
-import EventShortageEmail from "@/components/email/event-shortage-template";
 import EventUpdatedEmail, { type EventChange } from "@/components/email/event-updated-template";
 
 import {
@@ -51,10 +50,10 @@ import {
   sameSchedule,
 } from "@/lib/email/event-when";
 import { organizationSender } from "@/lib/email/organization";
-import { eventStaffingRecipients } from "@/lib/email/recipients";
 import { sendEmailBatches } from "@/lib/email/send";
 import { assignmentPush } from "@/lib/push/notices";
 import { sendPushNotices } from "@/lib/push/send";
+import { notifyDeclineShortage } from "@/lib/notifications/declines";
 import {
   clearEventNotifications,
   syncEventNotifications,
@@ -706,70 +705,26 @@ export const declineEventInvitation = async (
     const eventName = assignment.event.name;
 
     /**
-     * Tells whoever manages this event that the role is still open.
-     *
-     * Called from every branch that leaves a hole, and from none that fills
-     * one — so receiving this always means somebody has to go and staff
-     * something. Scheduled rather than awaited: the decline has committed and
-     * the volunteer is owed their answer now.
+     * Tells whoever owns this role that it is still open — its team lead,
+     * else whoever sent the invitation, else the event's creator — and copies
+     * in whoever follows it. Scheduled rather than awaited: the decline has
+     * committed and the volunteer is owed their answer now.
      */
     const notifyShortage = (reason: string) => {
-      after(async () => {
-        // A role somebody else has already confirmed isn't short — the rule
-        // the expired-invite email follows too. Without it, the last extra
-        // invite on a role declining would mail "Needs a BGVs" in the same
-        // moment the roster reports itself fully staffed.
-        const stillConfirmed = await prisma.eventAssignment.count({
-          where: {
-            eventId,
-            role: assignment.role,
-            status: InvitationStatus.ACCEPTED,
-          },
-        });
-
-        if (stillConfirmed > 0) return;
-
-        const recipients = await eventStaffingRecipients(
+      after(() =>
+        notifyDeclineShortage({
           organizationId,
-          assignment.event.createdById,
-        );
-
-        if (recipients.length === 0) return;
-
-        const when = formatEventWhen(assignment.event.dates);
-
-        await sendEmailBatches(
-          "declineEventInvitation shortage",
-          recipients.map((recipient) => ({
-            from: organizationSender(assignment.organization.name),
-            to: recipient.email,
-            subject: `Needs a ${roleLabel}: ${eventName}`,
-            react: EventShortageEmail({
-              recipientName: recipient.firstName,
-              eventName,
-              organizationName: assignment.organization.name,
-              logoUrl: assignment.organization.logoUrl,
-              declinedByName: declinerName,
-              roleLabel,
-              reason,
-              eventDate: when?.date ?? null,
-              eventTime: when?.time ?? null,
-              viewLink: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/organizations/${organizationId}/events/${eventId}`,
-            }),
-          })),
-        );
-
-        await sendPushNotices(
-          "declineEventInvitation shortage",
-          recipients.map((recipient) => ({
-            email: recipient.email,
-            title: `Needs a ${roleLabel}: ${eventName}`,
-            subtitle: assignment.organization.name,
-            body: `${declinerName} declined. ${reason}`,
-            data: { type: "event", organizationId, eventId },
-          })),
-        );
-      });
+          organization: assignment.organization,
+          eventId,
+          eventName,
+          createdById: assignment.event.createdById,
+          dates: assignment.event.dates,
+          role: assignment.role,
+          senderId: assignment.assignedById,
+          declinerName,
+          reason,
+        }),
+      );
     };
 
     // Paused rather than off when the plan doesn't include it: the event keeps

@@ -10,8 +10,9 @@ import EventInviteExpiredEmail from "@/components/email/event-invite-expired-tem
 import EventLastCallEmail from "@/components/email/event-last-call-template";
 import { formatEventWhen } from "@/lib/email/event-when";
 import { organizationSender } from "@/lib/email/organization";
-import { eventStaffingRecipients } from "@/lib/email/recipients";
 import { sendEmailBatches } from "@/lib/email/send";
+import { eventAudience, reasonLine } from "@/lib/notifications/audience";
+import { directoriesFor, type BellDirectories } from "@/lib/notifications/directory";
 import {
     LAST_CALL_DAYS,
     lapseBuckets,
@@ -158,11 +159,12 @@ const notifyLapsedAssignments = async (
 
     const messages = buckets.map((bucket) => {
         const when = formatEventWhen(bucket.dates);
+        const subject = lapseSubject(bucket.lapsed, bucket.eventName);
 
         return {
             from: organizationSender(bucket.organizationName),
             to: bucket.recipient.email,
-            subject: lapseSubject(bucket.lapsed, bucket.eventName),
+            subject: bucket.owns ? subject : `Heads-up: ${subject}`,
             react: EventInviteExpiredEmail({
                 recipientName: bucket.recipient.firstName,
                 eventName: bucket.eventName,
@@ -172,6 +174,7 @@ const notifyLapsedAssignments = async (
                 eventDate: when?.date ?? null,
                 eventTime: when?.time ?? null,
                 viewLink: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/organizations/${bucket.organizationId}/events/${bucket.eventId}`,
+                footer: bucket.footer,
             }),
         };
     });
@@ -248,6 +251,13 @@ const sendLastCalls = async (now: Date): Promise<NotifyResult> => {
         take: LAST_CALL_LIMIT,
     });
 
+    const directoryFor = directoriesFor(
+        events.map((event) => ({
+            organizationId: event.organizationId,
+            eventId: event.id,
+        })),
+    );
+
     const perEvent = await Promise.all(
         events.map(async (event) => {
 
@@ -289,19 +299,34 @@ const sendLastCalls = async (now: Date): Promise<NotifyResult> => {
 
             if (fullyStaffed) return [];
 
-            const recipients = await eventStaffingRecipients(
-                event.organizationId,
-                event.createdById,
-            );
+            // The event's owner — its creator, else the owners — is asked to
+            // act; anybody watching it gets a heads-up. Team leads have
+            // already heard about each of their roles as it opened up, so this
+            // is the backstop for them, not another alert.
+            const directory = await directoryFor(event.organizationId);
+
+            if (!directory) return [];
+
+            const audience = eventAudience(directory, {
+                eventId: event.id,
+                createdById: event.createdById,
+            });
 
             const when = formatEventWhen(event.dates);
+            const subject = `Not fully staffed yet: ${event.name}`;
 
-            return recipients.map((recipient) => ({
+            return [
+                ...audience.owners.map((addressee) => ({ ...addressee, headsUp: null })),
+                ...audience.copied.map((addressee) => ({
+                    ...addressee,
+                    headsUp: audience.headsUp,
+                })),
+            ].map(({ person, reason, headsUp }) => ({
                 from: organizationSender(event.organization.name),
-                to: recipient.email,
-                subject: `Not fully staffed yet: ${event.name}`,
+                to: person.email,
+                subject: headsUp ? `Heads-up: ${subject}` : subject,
                 react: EventLastCallEmail({
-                    recipientName: recipient.firstName,
+                    recipientName: person.firstName,
                     eventName: event.name,
                     organizationName: event.organization.name,
                     logoUrl: event.organization.logoUrl,
@@ -310,6 +335,8 @@ const sendLastCalls = async (now: Date): Promise<NotifyResult> => {
                     eventDate: when?.date ?? null,
                     eventTime: when?.time ?? null,
                     viewLink: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/organizations/${event.organizationId}/events/${event.id}`,
+                    headsUp,
+                    footer: reasonLine(reason, event.organization.name),
                 }),
             }));
         }),
@@ -551,12 +578,15 @@ export async function GET(req: Request) {
 
         // Bounded batches, so a backlog cannot turn into hundreds of round trips
         // at once. Each call swallows its own failures, so one bad event cannot
-        // take the rest down.
+        // take the rest down. Events of one organization share one read of
+        // who runs its teams.
+        const directories: BellDirectories = new Map();
+
         for (let i = 0; i < toReconcile.length; i += 10) {
             await Promise.all(
                 toReconcile
                     .slice(i, i + 10)
-                    .map((eventId) => syncEventNotifications(eventId, expireTag)),
+                    .map((eventId) => syncEventNotifications(eventId, expireTag, directories)),
             );
         }
 

@@ -27,6 +27,13 @@ interface EventShortageEmailProps {
   eventDate: string | null;
   eventTime: string | null;
   viewLink: string;
+  /**
+   * Set for somebody copied in rather than asked to act — "Sam (Band lead)
+   * has been asked to fill it." Turns the email into a heads-up.
+   */
+  headsUp?: string | null;
+  /** The footer's "why you got this". */
+  footer?: string;
 }
 
 export default function EventShortageEmail({
@@ -40,6 +47,8 @@ export default function EventShortageEmail({
   eventDate,
   eventTime,
   viewLink,
+  headsUp = null,
+  footer,
 }: EventShortageEmailProps) {
   return (
     <Tailwind>
@@ -68,7 +77,7 @@ export default function EventShortageEmail({
                 </Section>
               )}
               <Text className="text-2xl font-bold tracking-tight text-gray-900 m-0">
-                Slot Left Open
+                {headsUp ? "Heads-up: Slot Left Open" : "Slot Left Open"}
               </Text>
               <Text className="mt-2 text-sm text-gray-500 m-0">
                 A volunteer declined and the role is still unfilled
@@ -80,6 +89,7 @@ export default function EventShortageEmail({
               <Text className="text-sm text-gray-600 m-0 mb-6">
                 Hi {recipientName}, {declinedByName} declined this event and
                 nobody has taken the role.
+                {headsUp ? ` ${headsUp}` : ""}
               </Text>
 
               <Section className="rounded-xl border border-gray-200 p-4 mb-4">
@@ -129,15 +139,15 @@ export default function EventShortageEmail({
                 href={viewLink}
                 className="rounded-lg bg-black px-6 py-3 text-sm font-semibold text-white no-underline"
               >
-                Staff This Event
+                {headsUp ? "View Event" : "Staff This Event"}
               </Button>
 
             </Section>
 
             <Section className="border-t border-gray-200 px-8 py-6">
               <Text className="text-center text-xs text-gray-400 m-0">
-                You&apos;re receiving this because you manage this event at{" "}
-                {organizationName}.
+                {footer ??
+                  `You're receiving this because you manage this event at ${organizationName}.`}
               </Text>
             </Section>
           </Container>

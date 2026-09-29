@@ -20,6 +20,11 @@ export type VacatedSpot = {
   /** `formatEventWhen`'s date and time, joined. Null when the event has no dates. */
   when: string | null;
   viewLink: string;
+  /**
+   * Set when the recipient is copied in on this one rather than asked to act
+   * — "Sam (Band lead) has been asked to fill it."
+   */
+  headsUp?: string | null;
 };
 
 interface EventDepartureEmailProps {
@@ -30,6 +35,8 @@ interface EventDepartureEmailProps {
   reason: "left" | "removed" | "deleted";
   /** Every upcoming event of the recipient's this leaves short, soonest first. */
   vacated: VacatedSpot[];
+  /** The footer's "why you got this". */
+  footer?: string;
 }
 
 export default function EventDepartureEmail({
@@ -39,6 +46,7 @@ export default function EventDepartureEmail({
   departedName,
   reason,
   vacated,
+  footer,
 }: EventDepartureEmailProps) {
   const what =
     reason === "left"
@@ -48,6 +56,8 @@ export default function EventDepartureEmail({
         : "deleted their account";
 
   const one = vacated.length === 1;
+  // Nothing here is the recipient's to act on: every spot is somebody else's.
+  const headsUp = vacated.every((spot) => spot.headsUp);
 
   return (
     <Tailwind>
@@ -76,6 +86,7 @@ export default function EventDepartureEmail({
                 </Section>
               )}
               <Text className="text-2xl font-bold tracking-tight text-gray-900 m-0">
+                {headsUp ? "Heads-up: " : ""}
                 {one ? "Role Left Open" : "Roles Left Open"}
               </Text>
               <Text className="mt-2 text-sm text-gray-500 m-0">
@@ -88,8 +99,8 @@ export default function EventDepartureEmail({
               <Text className="text-sm text-gray-600 m-0 mb-6">
                 Hi {recipientName}, {departedName} was on{" "}
                 {one ? "an upcoming event" : `${vacated.length} upcoming events`}{" "}
-                you manage, and {one ? "that role has" : "those roles have"}{" "}
-                nobody confirmed now.
+                {headsUp ? "you follow" : "you manage"}, and{" "}
+                {one ? "that role has" : "those roles have"} nobody confirmed now.
               </Text>
 
               {vacated.map((spot) => (
@@ -104,13 +115,18 @@ export default function EventDepartureEmail({
                     Needs a {spot.roleLabel}
                     {spot.when ? ` · ${spot.when}` : ""}
                   </Text>
+                  {spot.headsUp ? (
+                    <Text className="mt-1 text-sm text-amber-800 m-0">
+                      {spot.headsUp}
+                    </Text>
+                  ) : null}
                   {/* One event gets the big button below instead. */}
                   {one ? null : (
                     <Link
                       href={spot.viewLink}
                       className="mt-2 inline-block text-sm font-semibold text-gray-900 underline"
                     >
-                      Staff this event
+                      {spot.headsUp ? "View this event" : "Staff this event"}
                     </Link>
                   )}
                 </Section>
@@ -121,7 +137,7 @@ export default function EventDepartureEmail({
                   href={vacated[0].viewLink}
                   className="mt-3 rounded-lg bg-black px-6 py-3 text-sm font-semibold text-white no-underline"
                 >
-                  Staff This Event
+                  {headsUp ? "View Event" : "Staff This Event"}
                 </Button>
               ) : null}
 
@@ -134,8 +150,8 @@ export default function EventDepartureEmail({
 
             <Section className="border-t border-gray-200 px-8 py-6">
               <Text className="text-center text-xs text-gray-400 m-0">
-                You&apos;re receiving this because you manage{" "}
-                {one ? "this event" : "these events"} at {organizationName}.
+                {footer ??
+                  `You're receiving this because you manage ${one ? "this event" : "these events"} at ${organizationName}.`}
               </Text>
             </Section>
           </Container>

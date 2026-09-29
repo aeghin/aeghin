@@ -16,6 +16,11 @@ import { organizationInitial } from "@/lib/email/organization";
 export type LapsedInvite = {
   inviteeName: string;
   roleLabel: string;
+  /**
+   * Set when the recipient is copied in on this one rather than asked to act
+   * — "Sam (Band lead) has been asked to fill it."
+   */
+  headsUp?: string | null;
 };
 
 interface EventInviteExpiredEmailProps {
@@ -30,6 +35,8 @@ interface EventInviteExpiredEmailProps {
   eventDate: string | null;
   eventTime: string | null;
   viewLink: string;
+  /** The footer's "why you got this". */
+  footer?: string;
 }
 
 export default function EventInviteExpiredEmail({
@@ -41,6 +48,7 @@ export default function EventInviteExpiredEmail({
   eventDate,
   eventTime,
   viewLink,
+  footer,
 }: EventInviteExpiredEmailProps) {
   const roles = [...new Set(lapsed.map((invite) => invite.roleLabel))];
   const one = lapsed.length === 1;
@@ -48,6 +56,8 @@ export default function EventInviteExpiredEmail({
   // the count of roles diverge. The subject line branches on roles; so does
   // anything here that names a role.
   const oneRole = roles.length === 1;
+  // Nothing here is the recipient's to act on: every line is somebody else's.
+  const headsUp = lapsed.every((invite) => invite.headsUp);
 
   return (
     <Tailwind>
@@ -76,6 +86,7 @@ export default function EventInviteExpiredEmail({
                 </Section>
               )}
               <Text className="text-2xl font-bold tracking-tight text-gray-900 m-0">
+                {headsUp ? "Heads-up: " : ""}
                 {one ? "Invitation Expired" : "Invitations Expired"}
               </Text>
               <Text className="mt-2 text-sm text-gray-500 m-0">
@@ -110,6 +121,11 @@ export default function EventInviteExpiredEmail({
                     className="text-sm font-semibold text-amber-900 m-0 mb-1"
                   >
                     {invite.inviteeName} — {invite.roleLabel}
+                    {invite.headsUp ? (
+                      <span className="font-normal text-amber-800">
+                        {" "}· {invite.headsUp}
+                      </span>
+                    ) : null}
                   </Text>
                 ))}
               </Section>
@@ -134,20 +150,22 @@ export default function EventInviteExpiredEmail({
                 href={viewLink}
                 className="rounded-lg bg-black px-6 py-3 text-sm font-semibold text-white no-underline"
               >
-                Staff This Event
+                {headsUp ? "View Event" : "Staff This Event"}
               </Button>
 
-              <Text className="mt-6 text-xs text-gray-500 m-0">
-                From the event&apos;s Team card you can send the invitation
-                again, clear it away, or invite somebody else.
-              </Text>
+              {headsUp ? null : (
+                <Text className="mt-6 text-xs text-gray-500 m-0">
+                  From the event&apos;s Team card you can send the invitation
+                  again, clear it away, or invite somebody else.
+                </Text>
+              )}
 
             </Section>
 
             <Section className="border-t border-gray-200 px-8 py-6">
               <Text className="text-center text-xs text-gray-400 m-0">
-                You&apos;re receiving this because you manage this event at{" "}
-                {organizationName}.
+                {footer ??
+                  `You're receiving this because you manage this event at ${organizationName}.`}
               </Text>
             </Section>
           </Container>

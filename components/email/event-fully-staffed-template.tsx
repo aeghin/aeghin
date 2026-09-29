@@ -23,6 +23,8 @@ interface EventFullyStaffedEmailProps {
   eventDate: string | null;
   eventTime: string | null;
   viewLink: string;
+  /** The footer's "why you got this". */
+  footer?: string;
 }
 
 export default function EventFullyStaffedEmail({
@@ -33,6 +35,7 @@ export default function EventFullyStaffedEmail({
   eventDate,
   eventTime,
   viewLink,
+  footer,
 }: EventFullyStaffedEmailProps) {
   return (
     <Tailwind>
@@ -115,8 +118,8 @@ export default function EventFullyStaffedEmail({
 
             <Section className="border-t border-gray-200 px-8 py-6">
               <Text className="text-center text-xs text-gray-400 m-0">
-                You&apos;re receiving this because you manage this event at{" "}
-                {organizationName}.
+                {footer ??
+                  `You're receiving this because you manage this event at ${organizationName}.`}
               </Text>
             </Section>
           </Container>

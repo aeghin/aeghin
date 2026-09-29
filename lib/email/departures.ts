@@ -8,11 +8,14 @@ import EventDepartureEmail, {
 } from "@/components/email/event-departure-template";
 import { formatEventWhen } from "@/lib/email/event-when";
 import { organizationSender } from "@/lib/email/organization";
-import {
-  eventStaffingRecipients,
-  type EmailRecipient,
-} from "@/lib/email/recipients";
 import { sendEmailBatches } from "@/lib/email/send";
+import {
+  reasonLine,
+  roleAudience,
+  type Addressee,
+  type Person,
+} from "@/lib/notifications/audience";
+import { loadStaffingDirectory } from "@/lib/notifications/directory";
 import { sendPushNotices } from "@/lib/push/send";
 
 /**
@@ -24,6 +27,8 @@ export type DepartingSpot = {
   role: VolunteerRole;
   status: InvitationStatus;
   expiresAt: Date;
+  /** Who invited them, which can make this spot theirs to refill. */
+  assignedById: string | null;
 };
 
 /** How they went. Finishes the sentence "{name} …" in the email. */
@@ -37,11 +42,12 @@ export type DepartureReason = "left" | "removed" | "deleted";
  * decline or expiry mail ever fires for them. Before this, the only trace was
  * a count in the bell.
  *
- * One email per recipient, listing every event of theirs this leaves short,
- * so a creator who runs four upcoming services hears once, not four times.
- * Recipients are the same creator-then-owners rule every other staffing email
- * uses, resolved after the departure — so a creator who is the one leaving
- * falls through to the owners.
+ * One email per recipient, listing every spot of theirs this leaves short, so
+ * a creator who runs four upcoming services hears once, not four times. Each
+ * spot is owned the way every staffing alert is (lib/notifications/audience.ts)
+ * — its team lead, else whoever invited them, else the event's creator, else
+ * the owners — with its followers copied in. Resolved after the departure, so
+ * somebody who is the one leaving falls through to the next in line.
  *
  * A role somebody else has already confirmed is skipped: the same rule the
  * decline and expired-invite emails follow, and the reason a departure can
@@ -74,16 +80,16 @@ export async function notifyDeparture({
 
     if (held.length === 0) return;
 
-    const [organization, events] = await Promise.all([
+    const eventIds = [...new Set(held.map((spot) => spot.eventId))];
+
+    const [directory, organization, events] = await Promise.all([
+      loadStaffingDirectory(organizationId, { eventIds }),
       prisma.organization.findUnique({
         where: { id: organizationId },
-        select: { name: true, logoUrl: true },
+        select: { logoUrl: true },
       }),
       prisma.event.findMany({
-        where: {
-          id: { in: [...new Set(held.map((spot) => spot.eventId))] },
-          organizationId,
-        },
+        where: { id: { in: eventIds }, organizationId },
         select: {
           id: true,
           name: true,
@@ -98,8 +104,9 @@ export async function notifyDeparture({
       }),
     ]);
 
-    if (!organization) return;
+    if (!directory) return;
 
+    const organizationName = directory.organizationName;
     const eventById = new Map(events.map((event) => [event.id, event]));
 
     // Soonest first, so the list reads in the order it needs dealing with.
@@ -112,26 +119,47 @@ export async function notifyDeparture({
       (a, b) => firstStart(a.eventId) - firstStart(b.eventId),
     );
 
-    // One lookup per creator, not per spot: most of a member's spots are on
-    // events the same person made.
-    const recipientsByCreator = new Map<string, Promise<EmailRecipient[]>>();
-
-    const recipientsFor = (createdById: string | null) => {
-      const key = createdById ?? "";
-      const cached = recipientsByCreator.get(key);
-
-      if (cached) return cached;
-
-      const lookup = eventStaffingRecipients(organizationId, createdById);
-      recipientsByCreator.set(key, lookup);
-      return lookup;
-    };
-
     // `eventIds` runs parallel to `vacated`, for where the push opens.
     const byRecipient = new Map<
       string,
-      { recipient: EmailRecipient; vacated: VacatedSpot[]; eventIds: string[] }
+      {
+        recipient: Person;
+        footer: string;
+        owns: boolean;
+        vacated: VacatedSpot[];
+        eventIds: string[];
+      }
     >();
+
+    const add = (
+      { person, reason }: Addressee,
+      spot: VacatedSpot,
+      eventId: string,
+      role: VolunteerRole,
+    ) => {
+      const footer = reasonLine(reason, organizationName, role);
+      const entry = byRecipient.get(person.email);
+
+      if (!entry) {
+        byRecipient.set(person.email, {
+          recipient: person,
+          footer,
+          owns: !spot.headsUp,
+          vacated: [spot],
+          eventIds: [eventId],
+        });
+        return;
+      }
+
+      entry.vacated.push(spot);
+      entry.eventIds.push(eventId);
+
+      // The footer names the reason they own something, when they do.
+      if (!spot.headsUp && !entry.owns) {
+        entry.owns = true;
+        entry.footer = footer;
+      }
+    };
 
     for (const spot of ordered) {
       const event = eventById.get(spot.eventId);
@@ -143,25 +171,27 @@ export async function notifyDeparture({
       }
 
       const when = formatEventWhen(event.dates);
-      const recipients = await recipientsFor(event.createdById);
 
-      for (const recipient of recipients) {
-        const entry = byRecipient.get(recipient.email) ?? {
-          recipient,
-          vacated: [],
-          eventIds: [],
-        };
+      const vacated: VacatedSpot = {
+        eventName: event.name,
+        roleLabel: volunteerRoleLabels[spot.role],
+        when: when ? `${when.date} · ${when.time}` : null,
+        viewLink: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/organizations/${organizationId}/events/${event.id}`,
+      };
 
-        entry.vacated.push({
-          eventName: event.name,
-          roleLabel: volunteerRoleLabels[spot.role],
-          when: when ? `${when.date} · ${when.time}` : null,
-          viewLink: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/organizations/${organizationId}/events/${event.id}`,
-        });
+      const audience = roleAudience(directory, {
+        eventId: event.id,
+        createdById: event.createdById,
+        role: spot.role,
+        senderId: spot.assignedById,
+      });
 
-        entry.eventIds.push(event.id);
+      for (const owner of audience.owners) {
+        add(owner, vacated, event.id, spot.role);
+      }
 
-        byRecipient.set(recipient.email, entry);
+      for (const copied of audience.copied) {
+        add(copied, { ...vacated, headsUp: audience.headsUp }, event.id, spot.role);
       }
     }
 
@@ -170,19 +200,22 @@ export async function notifyDeparture({
         ? `Needs a ${vacated[0].roleLabel}: ${vacated[0].eventName}`
         : `${vacated.length} upcoming events need people`;
 
-    const messages = [...byRecipient.values()].map(({ recipient, vacated }) => ({
-      from: organizationSender(organization.name),
-      to: recipient.email,
-      subject: subjectFor(vacated),
-      react: EventDepartureEmail({
-        recipientName: recipient.firstName,
-        organizationName: organization.name,
-        logoUrl: organization.logoUrl,
-        departedName,
-        reason,
-        vacated,
+    const messages = [...byRecipient.values()].map(
+      ({ recipient, footer, owns, vacated }) => ({
+        from: organizationSender(organizationName),
+        to: recipient.email,
+        subject: owns ? subjectFor(vacated) : `Heads-up: ${subjectFor(vacated)}`,
+        react: EventDepartureEmail({
+          recipientName: recipient.firstName,
+          organizationName,
+          logoUrl: organization?.logoUrl ?? null,
+          departedName,
+          reason,
+          vacated,
+          footer,
+        }),
       }),
-    }));
+    );
 
     await sendEmailBatches("departure shortage", messages);
 
@@ -195,14 +228,14 @@ export async function notifyDeparture({
 
     await sendPushNotices(
       "departure shortage",
-      [...byRecipient.values()].map(({ recipient, vacated, eventIds }) => ({
+      [...byRecipient.values()].map(({ recipient, owns, vacated, eventIds }) => ({
         email: recipient.email,
         title: subjectFor(vacated),
-        subtitle: organization.name,
+        subtitle: organizationName,
         body:
           vacated.length === 1
-            ? `${departedName} ${departed}. Nobody else is confirmed as ${vacated[0].roleLabel}.`
-            : `${departedName} ${departed}, leaving ${vacated.length} upcoming events short.`,
+            ? `${departedName} ${departed}. ${vacated[0].headsUp ?? `Nobody else is confirmed as ${vacated[0].roleLabel}.`}`
+            : `${departedName} ${departed}, leaving ${vacated.length} upcoming events short.${owns ? "" : " Others have been asked to fill them."}`,
         data:
           eventIds.length === 1
             ? { type: "event", organizationId, eventId: eventIds[0] }

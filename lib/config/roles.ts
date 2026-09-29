@@ -1,5 +1,5 @@
 
-import { VolunteerRole, OrgRole } from "@/generated/prisma/enums";
+import { VolunteerRole, OrgRole, RoleCategory as Team } from "@/generated/prisma/enums";
 import { Crown, Shield, User } from "lucide-react";
 
 export const volunteerRoleConfig: Record<VolunteerRole, { label: string; icon: string }> = {
@@ -43,6 +43,38 @@ export const roleToCategory: Record<VolunteerRole, RoleCategory> = {
   [VolunteerRole.USHER]: "hospitality",
   [VolunteerRole.GREETER]: "hospitality",
 };
+
+/**
+ * The same four groups under the names the database keeps team leads and
+ * watchers against. `roleToCategory` stays the one place a role is put in a
+ * team; these only translate its answer.
+ */
+export const TEAM_ORDER: Team[] = [
+  Team.BAND,
+  Team.VOCALS,
+  Team.PRODUCTION,
+  Team.HOSPITALITY,
+];
+
+const teamOfCategory: Record<RoleCategory, Team> = {
+  band: Team.BAND,
+  vocals: Team.VOCALS,
+  production: Team.PRODUCTION,
+  hospitality: Team.HOSPITALITY,
+};
+
+const categoryOfTeam: Record<Team, RoleCategory> = {
+  [Team.BAND]: "band",
+  [Team.VOCALS]: "vocals",
+  [Team.PRODUCTION]: "production",
+  [Team.HOSPITALITY]: "hospitality",
+};
+
+export const teamOfRole = (role: VolunteerRole): Team =>
+  teamOfCategory[roleToCategory[role]];
+
+export const teamLabel = (team: Team): string =>
+  roleCategoryConfig[categoryOfTeam[team]].label;
 
 export const getRoleConfig = (role: OrgRole) => {
   switch (role) {
