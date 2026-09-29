@@ -134,6 +134,7 @@ export const OrganizationTabsSection = async ({
           <Suspense fallback={<SettingsTabSkeleton />}>
             <SettingsTabContent
               organizationId={organizationId}
+              userId={userId}
               canManage={canManage}
               isOwner={isOwner}
             />

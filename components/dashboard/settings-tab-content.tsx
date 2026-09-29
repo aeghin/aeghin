@@ -1,6 +1,7 @@
 import { Eye, Settings } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getOrganizationSettings } from "@/lib/services/organization";
+import { getTeamNotificationSettings } from "@/lib/services/team-notifications";
 import { EditSettingsDialog } from "./edit-settings-dialog";
 import { DeleteOrgDialog } from "./delete-org-dialog";
 import { LeaveOrgDialog } from "./leave-org-dialog";
@@ -8,21 +9,27 @@ import { ManageSubscriptionButton } from "./manage-subscription-button";
 import { PlanUsageSection } from "./plan-usage-section";
 import { ServiceTypesSettings } from "./service-types-settings";
 import { OrgLogoUploader } from "./org-logo-uploader";
+import { TeamNotificationsSettings } from "./team-notifications-settings";
 
 interface SettingsTabContentProps {
   organizationId: string;
+  userId: string;
   canManage: boolean;
   isOwner: boolean;
 };
 
 export const SettingsTabContent = async ({
   organizationId,
+  userId,
   canManage,
   isOwner,
 }: SettingsTabContentProps) => {
-  
 
-  const org = await getOrganizationSettings(organizationId);
+  // Staffing alerts are a managers' concern: members are never asked to fill a role.
+  const [org, teamSettings] = await Promise.all([
+    getOrganizationSettings(organizationId),
+    canManage ? getTeamNotificationSettings(organizationId) : null,
+  ]);
 
   return (
   <Card className="overflow-hidden rounded-xl border-border/40 bg-linear-to-br from-card to-card/80 shadow-sm">
@@ -89,6 +96,14 @@ export const SettingsTabContent = async ({
       />
       {canManage && (
         <ServiceTypesSettings organizationId={organizationId} serviceTypes={org?.serviceTypes ?? []} />
+      )}
+      {teamSettings && (
+        <TeamNotificationsSettings
+          organizationId={organizationId}
+          settings={teamSettings}
+          viewerId={userId}
+          isOwner={isOwner}
+        />
       )}
       {canManage && (
         <PlanUsageSection organizationId={organizationId} isOwner={isOwner} />
