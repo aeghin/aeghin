@@ -5,6 +5,7 @@ import prisma from "@/lib/prisma";
 import {
     InvitationStatus,
     OrgRole,
+    RoleCategory,
     VolunteerRole,
 } from "@/generated/prisma/enums";
 import { createEvent } from "@/lib/actions/event";
@@ -304,7 +305,18 @@ type NewEvent = {
     rehearsal?: NewEventDay | null;
     /** Who to invite, per role. Every role optional. */
     roleAssignments: Record<string, string[]>;
+    /**
+     * Teams handed to somebody other than the service type's lead, for this
+     * event only. Absent from older app builds, which is the same as none.
+     */
+    teamLeads?: { team: RoleCategory; userId: string }[];
 };
+
+const isTeamLeadPick = (value: unknown): value is { team: RoleCategory; userId: string } =>
+    isObject(value) &&
+    typeof value.team === "string" &&
+    (Object.values(RoleCategory) as string[]).includes(value.team) &&
+    typeof value.userId === "string";
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 const CLOCK = /^\d{2}:\d{2}$/;
@@ -327,7 +339,9 @@ const isNewEvent = (value: unknown): value is NewEvent =>
     typeof value.expiresAt === "number" &&
     typeof value.smartSchedulingEnabled === "boolean" &&
     (value.rehearsal === undefined || value.rehearsal === null || isNewEventDay(value.rehearsal)) &&
-    isObject(value.roleAssignments);
+    isObject(value.roleAssignments) &&
+    (value.teamLeads === undefined ||
+        (Array.isArray(value.teamLeads) && value.teamLeads.every(isTeamLeadPick)));
 
 /** `"2026-09-27"`, `"10:00"` -> the UTC instant the app stores. */
 const instant = (date: string, clock: string) => new Date(`${date}T${clock}:00Z`);
@@ -416,6 +430,7 @@ export async function POST(
                     }
                     : {}),
                 roleAssignments: body.roleAssignments,
+                teamLeads: body.teamLeads,
             } as CreateEventInput,
             orgId,
             expireTag,

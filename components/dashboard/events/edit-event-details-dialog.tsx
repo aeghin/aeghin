@@ -40,6 +40,12 @@ import {
   EMPTY_REHEARSAL,
   type RehearsalFormValue,
 } from "@/lib/validations/event";
+import {
+  EventTeamLeadsField,
+  teamLeadPicksInput,
+  type TeamLeadChoices,
+  type TeamLeadPicks,
+} from "./event-team-leads-field";
 
 type DayTimes = Record<string, { startTime: string; endTime: string }>;
 
@@ -140,6 +146,14 @@ interface EditEventDetailsDialogProps {
     rehearsalEnd: Date | null;
   };
   assignees: EditableAssignee[];
+  /**
+   * Who handles each team on this event. Left out, the section doesn't show
+   * and a save leaves the event's picks as they are.
+   */
+  teamLeads?: {
+    choices: TeamLeadChoices;
+    picks: TeamLeadPicks;
+  };
 }
 
 export function EditEventDetailsDialog({
@@ -150,6 +164,7 @@ export function EditEventDetailsDialog({
   serviceColor,
   initial,
   assignees,
+  teamLeads,
 }: EditEventDetailsDialogProps) {
   const serviceColors = colorClasses[serviceColor];
 
@@ -162,16 +177,24 @@ export function EditEventDetailsDialog({
     useState<RehearsalFormValue>(EMPTY_REHEARSAL);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [affected, setAffected] = useState<AffectedAssignee[]>([]);
+  const [teamLeadPicks, setTeamLeadPicks] = useState<TeamLeadPicks>(
+    teamLeads?.picks ?? {},
+  );
   const [isSaving, startSaving] = useTransition();
 
   const initialRef = useRef(initial);
   initialRef.current = initial;
+
+  const teamLeadsRef = useRef(teamLeads);
+  teamLeadsRef.current = teamLeads;
 
   useEffect(() => {
     if (!open) return;
 
     const current = initialRef.current;
     const seeded = toFormShape(current.dates);
+
+    setTeamLeadPicks(teamLeadsRef.current?.picks ?? {});
 
     setName(current.name);
     setDescription(current.description);
@@ -237,6 +260,9 @@ export function EditEventDetailsDialog({
       dateRange,
       dayTimes,
       rehearsal,
+      // Always the whole set when the section showed — an empty list hands
+      // every team back to the service type.
+      teamLeads: teamLeads ? teamLeadPicksInput(teamLeadPicks) : undefined,
     });
 
     if (!parsed.success) {
@@ -659,6 +685,15 @@ export function EditEventDetailsDialog({
               )}
             </div>
           </div>
+
+          {teamLeads && (
+            <EventTeamLeadsField
+              choices={teamLeads.choices}
+              value={teamLeadPicks}
+              onChange={setTeamLeadPicks}
+              disabled={isSaving}
+            />
+          )}
         </div>
 
         <DialogFooter className="gap-2 sm:gap-0">

@@ -28,6 +28,7 @@ import {
   inviteToEventSchema,
   editEventDetailsSchema,
   EditEventDetailsInput,
+  type EventTeamLeadsInput,
   RemoveEventRoleInput,
   removeEventRoleSchema
 } from "@/lib/validations/event";
@@ -54,6 +55,7 @@ import { sendEmailBatches } from "@/lib/email/send";
 import { assignmentPush } from "@/lib/push/notices";
 import { sendPushNotices } from "@/lib/push/send";
 import { notifyDeclineShortage } from "@/lib/notifications/declines";
+import { notifyEventCovers } from "@/lib/notifications/team-lead";
 import {
   clearEventNotifications,
   syncEventNotifications,
@@ -108,6 +110,52 @@ export type MemberAvailability = {
 };
 
 type ActionResponse = { success: true } | { success: false; error: string };
+
+/**
+ * The event's team picks worth keeping. Each has to be an admin or owner —
+ * a member can't send the invites they'd be asked for — and a pick of the
+ * team's default is dropped: the service type's own lead, or with no lead the
+ * event's creator, whom it falls to anyway. Those change nothing, and should
+ * follow Settings if the lead changes later.
+ *
+ * Null when somebody picked isn't an admin or owner. Not exported, so it
+ * isn't a server action anybody can call on its own.
+ */
+const resolveEventTeamLeads = async (
+  picks: EventTeamLeadsInput,
+  organizationId: string,
+  serviceTypeId: string,
+  creatorId: string | null,
+): Promise<EventTeamLeadsInput | null> => {
+  if (picks.length === 0) return [];
+
+  const [managers, leads] = await Promise.all([
+    prisma.membership.findMany({
+      where: {
+        organizationId,
+        userId: { in: picks.map((pick) => pick.userId) },
+        role: { not: OrgRole.MEMBER },
+      },
+      select: { userId: true },
+    }),
+    prisma.teamLead.findMany({
+      where: { serviceTypeId },
+      select: { category: true, userId: true },
+    }),
+  ]);
+
+  const managerIds = new Set(managers.map((manager) => manager.userId));
+
+  if (picks.some((pick) => !managerIds.has(pick.userId))) return null;
+
+  return picks.filter((pick) => {
+    const lead = leads.find((entry) => entry.category === pick.team);
+
+    return pick.userId !== (lead ? lead.userId : creatorId);
+  });
+};
+
+const TEAM_LEAD_PICK_ERROR = "Only an admin or owner can handle a team";
 
 export const checkMemberAvailability = async ({
   organizationId,
@@ -202,6 +250,7 @@ export async function createEvent(
       expiresAt,
       smartSchedulingEnabled: smartSchedulingRequested,
       rehearsal,
+      teamLeads,
     } = parsed.data;
 
     // The form sends all three blank when there is no rehearsal. The times
@@ -234,6 +283,16 @@ export async function createEvent(
     }
 
     if (!serviceType) return { success: false, error: "Invalid Service Type" };
+
+    // The caller is the creator, so a team with no lead falls to them.
+    const covers = await resolveEventTeamLeads(
+      teamLeads ?? [],
+      organizationId,
+      serviceTypeId,
+      id,
+    );
+
+    if (!covers) return { success: false, error: TEAM_LEAD_PICK_ERROR };
 
     // Off on Free rather than refused: the dashboard locks the switch there, and
     // an older phone build asking for it shouldn't cost anybody their event.
@@ -366,6 +425,17 @@ export async function createEvent(
         })),
       });
 
+      if (covers.length > 0) {
+        await tx.eventTeamLead.createMany({
+          data: covers.map((cover) => ({
+            eventId: event.id,
+            category: cover.team,
+            organizationId,
+            userId: cover.userId,
+          })),
+        });
+      }
+
       if (assignedUserIds.length > 0) {
         await tx.eventAssignment.createMany({
           data: Object.entries(roleAssignments).flatMap(([role, userIds]) =>
@@ -473,6 +543,21 @@ export async function createEvent(
     revalidatePath(`/dashboard/organizations/${organizationId}`);
 
     await syncEventNotifications(newEventId, touch);
+
+    // Anybody picked to handle a team on this event hears so once — unless
+    // they picked themselves.
+    const coversToTell = covers.filter((cover) => cover.userId !== id);
+
+    if (coversToTell.length > 0) {
+      after(() =>
+        notifyEventCovers({
+          organizationId,
+          eventId: newEventId,
+          covers: coversToTell,
+          assignedByName: `${users.firstName} ${users.lastName}`,
+        }),
+      );
+    }
 
     return { success: true };
 
@@ -705,10 +790,11 @@ export const declineEventInvitation = async (
     const eventName = assignment.event.name;
 
     /**
-     * Tells whoever owns this role that it is still open — its team lead,
-     * else whoever sent the invitation, else the event's creator — and copies
-     * in whoever follows it. Scheduled rather than awaited: the decline has
-     * committed and the volunteer is owed their answer now.
+     * Tells whoever owns this role that it is still open — whoever covers its
+     * team on this event, else the team's lead for the event's service type,
+     * else the event's creator — and copies in whoever follows it.
+     * Scheduled rather than awaited: the decline has committed and the
+     * volunteer is owed their answer now.
      */
     const notifyShortage = (reason: string) => {
       after(() =>
@@ -720,7 +806,7 @@ export const declineEventInvitation = async (
           createdById: assignment.event.createdById,
           dates: assignment.event.dates,
           role: assignment.role,
-          senderId: assignment.assignedById,
+          inviterId: assignment.assignedById,
           declinerName,
           reason,
         }),
@@ -2098,7 +2184,16 @@ export const editEventDetails = async (
 
       if (!parsed.success) return { success: false, error: parsed.error.message };
 
-      const { eventId, organizationId, name, dayTimes, location, description, rehearsal } = parsed.data;
+      const {
+        eventId,
+        organizationId,
+        name,
+        dayTimes,
+        location,
+        description,
+        rehearsal,
+        teamLeads,
+      } = parsed.data;
 
       // undefined means the caller never offered the field — the mobile PATCH
       // body doesn't carry it — so the stored rehearsal is left alone. All-blank
@@ -2137,6 +2232,9 @@ export const editEventDetails = async (
             dates: { select: { startTime: true, endTime: true } },
             rehearsalStart: true,
             rehearsalEnd: true,
+            createdById: true,
+            serviceTypeId: true,
+            teamLeads: { select: { category: true, userId: true } },
             assignments: {
               select: {
                 userId: true,
@@ -2154,6 +2252,21 @@ export const editEventDetails = async (
       if (membership.role === OrgRole.MEMBER) return { success: false, error: "Insufficient permissions" };
 
       if (!event) return { success: false, error: "Event doesn't exist" };
+
+      // undefined leaves this event's team picks as they are — an older phone
+      // build doesn't send them — and an empty list hands every team back to
+      // the service type.
+      const nextTeamLeads =
+        teamLeads === undefined
+          ? undefined
+          : await resolveEventTeamLeads(
+              teamLeads,
+              organizationId,
+              event.serviceTypeId,
+              event.createdById,
+            );
+
+      if (nextTeamLeads === null) return { success: false, error: TEAM_LEAD_PICK_ERROR };
 
       if (Object.keys(dayTimes).length === 0) {
         return { success: false, error: "An event needs at least one day" };
@@ -2229,6 +2342,21 @@ export const editEventDetails = async (
         await tx.eventDate.createMany({
           data: nextDates.map((date) => ({ eventId, ...date })),
         });
+
+        if (nextTeamLeads !== undefined) {
+          await tx.eventTeamLead.deleteMany({ where: { eventId } });
+
+          if (nextTeamLeads.length > 0) {
+            await tx.eventTeamLead.createMany({
+              data: nextTeamLeads.map((pick) => ({
+                eventId,
+                category: pick.team,
+                organizationId,
+                userId: pick.userId,
+              })),
+            });
+          }
+        }
       });
 
       touch(`event-${eventId}-org-${organizationId}-details`);
@@ -2359,9 +2487,30 @@ export const editEventDetails = async (
 
       // Editing an event rewrites its EventDate rows, and those are what decide
       // whether it is still live. Moving a service out of the past earns it a
-      // row; moving one into the past retires the rows it had. Nothing else
-      // here touches the roster, so this is the only reason to reconcile.
+      // row; moving one into the past retires the rows it had. A new team pick
+      // moves whose bell counts that team's open spots.
       await syncEventNotifications(eventId, touch);
+
+      // Only somebody newly picked for a team hears about it, and not when
+      // they picked themselves.
+      const newlyPicked = (nextTeamLeads ?? []).filter(
+        (pick) =>
+          pick.userId !== user.id &&
+          !event.teamLeads.some(
+            (previous) => previous.category === pick.team && previous.userId === pick.userId,
+          ),
+      );
+
+      if (newlyPicked.length > 0) {
+        after(() =>
+          notifyEventCovers({
+            organizationId,
+            eventId,
+            covers: newlyPicked,
+            assignedByName: `${user.firstName} ${user.lastName}`,
+          }),
+        );
+      }
 
       return { success: true };
 

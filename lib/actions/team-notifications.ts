@@ -9,21 +9,16 @@ import { syncOrganizationNotifications } from "@/lib/notifications/sync";
 import { notifyNewTeamLead } from "@/lib/notifications/team-lead";
 import { currentUser } from "@/lib/services/user";
 import {
-  eventWatchSchema,
   teamLeadSchema,
   teamWatcherSchema,
-  type EventWatchInput,
   type TeamLeadInput,
   type TeamWatcherInput,
 } from "@/lib/validations/team-notifications";
 
 /**
- * Who hears about each team's staffing alerts, and who is asked to act.
- *
- * Owners decide the organization's side of it: who leads each team, and who
- * else is copied in. Everything an admin can change here is about themselves
- * — their own heads-up, the events they watch — so nobody but an owner can
- * move somebody else's alerts.
+ * Who handles each team's open spots on each service type, and who else hears
+ * about them. Admins and owners manage it, as they manage the service types
+ * and events it applies to.
  *
  * How a caller expires cache tags: `updateTag` throws inside a Route Handler,
  * so the mobile routes pass `revalidateTag`. Not exported: a "use server"
@@ -33,7 +28,7 @@ type TagInvalidator = (tag: string) => void;
 
 type ActionResponse = { success: true } | { success: false; error: string };
 
-const OWNERS_ONLY = "Only an owner can change this. Please reach out to an owner.";
+const MANAGERS_ONLY = "Only admins and owners can change staffing alerts.";
 
 const isManager = (role: OrgRole) =>
   role === OrgRole.OWNER || role === OrgRole.ADMIN;
@@ -47,12 +42,18 @@ const roleIn = async (userId: string, organizationId: string) =>
     })
   )?.role ?? null;
 
+/** Whether a service type is one of the organization's live ones. */
+const liveServiceType = async (serviceTypeId: string, organizationId: string) =>
+  (await prisma.serviceType.count({
+    where: { id: serviceTypeId, organizationId, deletedAt: null },
+  })) > 0;
+
 /**
- * Makes somebody a team's lead, or clears it. Owners only.
+ * Makes somebody a team's lead for one service type, or clears it.
  *
- * Moves who owns every open role in the team, so the bell is reconciled for
- * the organization straight away; the new lead is told once, unless they are
- * the owner who just picked themselves.
+ * Moves who owns every open role in that team on that service type's events,
+ * so the bell is reconciled for the organization straight away; the new lead
+ * is told once, unless they picked themselves.
  */
 export const setTeamLead = async (
   input: TeamLeadInput,
@@ -67,21 +68,25 @@ export const setTeamLead = async (
 
     if (!parsed.success) return { success: false, error: "Invalid request" };
 
-    const { organizationId, team, userId } = parsed.data;
+    const { organizationId, serviceTypeId, team, userId } = parsed.data;
 
     const role = await roleIn(user.id, organizationId);
 
     if (!role) return { success: false, error: "Unable to find membership" };
 
-    if (role !== OrgRole.OWNER) return { success: false, error: OWNERS_ONLY };
+    if (!isManager(role)) return { success: false, error: MANAGERS_ONLY };
+
+    if (!(await liveServiceType(serviceTypeId, organizationId))) {
+      return { success: false, error: "Unable to find that service type" };
+    }
 
     const previous = await prisma.teamLead.findUnique({
-      where: { organizationId_category: { organizationId, category: team } },
+      where: { serviceTypeId_category: { serviceTypeId, category: team } },
       select: { userId: true },
     });
 
     if (userId === null) {
-      await prisma.teamLead.deleteMany({ where: { organizationId, category: team } });
+      await prisma.teamLead.deleteMany({ where: { serviceTypeId, category: team } });
     } else {
       const leadRole = await roleIn(userId, organizationId);
 
@@ -90,9 +95,9 @@ export const setTeamLead = async (
       }
 
       await prisma.teamLead.upsert({
-        where: { organizationId_category: { organizationId, category: team } },
+        where: { serviceTypeId_category: { serviceTypeId, category: team } },
         update: { userId },
-        create: { organizationId, category: team, userId },
+        create: { organizationId, serviceTypeId, category: team, userId },
       });
     }
 
@@ -106,6 +111,7 @@ export const setTeamLead = async (
       after(() =>
         notifyNewTeamLead({
           organizationId,
+          serviceTypeId,
           team,
           userId,
           assignedByName: `${user.firstName} ${user.lastName}`,
@@ -120,9 +126,9 @@ export const setTeamLead = async (
 };
 
 /**
- * Puts somebody on a team's "Also notify", or takes them off. An owner may
- * change anybody; an admin only themselves. Only admins and owners can be on
- * it, since a member can't act on what it says.
+ * Puts somebody on a team's "Also notify" for one service type, or takes them
+ * off. Only admins and owners can be on it, since a member can't act on what
+ * it says.
  *
  * The bell is left alone: being copied in never earns a bell row.
  */
@@ -139,16 +145,16 @@ export const setTeamWatcher = async (
 
     if (!parsed.success) return { success: false, error: "Invalid request" };
 
-    const { organizationId, team, userId, watching } = parsed.data;
+    const { organizationId, serviceTypeId, team, userId, watching } = parsed.data;
 
     const role = await roleIn(user.id, organizationId);
 
     if (!role) return { success: false, error: "Unable to find membership" };
 
-    if (!isManager(role)) return { success: false, error: "Unauthorized" };
+    if (!isManager(role)) return { success: false, error: MANAGERS_ONLY };
 
-    if (userId !== user.id && role !== OrgRole.OWNER) {
-      return { success: false, error: OWNERS_ONLY };
+    if (!(await liveServiceType(serviceTypeId, organizationId))) {
+      return { success: false, error: "Unable to find that service type" };
     }
 
     if (watching) {
@@ -160,14 +166,14 @@ export const setTeamWatcher = async (
 
       await prisma.teamWatcher.upsert({
         where: {
-          organizationId_category_userId: { organizationId, category: team, userId },
+          serviceTypeId_category_userId: { serviceTypeId, category: team, userId },
         },
         update: {},
-        create: { organizationId, category: team, userId },
+        create: { organizationId, serviceTypeId, category: team, userId },
       });
     } else {
       await prisma.teamWatcher.deleteMany({
-        where: { organizationId, category: team, userId },
+        where: { serviceTypeId, category: team, userId },
       });
     }
 
@@ -176,55 +182,5 @@ export const setTeamWatcher = async (
     return { success: true };
   } catch {
     return { success: false, error: "Unable to update notifications, please try again" };
-  }
-};
-
-/**
- * The caller watching one event, or not: a heads-up about every staffing
- * alert on it, whichever team it's in. Admins and owners, for themselves.
- */
-export const setEventWatch = async (
-  input: EventWatchInput,
-  touch: TagInvalidator = updateTag,
-): Promise<ActionResponse> => {
-  try {
-    const user = await currentUser();
-
-    if (!user) return { success: false, error: "Unauthorized" };
-
-    const parsed = eventWatchSchema.safeParse(input);
-
-    if (!parsed.success) return { success: false, error: "Invalid request" };
-
-    const { organizationId, eventId, watching } = parsed.data;
-
-    const role = await roleIn(user.id, organizationId);
-
-    if (!role) return { success: false, error: "Unable to find membership" };
-
-    if (!isManager(role)) return { success: false, error: "Unauthorized" };
-
-    const event = await prisma.event.findFirst({
-      where: { id: eventId, organizationId },
-      select: { id: true },
-    });
-
-    if (!event) return { success: false, error: "Unable to locate event" };
-
-    if (watching) {
-      await prisma.eventWatcher.upsert({
-        where: { eventId_userId: { eventId, userId: user.id } },
-        update: {},
-        create: { eventId, organizationId, userId: user.id },
-      });
-    } else {
-      await prisma.eventWatcher.deleteMany({ where: { eventId, userId: user.id } });
-    }
-
-    touch(`event-${eventId}-watch-${user.id}`);
-
-    return { success: true };
-  } catch {
-    return { success: false, error: "Unable to update this event, please try again" };
   }
 };

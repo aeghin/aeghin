@@ -25,12 +25,17 @@ import {
   getUserMembershipRole,
 } from "@/lib/services/organization";
 import {
+  eventTeamLeads,
   getTeamNotificationSettings,
-  isWatchingEvent,
 } from "@/lib/services/team-notifications";
 import { getOrgPlan } from "@/lib/billing/entitlements";
 import { getEmailAllowance } from "@/lib/billing/limits";
 import { PLAN_LIMITS } from "@/lib/config/plans";
+import { TEAM_ORDER, teamsOfRoles } from "@/lib/config/roles";
+import type {
+  TeamLeadChoices,
+  TeamLeadPicks,
+} from "@/components/dashboard/events/event-team-leads-field";
 import { InvitationStatus, OrgRole, VolunteerRole } from "@/generated/prisma/enums";
 
 export default async function EventDetailPage({
@@ -94,19 +99,72 @@ export default async function EventDetailPage({
 
   const smartSchedulingAvailable = plan !== null && PLAN_LIMITS[plan].smartScheduling;
 
-  // Managers only, like the invite pickers the leads are named in.
-  const [teamSettings, watching] = canManage
-    ? await Promise.all([
-        getTeamNotificationSettings(orgId),
-        isWatchingEvent(eventId, user.id),
-      ])
-    : [null, false];
+  // Managers only, like the invite pickers and the edit dialog that use it.
+  const teamSettings = canManage ? await getTeamNotificationSettings(orgId) : null;
 
-  const teamLeads = Object.fromEntries(
-    (teamSettings?.teams ?? []).flatMap(({ team, lead }) =>
-      lead ? [[team, lead]] : [],
-    ),
-  );
+  // Who handles each team here: whoever covers it on this event, else the
+  // service type's lead.
+  const teamLeads = teamSettings
+    ? eventTeamLeads(teamSettings, event.serviceTypeId, event.teamLeads)
+    : {};
+
+  let editTeamLeads: { choices: TeamLeadChoices; picks: TeamLeadPicks } | undefined;
+
+  if (teamSettings) {
+    const managerIds = new Set(teamSettings.managers.map((manager) => manager.userId));
+
+    // A pick who has since been made a member is already skipped by the
+    // alerts, so the dialog doesn't offer it back either.
+    const picks: TeamLeadPicks = Object.fromEntries(
+      event.teamLeads
+        .filter((pick) => managerIds.has(pick.userId))
+        .map((pick) => [pick.category, pick.userId]),
+    );
+
+    const serviceTypeTeams =
+      teamSettings.serviceTypes.find(
+        (serviceType) => serviceType.serviceTypeId === event.serviceTypeId,
+      )?.teams ?? [];
+
+    const rosterTeams = teamsOfRoles([
+      ...event.rolesNeeded,
+      ...event.assignments.map((assignment) => assignment.role),
+    ]);
+
+    const creator = teamSettings.managers.find(
+      (manager) => manager.userId === event.createdById,
+    );
+
+    editTeamLeads = {
+      picks,
+      choices: {
+        teams: TEAM_ORDER.filter(
+          (team) => rosterTeams.includes(team) || picks[team] !== undefined,
+        ),
+        defaults: Object.fromEntries(
+          serviceTypeTeams.flatMap(({ team, lead }) => (lead ? [[team, lead]] : [])),
+        ),
+        managers: teamSettings.managers.map(({ userId, firstName, lastName }) => ({
+          userId,
+          firstName,
+          lastName,
+        })),
+        viewerId: user.id,
+        // With no lead, a team falls to the event's creator while they can
+        // still act on it, else to the owners.
+        fallback: creator
+          ? creator.userId === user.id
+            ? { userId: creator.userId, name: "You", short: "you" }
+            : {
+                userId: creator.userId,
+                name: `${creator.firstName} ${creator.lastName}`,
+                short: creator.firstName,
+              }
+          : { userId: null, name: "The owners", short: "the owners" },
+        serviceTypeName: event.serviceType.name,
+      },
+    };
+  }
 
   return (
     <main className="mx-auto max-w-screen-2xl px-4 py-6 sm:px-6 sm:py-8">
@@ -123,6 +181,7 @@ export default async function EventDetailPage({
             event={event}
             serviceType={event.serviceType}
             canManage={canManage}
+            teamLeads={editTeamLeads}
           />
         </AnimatedSection>
 
@@ -156,7 +215,6 @@ export default async function EventDetailPage({
               emailAllowance={emailAllowance}
               smartSchedulingAvailable={smartSchedulingAvailable}
               canUpgrade={membership.role === OrgRole.OWNER}
-              watching={watching}
               teamLeads={teamLeads}
             />
             <EventChatPanel

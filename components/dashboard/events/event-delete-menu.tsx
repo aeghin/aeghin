@@ -13,6 +13,7 @@ import {
   type EditableAssignee,
   type EditableEventDates,
 } from "./edit-event-details-dialog";
+import type { TeamLeadChoices, TeamLeadPicks } from "./event-team-leads-field";
 
 
 import {
@@ -45,6 +46,11 @@ interface EventDeleteMenuProps {
     rehearsalEnd: Date | null;
     assignees: EditableAssignee[];
   };
+  /** Who handles each team on this event, for the edit dialog. */
+  teamLeads?: {
+    choices: TeamLeadChoices;
+    picks: TeamLeadPicks;
+  };
 };
 
 export const EventDeleteMenu = ({
@@ -53,6 +59,7 @@ export const EventDeleteMenu = ({
   eventName,
   serviceColor,
   eventDetails,
+  teamLeads,
 }: EventDeleteMenuProps) => {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
@@ -123,6 +130,7 @@ export const EventDeleteMenu = ({
           rehearsalStart: eventDetails.rehearsalStart,
           rehearsalEnd: eventDetails.rehearsalEnd,
         }}
+        teamLeads={teamLeads}
       />
 
       <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>

@@ -19,21 +19,32 @@ export type TeamSettings = {
   watchers: TeamPerson[];
 };
 
-export type TeamNotificationSettings = {
+/** One service type's four teams. */
+export type ServiceTypeTeams = {
+  serviceTypeId: string;
+  name: string;
+  color: string;
   teams: TeamSettings[];
+};
+
+export type TeamNotificationSettings = {
+  /** Live service types, oldest first. */
+  serviceTypes: ServiceTypeTeams[];
   /** Admins and owners, oldest first: everybody who can lead or be copied in. */
   managers: (TeamPerson & { role: OrgRole })[];
 };
 
 /**
- * Who leads each team and who else hears about it, for the settings screens.
+ * Who leads each team on each service type, and who else hears about it, for
+ * the settings screens and the event forms that prefill from them.
  *
  * Read as the alerts read it (lib/notifications/directory.ts): a lead or a
  * watcher who has since been demoted to member doesn't count, so they drop
  * out here too. Their rows stay, and a re-promotion brings them back.
  *
- * Tagged with the member list as well, because a promotion or demotion
- * changes who counts without touching either table.
+ * Tagged with the member list and the service types as well, because a
+ * promotion, a demotion or a new service type changes what this shows
+ * without touching either table.
  */
 export const getTeamNotificationSettings = async (
   organizationId: string,
@@ -43,8 +54,9 @@ export const getTeamNotificationSettings = async (
   cacheLife("hours");
   cacheTag(`org-${organizationId}-team-notifications`);
   cacheTag(`org-${organizationId}-members-list`);
+  cacheTag(`org-${organizationId}-st`);
 
-  const [memberships, leads, watchers] = await Promise.all([
+  const [memberships, serviceTypes, leads, watchers] = await Promise.all([
     prisma.membership.findMany({
       where: { organizationId, role: { not: OrgRole.MEMBER } },
       orderBy: [{ createdAt: "asc" }, { id: "asc" }],
@@ -53,14 +65,19 @@ export const getTeamNotificationSettings = async (
         user: { select: { id: true, firstName: true, lastName: true } },
       },
     }),
+    prisma.serviceType.findMany({
+      where: { organizationId, deletedAt: null },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      select: { id: true, name: true, color: true },
+    }),
     prisma.teamLead.findMany({
-      where: { organizationId },
-      select: { category: true, userId: true },
+      where: { organizationId, serviceType: { deletedAt: null } },
+      select: { serviceTypeId: true, category: true, userId: true },
     }),
     prisma.teamWatcher.findMany({
-      where: { organizationId },
+      where: { organizationId, serviceType: { deletedAt: null } },
       orderBy: { createdAt: "asc" },
-      select: { category: true, userId: true },
+      select: { serviceTypeId: true, category: true, userId: true },
     }),
   ]);
 
@@ -83,36 +100,86 @@ export const getTeamNotificationSettings = async (
 
   return {
     managers,
-    teams: TEAM_ORDER.map((team) => {
-      const leadId = leads.find((row) => row.category === team)?.userId ?? null;
-      const lead = leadId ? person(leadId) : null;
+    serviceTypes: serviceTypes.map((serviceType) => ({
+      serviceTypeId: serviceType.id,
+      name: serviceType.name,
+      color: serviceType.color,
+      teams: TEAM_ORDER.map((team) => {
+        const leadId =
+          leads.find(
+            (row) => row.serviceTypeId === serviceType.id && row.category === team,
+          )?.userId ?? null;
 
-      return {
-        team,
-        lead,
-        watchers: watchers
-          .filter((row) => row.category === team && row.userId !== lead?.userId)
-          .map((row) => person(row.userId))
-          .filter((entry): entry is TeamPerson => entry !== null),
-      };
-    }),
+        const lead = leadId ? person(leadId) : null;
+
+        return {
+          team,
+          lead,
+          watchers: watchers
+            .filter(
+              (row) =>
+                row.serviceTypeId === serviceType.id &&
+                row.category === team &&
+                row.userId !== lead?.userId,
+            )
+            .map((row) => person(row.userId))
+            .filter((entry): entry is TeamPerson => entry !== null),
+        };
+      }),
+    })),
   };
 };
 
-/** Whether one person is watching one event. */
-export const isWatchingEvent = async (
-  eventId: string,
-  userId: string,
-): Promise<boolean> => {
-  "use cache";
+/** Who handles one team on one event. */
+export type EventTeamLead = {
+  person: TeamPerson;
+  /** Handling it for this event only, in place of the service type's lead. */
+  cover: boolean;
+};
 
-  cacheLife("hours");
-  cacheTag(`event-${eventId}-watch-${userId}`);
+/**
+ * Who handles each team on one event, the way the alerts decide it: whoever
+ * covers it for this event, else the service type's lead. A team with
+ * neither is left out — its open spots go to the event's creator.
+ *
+ * A cover or a lead who is no longer an admin or owner is skipped, as the
+ * alerts skip them.
+ */
+export const eventTeamLeads = (
+  settings: TeamNotificationSettings,
+  serviceTypeId: string,
+  covers: { category: Team; userId: string }[],
+): Partial<Record<Team, EventTeamLead>> => {
+  const managers = new Map(
+    settings.managers.map((manager) => [
+      manager.userId,
+      {
+        userId: manager.userId,
+        firstName: manager.firstName,
+        lastName: manager.lastName,
+      },
+    ]),
+  );
 
-  const row = await prisma.eventWatcher.findUnique({
-    where: { eventId_userId: { eventId, userId } },
-    select: { id: true },
-  });
+  const serviceType = settings.serviceTypes.find(
+    (entry) => entry.serviceTypeId === serviceTypeId,
+  );
 
-  return row !== null;
+  const result: Partial<Record<Team, EventTeamLead>> = {};
+
+  for (const team of TEAM_ORDER) {
+    const coverId = covers.find((cover) => cover.category === team)?.userId;
+    const cover = coverId ? managers.get(coverId) : undefined;
+
+    if (cover) {
+      result[team] = { person: cover, cover: true };
+      continue;
+    }
+
+    const lead = serviceType?.teams.find((entry) => entry.team === team)?.lead;
+
+    if (lead) result[team] = { person: lead, cover: false };
+  }
+
+  return result;
 };

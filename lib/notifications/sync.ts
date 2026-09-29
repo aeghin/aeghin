@@ -11,6 +11,7 @@ import EventFullyStaffedEmail from "@/components/email/event-fully-staffed-templ
 import { formatEventShort, formatEventWhen } from "@/lib/email/event-when";
 import { organizationSender } from "@/lib/email/organization";
 import { sendEmailBatches } from "@/lib/email/send";
+import { teamOfRole } from "@/lib/config/roles";
 import {
   eventAudience,
   eventOwners,
@@ -78,8 +79,8 @@ type StaffedEvent = {
 
 /**
  * The one email and push a fill-up sends: to whoever owns the event — its
- * creator, else the owners — and to anybody watching it. Team leads aren't
- * told; their bell rows simply clear as their roles fill.
+ * creator, else the owners. Team leads aren't told; their bell rows simply
+ * clear as their roles fill.
  *
  * Best effort, like the rest of this file: the claim on `fullyStaffedAt` has
  * already committed, so a send that fails is logged and not retried. Retrying
@@ -88,17 +89,14 @@ type StaffedEvent = {
  */
 const announceFullyStaffed = async (eventId: string, event: StaffedEvent) => {
   const directory = await loadStaffingDirectory(event.organizationId, {
-    eventIds: [eventId],
+    watchers: false,
   });
 
   if (!directory) return;
 
-  const audience = eventAudience(directory, {
-    eventId,
-    createdById: event.createdById,
-  });
+  const audience = eventAudience(directory, { createdById: event.createdById });
 
-  const recipients = [...audience.owners, ...audience.copied];
+  const recipients = audience.owners;
 
   if (recipients.length === 0) return;
 
@@ -179,18 +177,18 @@ export const syncEventNotifications = async (
         organizationId: true,
         rolesNeeded: true,
         createdById: true,
+        serviceTypeId: true,
         fullyStaffedAt: true,
         dates: { select: { startTime: true, endTime: true } },
         organization: { select: { name: true, logoUrl: true } },
+        // Who covers a team on this event only, in place of its lead.
+        teamLeads: { select: { category: true, userId: true } },
         assignments: {
-          // Newest last, so the last row seen for a role is its latest invite.
-          orderBy: { updatedAt: "asc" },
           select: {
             userId: true,
             role: true,
             status: true,
             expiresAt: true,
-            assignedById: true,
           },
         },
       },
@@ -266,7 +264,8 @@ export const syncEventNotifications = async (
     // emails do (lib/notifications/audience.ts), so the bell and the inbox
     // can't disagree about whose problem a hole is. Missing people carries a
     // count — each owner's count is the open roles that are theirs, so a band
-    // lead sees the band's holes and the creator sees the rest. Fully staffed
+    // lead (or whoever covers the band on this event) sees the band's holes
+    // and the creator sees the rest. Fully staffed
     // carries nothing and goes to the event's owner. In between — every role
     // taken but somebody still deciding — is no row at all: a pending invite
     // is not an admin's problem yet, and the lapse sweep and the cron's
@@ -286,23 +285,18 @@ export const syncEventNotifications = async (
       }
 
       if (directory && openRoles.length > 0) {
-        // Who sent each role's latest invitation. An open role's invitations
-        // are all dead by definition, but the last of them is whose the hole
-        // was — the same sender the decline or the lapse mail went to.
-        const senders = new Map(
-          event.assignments.map((assignment) => [
-            assignment.role,
-            assignment.assignedById,
-          ]),
+        const covers = new Map(
+          event.teamLeads.map((cover) => [cover.category, cover.userId]),
         );
 
         const counts = new Map<string, number>();
 
         for (const role of openRoles) {
           const { people } = roleOwners(directory, {
-            role,
-            senderId: senders.get(role) ?? null,
+            serviceTypeId: event.serviceTypeId,
             createdById: event.createdById,
+            role,
+            coverId: covers.get(teamOfRole(role)) ?? null,
           });
 
           for (const { userId } of people) {

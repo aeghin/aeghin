@@ -158,9 +158,9 @@ model Membership {
   // Staffing alert routing. Hung off the membership rather than the user, so
   // leaving, being removed or deleting the account clears all three and the
   // next person in line picks the alerts up.
-  teamLeads    TeamLead[]
-  teamWatches  TeamWatcher[]
-  eventWatches EventWatcher[]
+  teamLeads      TeamLead[]
+  teamWatches    TeamWatcher[]
+  eventTeamLeads EventTeamLead[]
 
   @@unique([userId, organizationId])
   @@index([organizationId])
@@ -199,6 +199,11 @@ model ServiceType {
 
   events Event[]
   eventTemplates EventTemplate[]
+
+  // Who handles each team's open spots on this service type's events, and who
+  // else hears about them. Set in Settings → Staffing Alerts.
+  teamLeads    TeamLead[]
+  teamWatchers TeamWatcher[]
 
   organizationId String
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -305,7 +310,7 @@ model Event {
   setlistSongs SetlistSong[]
   messages Message[]
   activityLogs ActivityLog[]
-  watchers EventWatcher[]
+  teamLeads EventTeamLead[]
 
 
   createdById String?
@@ -691,16 +696,22 @@ enum RoleCategory {
   HOSPITALITY
 }
 
-/// Who owns one team's staffing alerts in one organization: the person asked
-/// to act when one of its roles opens up. One per team, set by an owner.
+/// Who handles one team's open spots on one service type's events: the person
+/// asked to act when one of its roles opens up. One per team per service type,
+/// so a Youth service and a Worship service at the same hour can each have
+/// their own band lead. An event can hand the team to somebody else for that
+/// event alone — see EventTeamLead.
 ///
 /// Only honoured while they are an admin or owner. A demotion leaves the row
-/// but skips it, so the alert falls to the next person in line — the invite's
-/// sender, then the event's creator, then the owners — and a re-promotion
-/// picks it back up without anybody setting it again.
+/// but skips it, so the alert falls to the next person in line — the event's
+/// creator, then the owners — and a re-promotion picks it back up without
+/// anybody setting it again.
 model TeamLead {
   id       String       @id @default(uuid())
   category RoleCategory
+
+  serviceTypeId String
+  serviceType   ServiceType @relation(fields: [serviceTypeId], references: [id], onDelete: Cascade)
 
   organizationId String
   userId         String
@@ -709,16 +720,20 @@ model TeamLead {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([organizationId, category])
+  @@unique([serviceTypeId, category])
+  @@index([organizationId])
   @@index([userId, organizationId])
 }
 
-/// "Also notify": somebody who gets a heads-up about one team's staffing
-/// alerts without being asked to act on them. Owners add anybody; an admin
-/// adds or removes only themselves. Honoured on the same terms as a lead.
+/// "Also notify": somebody who gets a heads-up about one team's open spots on
+/// one service type's events, without being asked to act on them. Honoured on
+/// the same terms as a lead.
 model TeamWatcher {
   id       String       @id @default(uuid())
   category RoleCategory
+
+  serviceTypeId String
+  serviceType   ServiceType @relation(fields: [serviceTypeId], references: [id], onDelete: Cascade)
 
   organizationId String
   userId         String
@@ -726,14 +741,21 @@ model TeamWatcher {
 
   createdAt DateTime @default(now())
 
-  @@unique([organizationId, category, userId])
+  @@unique([serviceTypeId, category, userId])
+  @@index([organizationId])
   @@index([userId, organizationId])
 }
 
-/// Somebody watching one event: a heads-up about every staffing alert on it,
-/// whichever team it belongs to. Each admin or owner watches for themselves.
-model EventWatcher {
-  id String @id @default(uuid())
+/// Somebody handling one team on one event only, in place of the service
+/// type's lead — the week the band lead is away. Set on the create and edit
+/// event forms. Nothing to switch back: the next event reads the service
+/// type's lead again.
+///
+/// Honoured on the same terms as a lead: a cover who is demoted or leaves is
+/// skipped, and the spot falls back to the service type's lead.
+model EventTeamLead {
+  id       String       @id @default(uuid())
+  category RoleCategory
 
   eventId String
   event   Event  @relation(fields: [eventId], references: [id], onDelete: Cascade)
@@ -744,6 +766,6 @@ model EventWatcher {
 
   createdAt DateTime @default(now())
 
-  @@unique([eventId, userId])
+  @@unique([eventId, category])
   @@index([userId, organizationId])
 }

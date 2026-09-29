@@ -85,8 +85,8 @@ export async function forgetOldPushClaims(now: Date): Promise<number> {
  *
  * Same gate and same people as the email: Smart Scheduling plans only,
  * nothing about a service made after the check's moment had passed, and the
- * event's owner asked to act while its watchers get a heads-up. A manager
- * whose phone hasn't reported a zone gets the email alone.
+ * event's owner — its creator, else the owners. A manager whose phone hasn't
+ * reported a zone gets the email alone.
  *
  * Returns how many were sent.
  */
@@ -133,9 +133,7 @@ export async function sendLastCallPushes(now: Date): Promise<number> {
 
     if (events.length === 0) return sent;
 
-    const directoryFor = directoriesFor(
-      events.map((event) => ({ organizationId: event.organizationId, eventId: event.id })),
-    );
+    const directoryFor = directoriesFor();
 
     const recipients = await Promise.all(
       events.map(async (event) => {
@@ -144,28 +142,18 @@ export async function sendLastCallPushes(now: Date): Promise<number> {
         if (!directory) return [];
 
         const audience = eventAudience(directory, {
-          eventId: event.id,
           createdById: event.createdById,
         });
 
-        return [
-          ...audience.owners.map(({ person }) => ({ email: person.email, headsUp: null })),
-          ...audience.copied.map(({ person }) => ({
-            email: person.email,
-            headsUp: audience.headsUp,
-          })),
-        ];
+        return audience.owners.map(({ person }) => person.email);
       }),
     );
 
-    const zones = await zonesByEmail(
-      recipients.flat().map((recipient) => recipient.email),
-    );
+    const zones = await zonesByEmail(recipients.flat());
 
     const planned: {
       key: string;
       email: string;
-      headsUp: string | null;
       event: (typeof events)[number];
     }[] = [];
 
@@ -174,7 +162,7 @@ export async function sendLastCallPushes(now: Date): Promise<number> {
 
       const firstStart = firstStartOf(event.dates);
 
-      for (const { email, headsUp } of recipients[index]) {
+      for (const email of recipients[index]) {
         const timeZone = zones.get(email);
 
         if (!timeZone) continue;
@@ -193,7 +181,6 @@ export async function sendLastCallPushes(now: Date): Promise<number> {
               planned.push({
                 key: `last-call:${event.id}:${days}:${firstStart.getTime()}:${email}`,
                 email,
-                headsUp,
                 event,
               });
             }
@@ -206,7 +193,7 @@ export async function sendLastCallPushes(now: Date): Promise<number> {
 
     const won = await claim(planned.map((item) => item.key));
 
-    const notices: PushNotice[] = planned.flatMap(({ key, email, headsUp, event }) => {
+    const notices: PushNotice[] = planned.flatMap(({ key, email, event }) => {
       if (!won.has(key)) return [];
 
       const { fullyStaffed, unfilledRoles, waitingOn } = rosterGaps(event, now);
@@ -224,7 +211,7 @@ export async function sendLastCallPushes(now: Date): Promise<number> {
           email,
           title: `Not fully staffed yet: ${event.name}`,
           subtitle: event.organization.name,
-          body: [formatEventShort(event.dates), missing.join(" · "), headsUp]
+          body: [formatEventShort(event.dates), missing.join(" · ")]
             .filter(Boolean)
             .join("\n"),
           data: {

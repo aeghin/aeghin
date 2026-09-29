@@ -1,5 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { EventDeleteMenu } from "./event-delete-menu";
+import type { TeamLeadChoices, TeamLeadPicks } from "./event-team-leads-field";
 import { cn } from "@/lib/utils";
 import { colorClasses } from "@/lib/config/service-types-config";
 import { InvitationStatus } from "@/generated/prisma/enums";
@@ -40,12 +41,18 @@ interface EventHeaderProps {
     color: string;
   }
   canManage: boolean
+  /** Who handles each team on this event, for the edit dialog — managers only. */
+  teamLeads?: {
+    choices: TeamLeadChoices
+    picks: TeamLeadPicks
+  }
 }
 
 export function EventHeader({
   event,
   serviceType,
   canManage,
+  teamLeads,
 }: EventHeaderProps) {
   const serviceColors = colorClasses[serviceType.color];
 
@@ -101,6 +108,7 @@ export function EventHeader({
               lastName: a.user.lastName,
             })),
         }}
+        teamLeads={teamLeads}
         />
       }
 

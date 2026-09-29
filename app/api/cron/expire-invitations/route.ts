@@ -251,12 +251,7 @@ const sendLastCalls = async (now: Date): Promise<NotifyResult> => {
         take: LAST_CALL_LIMIT,
     });
 
-    const directoryFor = directoriesFor(
-        events.map((event) => ({
-            organizationId: event.organizationId,
-            eventId: event.id,
-        })),
-    );
+    const directoryFor = directoriesFor();
 
     const perEvent = await Promise.all(
         events.map(async (event) => {
@@ -300,31 +295,23 @@ const sendLastCalls = async (now: Date): Promise<NotifyResult> => {
             if (fullyStaffed) return [];
 
             // The event's owner — its creator, else the owners — is asked to
-            // act; anybody watching it gets a heads-up. Team leads have
-            // already heard about each of their roles as it opened up, so this
-            // is the backstop for them, not another alert.
+            // act. Team leads have already heard about each of their roles as
+            // it opened up, so this is the backstop for them, not another
+            // alert.
             const directory = await directoryFor(event.organizationId);
 
             if (!directory) return [];
 
             const audience = eventAudience(directory, {
-                eventId: event.id,
                 createdById: event.createdById,
             });
 
             const when = formatEventWhen(event.dates);
-            const subject = `Not fully staffed yet: ${event.name}`;
 
-            return [
-                ...audience.owners.map((addressee) => ({ ...addressee, headsUp: null })),
-                ...audience.copied.map((addressee) => ({
-                    ...addressee,
-                    headsUp: audience.headsUp,
-                })),
-            ].map(({ person, reason, headsUp }) => ({
+            return audience.owners.map(({ person, reason }) => ({
                 from: organizationSender(event.organization.name),
                 to: person.email,
-                subject: headsUp ? `Heads-up: ${subject}` : subject,
+                subject: `Not fully staffed yet: ${event.name}`,
                 react: EventLastCallEmail({
                     recipientName: person.firstName,
                     eventName: event.name,
@@ -335,7 +322,6 @@ const sendLastCalls = async (now: Date): Promise<NotifyResult> => {
                     eventDate: when?.date ?? null,
                     eventTime: when?.time ?? null,
                     viewLink: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/organizations/${event.organizationId}/events/${event.id}`,
-                    headsUp,
                     footer: reasonLine(reason, event.organization.name),
                 }),
             }));

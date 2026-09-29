@@ -15,9 +15,10 @@ import {
 } from "@/lib/mobile/route";
 
 /**
- * Wire contract for the staffing alerts screen. Mirrors
+ * Wire contract for the staffing alerts screen, and for the create and edit
+ * event screens that prefill "Who handles open spots" from it. Mirrors
  * `TeamNotificationSettings` in the Expo app (`src/types/team-notifications.ts`)
- * — keep the two in sync, and treat it as additive-only.
+ * — keep the two in sync.
  */
 type TeamPerson = {
     userId: string;
@@ -31,12 +32,20 @@ type TeamSettings = {
     watchers: TeamPerson[];
 };
 
-type TeamNotificationSettings = {
+type ServiceTypeTeams = {
+    serviceTypeId: string;
+    name: string;
+    color: string;
     teams: TeamSettings[];
+};
+
+type TeamNotificationSettings = {
+    /** Live service types, oldest first, each with its four teams. */
+    serviceTypes: ServiceTypeTeams[];
     /** Admins and owners: everybody who can lead a team or be copied in. */
     managers: (TeamPerson & { role: OrgRole })[];
-    /** Whose own switch this is, and whether they may change anybody else's. */
-    viewer: { userId: string; isOwner: boolean };
+    /** Who is asking, so the screens can say "you". */
+    viewer: { userId: string };
 };
 
 type Params = { orgId: string };
@@ -48,9 +57,10 @@ const isTeam = (value: unknown): value is RoleCategory =>
 /**
  * GET /api/mobile/v1/organizations/[orgId]/team-notifications
  *
- * Who leads each team and who else gets a heads-up — the same cached read the
- * dashboard's Settings tab renders. Owners and admins only: members are never
- * asked to fill a role, so there is nothing here for them.
+ * Who leads each team on each service type and who else gets a heads-up — the
+ * same cached read the dashboard's Settings tab renders. Owners and admins
+ * only: members are never asked to fill a role, so there is nothing here for
+ * them.
  */
 export const GET = route<Params>("GET /team-notifications", async (_req, { params }) => {
     const clerkId = await clerkIdOf();
@@ -68,22 +78,19 @@ export const GET = route<Params>("GET /team-notifications", async (_req, { param
 
     return json<TeamNotificationSettings>({
         ...settings,
-        viewer: {
-            userId: membership.userId,
-            isOwner: membership.role === OrgRole.OWNER,
-        },
+        viewer: { userId: membership.userId },
     });
 });
 
 /**
  * PATCH /api/mobile/v1/organizations/[orgId]/team-notifications
  *
- * Two shapes, told apart by what the body carries:
+ * Two shapes, told apart by what the body carries, both for one team on one
+ * service type:
  *
- *   { team, lead: userId | null }        — who leads a team. Owners only.
- *   { team, userId, watching: boolean }  — somebody on or off the team's
- *                                           "Also notify". An owner for
- *                                           anybody, an admin for themselves.
+ *   { serviceTypeId, team, lead: userId | null }        — who leads it.
+ *   { serviceTypeId, team, userId, watching: boolean }  — somebody on or off
+ *                                                          its "Also notify".
  *
  * The dashboard's own actions do the work, so the permission rules and the
  * refusals are worded the same on both.
@@ -100,7 +107,9 @@ export const PATCH = route<Params>("PATCH /team-notifications", async (req, { pa
 
     const body = await readJson(req);
 
-    if (!isObject(body) || !isTeam(body.team)) return fail(400, "Expected a team.");
+    if (!isObject(body) || typeof body.serviceTypeId !== "string" || !isTeam(body.team)) {
+        return fail(400, "Expected a service type and a team.");
+    }
 
     if ("lead" in body) {
         if (body.lead !== null && typeof body.lead !== "string") {
@@ -108,7 +117,12 @@ export const PATCH = route<Params>("PATCH /team-notifications", async (req, { pa
         }
 
         const result = await setTeamLead(
-            { organizationId: orgId, team: body.team, userId: body.lead },
+            {
+                organizationId: orgId,
+                serviceTypeId: body.serviceTypeId,
+                team: body.team,
+                userId: body.lead,
+            },
             expireTag,
         );
 
@@ -119,6 +133,7 @@ export const PATCH = route<Params>("PATCH /team-notifications", async (req, { pa
         const result = await setTeamWatcher(
             {
                 organizationId: orgId,
+                serviceTypeId: body.serviceTypeId,
                 team: body.team,
                 userId: body.userId,
                 watching: body.watching,
@@ -129,5 +144,8 @@ export const PATCH = route<Params>("PATCH /team-notifications", async (req, { pa
         return result.success ? json({ success: true }) : actionFailure(result.error);
     }
 
-    return fail(400, "Expected { team, lead } or { team, userId, watching }.");
+    return fail(
+        400,
+        "Expected { serviceTypeId, team, lead } or { serviceTypeId, team, userId, watching }.",
+    );
 });

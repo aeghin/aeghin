@@ -1,15 +1,13 @@
 import "server-only";
 
 import prisma from "@/lib/prisma";
-import { OrgRole, type RoleCategory as Team } from "@/generated/prisma/enums";
-import type { StaffingDirectory } from "@/lib/notifications/audience";
+import { OrgRole } from "@/generated/prisma/enums";
+import { teamKey, type StaffingDirectory } from "@/lib/notifications/audience";
 
 type LoadOptions = {
-  /** Events whose watchers to read. None by default. */
-  eventIds?: string[];
   /**
-   * Whether to read anybody copied in at all. The bell only counts what each
-   * person owns, so it skips both watcher tables.
+   * Whether to read the "Also notify" lists at all. The bell only counts what
+   * each person owns, so it skips them.
    */
   watchers?: boolean;
 };
@@ -18,12 +16,15 @@ type LoadOptions = {
  * Everybody who can own or be copied in on one organization's staffing
  * alerts, read in one go so a whole batch of alerts can be decided without a
  * query each. Null once the organization is gone.
+ *
+ * Covers — somebody handling a team on one event only — are not here: they
+ * belong to the event, and every caller reads its event anyway.
  */
 export async function loadStaffingDirectory(
   organizationId: string,
-  { eventIds = [], watchers = true }: LoadOptions = {},
+  { watchers = true }: LoadOptions = {},
 ): Promise<StaffingDirectory | null> {
-  const [organization, managers, leads, teamWatchers, eventWatchers] =
+  const [organization, managers, leads, teamWatchers, serviceTypes] =
     await Promise.all([
       prisma.organization.findUnique({
         where: { id: organizationId },
@@ -40,38 +41,34 @@ export async function loadStaffingDirectory(
           },
         },
       }),
+      // Only live service types' teams, as Settings shows them: a retired
+      // type's events fall to their creator rather than to a lead nobody can
+      // see or change any more.
       prisma.teamLead.findMany({
-        where: { organizationId },
-        select: { category: true, userId: true },
+        where: { organizationId, serviceType: { deletedAt: null } },
+        select: { serviceTypeId: true, category: true, userId: true },
       }),
       watchers
         ? prisma.teamWatcher.findMany({
-            where: { organizationId },
+            where: { organizationId, serviceType: { deletedAt: null } },
             orderBy: { createdAt: "asc" },
-            select: { category: true, userId: true },
+            select: { serviceTypeId: true, category: true, userId: true },
           })
         : Promise.resolve([]),
-      watchers && eventIds.length > 0
-        ? prisma.eventWatcher.findMany({
-            where: { organizationId, eventId: { in: eventIds } },
-            orderBy: { createdAt: "asc" },
-            select: { eventId: true, userId: true },
-          })
-        : Promise.resolve([]),
+      prisma.serviceType.findMany({
+        where: { organizationId },
+        select: { id: true, name: true },
+      }),
     ]);
 
   if (!organization) return null;
 
-  const byTeam = new Map<Team, string[]>();
+  const byTeam = new Map<string, string[]>();
 
-  for (const { category, userId } of teamWatchers) {
-    byTeam.set(category, [...(byTeam.get(category) ?? []), userId]);
-  }
+  for (const { serviceTypeId, category, userId } of teamWatchers) {
+    const key = teamKey(serviceTypeId, category);
 
-  const byEvent = new Map<string, string[]>();
-
-  for (const { eventId, userId } of eventWatchers) {
-    byEvent.set(eventId, [...(byEvent.get(eventId) ?? []), userId]);
+    byTeam.set(key, [...(byTeam.get(key) ?? []), userId]);
   }
 
   return {
@@ -89,38 +86,31 @@ export async function loadStaffingDirectory(
         },
       ]),
     ),
-    leads: new Map(leads.map(({ category, userId }) => [category, userId])),
+    leads: new Map(
+      leads.map(({ serviceTypeId, category, userId }) => [
+        teamKey(serviceTypeId, category),
+        userId,
+      ]),
+    ),
     teamWatchers: byTeam,
-    eventWatchers: byEvent,
+    serviceTypeNames: new Map(serviceTypes.map(({ id, name }) => [id, name])),
   };
 }
 
 /**
- * A batch of alerts across organizations — a cron tick's — keyed on what each
- * is about: every organization's directory is read once, on first use, with
- * the watchers of every event of theirs in the batch.
+ * A batch of alerts across organizations — a cron tick's — where every
+ * organization's directory is read once, on first use.
  */
-export function directoriesFor(
-  events: { organizationId: string; eventId: string }[],
-): (organizationId: string) => Promise<StaffingDirectory | null> {
-  const eventIds = new Map<string, Set<string>>();
-
-  for (const { organizationId, eventId } of events) {
-    eventIds.set(
-      organizationId,
-      (eventIds.get(organizationId) ?? new Set()).add(eventId),
-    );
-  }
-
+export function directoriesFor(): (
+  organizationId: string,
+) => Promise<StaffingDirectory | null> {
   const cache = new Map<string, Promise<StaffingDirectory | null>>();
 
   return (organizationId) => {
     let load = cache.get(organizationId);
 
     if (!load) {
-      load = loadStaffingDirectory(organizationId, {
-        eventIds: [...(eventIds.get(organizationId) ?? [])],
-      });
+      load = loadStaffingDirectory(organizationId);
       cache.set(organizationId, load);
     }
 
@@ -130,8 +120,8 @@ export function directoriesFor(
 
 /**
  * One directory per organization for a batch that touches many events — an
- * organization-wide reconcile, or the cron's — so fifty events cost three
- * queries rather than a hundred and fifty. Bell-only, so it skips watchers.
+ * organization-wide reconcile, or the cron's — so fifty events cost four
+ * queries rather than two hundred. Bell-only, so it skips "Also notify".
  */
 export type BellDirectories = Map<string, Promise<StaffingDirectory | null>>;
 

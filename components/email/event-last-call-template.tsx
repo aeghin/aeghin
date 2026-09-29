@@ -32,11 +32,6 @@ interface EventLastCallEmailProps {
   eventDate: string | null;
   eventTime: string | null;
   viewLink: string;
-  /**
-   * Set for somebody watching the event rather than running it — "Mike has
-   * been asked to staff it." Turns the email into a heads-up.
-   */
-  headsUp?: string | null;
   /** The footer's "why you got this". */
   footer?: string;
 }
@@ -51,7 +46,6 @@ export default function EventLastCallEmail({
   eventDate,
   eventTime,
   viewLink,
-  headsUp = null,
   footer,
 }: EventLastCallEmailProps) {
   return (
@@ -81,7 +75,7 @@ export default function EventLastCallEmail({
                 </Section>
               )}
               <Text className="text-2xl font-bold tracking-tight text-gray-900 m-0">
-                {headsUp ? "Heads-up: " : ""}Not Fully Staffed Yet
+                Not Fully Staffed Yet
               </Text>
               <Text className="mt-2 text-sm text-gray-500 m-0">
                 This event is coming up and the team isn&apos;t confirmed
@@ -93,7 +87,6 @@ export default function EventLastCallEmail({
               <Text className="text-sm text-gray-600 m-0 mb-6">
                 Hi {recipientName}, here&apos;s what&apos;s still missing, so
                 nothing is a surprise on the day.
-                {headsUp ? ` ${headsUp}` : ""}
               </Text>
 
               <Section className="rounded-xl border border-gray-200 p-4 mb-4">
@@ -157,7 +150,7 @@ export default function EventLastCallEmail({
                 href={viewLink}
                 className="rounded-lg bg-black px-6 py-3 text-sm font-semibold text-white no-underline"
               >
-                {headsUp ? "View Event" : "Staff This Event"}
+                Staff This Event
               </Button>
 
               <Text className="mt-6 text-xs text-gray-500 m-0">

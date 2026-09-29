@@ -3,6 +3,7 @@ import "server-only";
 import prisma from "@/lib/prisma";
 import { InvitationStatus, type VolunteerRole } from "@/generated/prisma/enums";
 import { volunteerRoleLabels } from "@/lib/activity";
+import { teamOfRole } from "@/lib/config/roles";
 import EventDepartureEmail, {
   type VacatedSpot,
 } from "@/components/email/event-departure-template";
@@ -45,15 +46,11 @@ export type DepartureReason = "left" | "removed" | "deleted";
  * One email per recipient, listing every spot of theirs this leaves short, so
  * a creator who runs four upcoming services hears once, not four times. Each
  * spot is owned the way every staffing alert is (lib/notifications/audience.ts)
- * — its team lead, else the event's creator, else the owners — with whoever
- * invited the person who left, and the spot's followers, copied in.
- *
- * Routed by what's left on the event, not by the invitation that went: the
- * bell can only see what's left, and an email asking one person to fill a
- * hole the bell has put on somebody else's count is how it gets filled twice.
- * So an older invitation for the role, still on record, can make its sender
- * the owner, as it does in the bell. Resolved after the departure, so
- * somebody who is the one leaving falls through to the next in line.
+ * — whoever covers its team on the event, else the team's lead for the
+ * event's service type, else the event's creator, else the owners — with
+ * whoever invited the person who left, and the team's "Also notify", copied
+ * in. Resolved after the departure, so somebody who is the one leaving falls
+ * through to the next in line.
  *
  * A role somebody else has already confirmed is skipped: the same rule the
  * decline and expired-invite emails follow, and the reason a departure can
@@ -89,7 +86,7 @@ export async function notifyDeparture({
     const eventIds = [...new Set(held.map((spot) => spot.eventId))];
 
     const [directory, organization, events] = await Promise.all([
-      loadStaffingDirectory(organizationId, { eventIds }),
+      loadStaffingDirectory(organizationId),
       prisma.organization.findUnique({
         where: { id: organizationId },
         select: { logoUrl: true },
@@ -100,11 +97,13 @@ export async function notifyDeparture({
           id: true,
           name: true,
           createdById: true,
+          serviceTypeId: true,
           dates: { select: { startTime: true, endTime: true } },
-          // What's left after the departure, newest last — as the bell reads it.
+          teamLeads: { select: { category: true, userId: true } },
+          // Whoever is still confirmed, after the departure.
           assignments: {
-            orderBy: { updatedAt: "asc" },
-            select: { role: true, status: true, assignedById: true },
+            where: { status: InvitationStatus.ACCEPTED },
+            select: { role: true },
           },
         },
       }),
@@ -142,8 +141,9 @@ export async function notifyDeparture({
       spot: VacatedSpot,
       eventId: string,
       role: VolunteerRole,
+      serviceTypeName: string | null,
     ) => {
-      const footer = reasonLine(reason, organizationName, role);
+      const footer = reasonLine(reason, organizationName, role, serviceTypeName);
       const entry = byRecipient.get(person.email);
 
       if (!entry) {
@@ -172,11 +172,7 @@ export async function notifyDeparture({
 
       if (!event) continue;
 
-      const forRole = event.assignments.filter(
-        (assignment) => assignment.role === spot.role,
-      );
-
-      if (forRole.some((assignment) => assignment.status === InvitationStatus.ACCEPTED)) {
+      if (event.assignments.some((assignment) => assignment.role === spot.role)) {
         continue;
       }
 
@@ -190,19 +186,30 @@ export async function notifyDeparture({
       };
 
       const audience = roleAudience(directory, {
-        eventId: event.id,
+        serviceTypeId: event.serviceTypeId,
         createdById: event.createdById,
         role: spot.role,
-        senderId: forRole.at(-1)?.assignedById ?? null,
+        coverId:
+          event.teamLeads.find((cover) => cover.category === teamOfRole(spot.role))
+            ?.userId ?? null,
         inviterId: spot.assignedById,
       });
 
+      const serviceTypeName =
+        directory.serviceTypeNames.get(event.serviceTypeId) ?? null;
+
       for (const owner of audience.owners) {
-        add(owner, vacated, event.id, spot.role);
+        add(owner, vacated, event.id, spot.role, serviceTypeName);
       }
 
       for (const copied of audience.copied) {
-        add(copied, { ...vacated, headsUp: audience.headsUp }, event.id, spot.role);
+        add(
+          copied,
+          { ...vacated, headsUp: audience.headsUp },
+          event.id,
+          spot.role,
+          serviceTypeName,
+        );
       }
     }
 

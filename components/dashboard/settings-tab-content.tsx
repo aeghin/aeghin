@@ -102,7 +102,6 @@ export const SettingsTabContent = async ({
           organizationId={organizationId}
           settings={teamSettings}
           viewerId={userId}
-          isOwner={isOwner}
         />
       )}
       {canManage && (

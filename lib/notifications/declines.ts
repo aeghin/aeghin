@@ -7,6 +7,7 @@ import { volunteerRoleLabels } from "@/lib/activity";
 import { formatEventWhen } from "@/lib/email/event-when";
 import { organizationSender } from "@/lib/email/organization";
 import { sendEmailBatches } from "@/lib/email/send";
+import { teamOfRole } from "@/lib/config/roles";
 import { reasonLine, roleAudience } from "@/lib/notifications/audience";
 import { loadStaffingDirectory } from "@/lib/notifications/directory";
 import { sendPushNotices } from "@/lib/push/send";
@@ -31,7 +32,7 @@ export async function notifyDeclineShortage({
   createdById,
   dates,
   role,
-  senderId,
+  inviterId,
   declinerName,
   reason,
 }: {
@@ -42,8 +43,8 @@ export async function notifyDeclineShortage({
   createdById: string | null;
   dates: { startTime: Date; endTime: Date }[];
   role: VolunteerRole;
-  /** Who sent the declined invitation. */
-  senderId: string | null;
+  /** Who sent the declined invitation: copied in when somebody else is asked. */
+  inviterId: string | null;
   declinerName: string;
   /** Why nobody was invited in their place, worded per smart-fill outcome. */
   reason: string;
@@ -53,24 +54,39 @@ export async function notifyDeclineShortage({
     // expired-invite email follows too. Without it, the last extra invite on
     // a role declining would mail "Needs a BGVs" in the same moment the
     // roster reports itself fully staffed.
-    const stillConfirmed = await prisma.eventAssignment.count({
-      where: { eventId, role, status: InvitationStatus.ACCEPTED },
-    });
+    const [stillConfirmed, event] = await Promise.all([
+      prisma.eventAssignment.count({
+        where: { eventId, role, status: InvitationStatus.ACCEPTED },
+      }),
+      // Which service's lead has it, and whether somebody covers the team on
+      // this event only.
+      prisma.event.findUnique({
+        where: { id: eventId },
+        select: {
+          serviceTypeId: true,
+          teamLeads: {
+            where: { category: teamOfRole(role) },
+            select: { userId: true },
+          },
+        },
+      }),
+    ]);
 
-    if (stillConfirmed > 0) return;
+    if (stillConfirmed > 0 || !event) return;
 
-    const directory = await loadStaffingDirectory(organizationId, {
-      eventIds: [eventId],
-    });
+    const directory = await loadStaffingDirectory(organizationId);
 
     if (!directory) return;
 
     const audience = roleAudience(directory, {
-      eventId,
+      serviceTypeId: event.serviceTypeId,
       createdById,
       role,
-      senderId,
+      coverId: event.teamLeads[0]?.userId ?? null,
+      inviterId,
     });
+
+    const serviceTypeName = directory.serviceTypeNames.get(event.serviceTypeId);
 
     const recipients = [
       ...audience.owners.map((addressee) => ({ ...addressee, headsUp: null })),
@@ -104,7 +120,7 @@ export async function notifyDeclineShortage({
           eventTime: when?.time ?? null,
           viewLink: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/organizations/${organizationId}/events/${eventId}`,
           headsUp,
-          footer: reasonLine(why, organization.name, role),
+          footer: reasonLine(why, organization.name, role, serviceTypeName),
         }),
       })),
     );

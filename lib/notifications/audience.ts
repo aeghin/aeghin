@@ -13,10 +13,8 @@ import { teamLabel, teamOfRole } from "@/lib/config/roles";
  * the same hole is how an event ends up with two drummers, so the owner is
  * found by walking down one list and stopping at the first that exists:
  *
- *   1. the team's lead, for an alert about one role;
- *   2. whoever sent the invitation it is about — or, once that invitation is
- *      gone, the newest one still on the event for the role, which is all the
- *      bell can see;
+ *   1. whoever covers the role's team on this event only;
+ *   2. the team's lead for the event's service type;
  *   3. the event's creator;
  *   4. the organization's owners, the last resort.
  *
@@ -26,9 +24,9 @@ import { teamLabel, teamOfRole } from "@/lib/config/roles";
  * reaches somebody who can act.
  *
  * Copied in, and told who has it rather than asked to act: the team's "Also
- * notify" list, anybody watching the event, and whoever sent the invitation
- * when somebody else owns the alert. Somebody who is both owner and copied in
- * is an owner, and hears once.
+ * notify" for the event's service type, and whoever sent the invitation when
+ * somebody else is asked. Somebody who is both owner and copied in is an
+ * owner, and hears once.
  *
  * Pure: `lib/notifications/directory.ts` reads the people, this decides.
  */
@@ -46,19 +44,26 @@ export type StaffingDirectory = {
   organizationName: string;
   /** Admins and owners by user id: the only people an alert can reach. */
   managers: Map<string, Person & { role: OrgRole }>;
-  /** Each team's lead, by user id. May name somebody no longer a manager. */
-  leads: Map<Team, string>;
-  /** Each team's "Also notify", by user id. */
-  teamWatchers: Map<Team, string[]>;
-  /** Each loaded event's watchers, by user id. */
-  eventWatchers: Map<string, string[]>;
+  /**
+   * Each service type's team leads, keyed by `teamKey`. May name somebody no
+   * longer a manager.
+   */
+  leads: Map<string, string>;
+  /** Each service type's team "Also notify", keyed by `teamKey`. */
+  teamWatchers: Map<string, string[]>;
+  /** Service type names by id, for the footer's "you lead Band for Worship". */
+  serviceTypeNames: Map<string, string>;
 };
 
+/** One team on one service type: the key a lead or an "Also notify" hangs off. */
+export const teamKey = (serviceTypeId: string, team: Team) =>
+  `${serviceTypeId}:${team}`;
+
 /** Why somebody owns an alert. */
-export type OwnerReason = "lead" | "sender" | "creator" | "owner";
+export type OwnerReason = "cover" | "lead" | "creator" | "owner";
 
 /** Why somebody is copied in on one. */
-export type CopyReason = "team" | "event" | "sender";
+export type CopyReason = "team" | "sender";
 
 export type Addressee = {
   person: Person;
@@ -75,25 +80,28 @@ export type Audience = {
   headsUp: string;
 };
 
-/** A staffing alert about one role on one event. */
-export type RoleAlert = {
-  eventId: string;
+/** What decides who owns an alert about one role. */
+export type RoleOwnerInput = {
+  serviceTypeId: string;
   createdById: string | null;
   role: VolunteerRole;
-  /** Who sent the invitation the hole is routed by. */
-  senderId: string | null;
-  /**
-   * Who sent the invitation this is about, when that isn't `senderId`: a
-   * departure deletes its invitations, so its hole is routed the way the bell
-   * sees it, by what's left on the event, and whoever invited the person who
-   * left is copied in. Defaults to `senderId`.
-   */
-  inviterId?: string | null;
+  /** Who covers this role's team on this event only, when somebody does. */
+  coverId: string | null;
+};
+
+/** A staffing alert about one role on one event. */
+export type RoleAlert = {
+  serviceTypeId: string;
+  createdById: string | null;
+  role: VolunteerRole;
+  /** Who covers this role's team on this event only, when somebody does. */
+  coverId: string | null;
+  /** Who sent the invitation this is about: copied in when somebody else is asked. */
+  inviterId: string | null;
 };
 
 /** A staffing alert about a whole event: the last call, or it filling up. */
 export type EventAlert = {
-  eventId: string;
   createdById: string | null;
 };
 
@@ -121,15 +129,18 @@ export const organizationOwners = (directory: StaffingDirectory): Person[] =>
  */
 export function roleOwners(
   directory: StaffingDirectory,
-  alert: Omit<RoleAlert, "eventId">,
+  alert: RoleOwnerInput,
 ): { people: Person[]; reason: OwnerReason } {
-  const lead = manager(directory, directory.leads.get(teamOfRole(alert.role)) ?? null);
+  const cover = manager(directory, alert.coverId);
+
+  if (cover) return { people: [toPerson(cover)], reason: "cover" };
+
+  const lead = manager(
+    directory,
+    directory.leads.get(teamKey(alert.serviceTypeId, teamOfRole(alert.role))) ?? null,
+  );
 
   if (lead) return { people: [toPerson(lead)], reason: "lead" };
-
-  const sender = manager(directory, alert.senderId);
-
-  if (sender) return { people: [toPerson(sender)], reason: "sender" };
 
   return eventOwners(directory, alert.createdById);
 }
@@ -158,11 +169,13 @@ function headsUpLine(
   const title =
     owners.reason === "lead" && team
       ? ` (${teamLabel(team)} lead)`
-      : owners.reason === "owner"
-        ? plural
-          ? " (owners)"
-          : " (owner)"
-        : "";
+      : owners.reason === "cover" && team
+        ? ` (covering ${teamLabel(team)})`
+        : owners.reason === "owner"
+          ? plural
+            ? " (owners)"
+            : " (owner)"
+          : "";
 
   return `${who}${title} ${plural ? "have" : "has"} been asked to ${task}.`;
 }
@@ -207,54 +220,53 @@ export function roleAudience(
     [
       // Only when somebody else owns it, which `assemble` works out: a sender
       // who is also the owner is already on the list.
-      {
-        userId: alert.inviterId === undefined ? alert.senderId : alert.inviterId,
-        reason: "sender",
-      },
-      ...(directory.teamWatchers.get(team) ?? []).map((userId) => ({
-        userId,
-        reason: "team" as const,
-      })),
-      ...(directory.eventWatchers.get(alert.eventId) ?? []).map((userId) => ({
-        userId,
-        reason: "event" as const,
-      })),
+      { userId: alert.inviterId, reason: "sender" },
+      ...(directory.teamWatchers.get(teamKey(alert.serviceTypeId, team)) ?? []).map(
+        (userId) => ({ userId, reason: "team" as const }),
+      ),
     ],
     { team, task: "fill it" },
   );
 }
 
-/** Everybody told about a whole event: its owner, and whoever watches it. */
+/**
+ * Everybody told about a whole event: its creator, else the owners. Team
+ * leads have already heard about each of their roles as it opened up, so
+ * nobody is copied in.
+ */
 export function eventAudience(
   directory: StaffingDirectory,
   alert: EventAlert,
 ): Audience {
-  return assemble(
-    directory,
-    eventOwners(directory, alert.createdById),
-    (directory.eventWatchers.get(alert.eventId) ?? []).map((userId) => ({
-      userId,
-      reason: "event" as const,
-    })),
-    { team: null, task: "staff it" },
-  );
+  return assemble(directory, eventOwners(directory, alert.createdById), [], {
+    team: null,
+    task: "staff it",
+  });
 }
 
 /**
  * "You're receiving this because …" — the footer every staffing email ends
- * on, so nobody has to guess why an alert found them.
+ * on, so nobody has to guess why an alert found them. `serviceTypeName` names
+ * which service a lead or "Also notify" is for, when the organization runs
+ * more than one.
  */
 export function reasonLine(
   reason: Addressee["reason"],
   organizationName: string,
   role?: VolunteerRole,
+  serviceTypeName?: string | null,
 ): string {
   const team = role ? teamLabel(teamOfRole(role)) : null;
+  const service = serviceTypeName ? ` for ${serviceTypeName}` : "";
 
   switch (reason) {
+    case "cover":
+      return team
+        ? `You're receiving this because you're covering ${team} for this event.`
+        : "You're receiving this because you're covering a team for this event.";
     case "lead":
       return team
-        ? `You're receiving this because you lead ${team} at ${organizationName}.`
+        ? `You're receiving this because you lead ${team}${service} at ${organizationName}.`
         : `You're receiving this because you lead a team at ${organizationName}.`;
     case "sender":
       return "You're receiving this because you sent the invitation.";
@@ -264,9 +276,7 @@ export function reasonLine(
       return `You're receiving this because you're an owner of ${organizationName}.`;
     case "team":
       return team
-        ? `You're receiving this because you're on Also notify for ${team} at ${organizationName}.`
+        ? `You're receiving this because you're on Also notify for ${team}${service} at ${organizationName}.`
         : `You're receiving this because you're on Also notify for a team at ${organizationName}.`;
-    case "event":
-      return "You're receiving this because you're watching this event.";
   }
 }

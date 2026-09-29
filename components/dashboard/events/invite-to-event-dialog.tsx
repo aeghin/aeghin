@@ -86,8 +86,11 @@ interface InviteToEventDialogProps {
    * says who is there and asks before sending another.
    */
   holders?: RoleHolder[];
-  /** The team's lead, named in that warning. Null when there's none, or it's you. */
-  teamLead?: { name: string; team: string } | null;
+  /**
+   * Who handles the team on this event, named in that warning: its lead, or
+   * whoever covers it for this event only. Null when there's none, or it's you.
+   */
+  teamLead?: { name: string; team: string; cover: boolean } | null;
 }
 
 function formatConflictTime(iso: string): string {
@@ -401,7 +404,9 @@ export function InviteToEventDialog({
               </ul>
               {teamLead && (
                 <p className="mt-1.5 text-xs text-amber-800/80 dark:text-amber-300/80">
-                  {teamLead.name} leads {teamLead.team} and is asked to fill its roles.
+                  {teamLead.cover
+                    ? `${teamLead.name} is covering ${teamLead.team} for this event and is asked to fill its roles.`
+                    : `${teamLead.name} leads ${teamLead.team} and is asked to fill its roles.`}
                 </p>
               )}
             </div>

@@ -5,6 +5,7 @@ import { InvitationStatus, type VolunteerRole } from "@/generated/prisma/enums";
 import type { Prisma } from "@/generated/prisma/client";
 import type { LapsedInvite } from "@/components/email/event-invite-expired-template";
 import { volunteerRoleLabels } from "@/lib/activity";
+import { teamOfRole } from "@/lib/config/roles";
 import {
   reasonLine,
   roleAudience,
@@ -138,11 +139,12 @@ export function lapseBody(lapsed: LapsedInvite[]) {
 /**
  * Who hears about which lapsed invitations: one bucket per person per event.
  *
- * Each lapse is owned by its role's team lead, else whoever sent the
- * invitation, else the event's creator, else the owners — and copies in
- * whoever follows it (lib/notifications/audience.ts). An admin who sent five
- * invitations to one event hears once, listing five roles; a band lead hears
- * about the band's and not the ushers'.
+ * Each lapse is owned by whoever covers its team on the event, else the
+ * team's lead for the event's service type, else the event's creator, else
+ * the owners — and copies in the team's "Also notify" and whoever sent the
+ * invitation (lib/notifications/audience.ts). A creator with five lapses on
+ * one event hears once, listing five roles; a band lead hears about the
+ * band's and not the ushers'.
  *
  * `where` picks the lapses — the rows a sweep just flipped, for the email, or
  * everything flipped lately, for the push that may have waited overnight. Only
@@ -177,7 +179,9 @@ export async function lapseBuckets(
           id: true,
           name: true,
           createdById: true,
+          serviceTypeId: true,
           dates: { select: { startTime: true, endTime: true } },
+          teamLeads: { select: { category: true, userId: true } },
         },
       },
       organization: { select: { name: true, logoUrl: true } },
@@ -211,12 +215,7 @@ export async function lapseBuckets(
 
   if (open.length === 0) return [];
 
-  const directoryFor = directoriesFor(
-    open.map((row) => ({
-      organizationId: row.organizationId,
-      eventId: row.event.id,
-    })),
-  );
+  const directoryFor = directoriesFor();
 
   const buckets = new Map<string, LapseBucket>();
 
@@ -225,6 +224,7 @@ export async function lapseBuckets(
     row: (typeof open)[number],
     headsUp: string | null,
     organizationName: string,
+    serviceTypeName: string | null,
   ) => {
     const lapse: Lapse = {
       inviteeName: `${row.user.firstName} ${row.user.lastName}`,
@@ -234,7 +234,7 @@ export async function lapseBuckets(
       headsUp,
     };
 
-    const footer = reasonLine(reason, organizationName, row.role);
+    const footer = reasonLine(reason, organizationName, row.role, serviceTypeName);
     const key = `${row.event.id}:${person.email}`;
     const existing = buckets.get(key);
 
@@ -269,18 +269,24 @@ export async function lapseBuckets(
     if (!directory) continue;
 
     const audience = roleAudience(directory, {
-      eventId: row.event.id,
+      serviceTypeId: row.event.serviceTypeId,
       createdById: row.event.createdById,
       role: row.role,
-      senderId: row.assignedById,
+      coverId:
+        row.event.teamLeads.find((cover) => cover.category === teamOfRole(row.role))
+          ?.userId ?? null,
+      inviterId: row.assignedById,
     });
 
+    const serviceTypeName =
+      directory.serviceTypeNames.get(row.event.serviceTypeId) ?? null;
+
     for (const owner of audience.owners) {
-      add(owner, row, null, directory.organizationName);
+      add(owner, row, null, directory.organizationName, serviceTypeName);
     }
 
     for (const copied of audience.copied) {
-      add(copied, row, audience.headsUp, directory.organizationName);
+      add(copied, row, audience.headsUp, directory.organizationName, serviceTypeName);
     }
   }
 

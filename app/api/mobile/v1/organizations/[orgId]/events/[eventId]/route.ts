@@ -4,8 +4,8 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { SMART_SCHEDULING_ACTIVITY_TYPES } from "@/lib/services/activity";
 import {
+    eventTeamLeads,
     getTeamNotificationSettings,
-    isWatchingEvent,
 } from "@/lib/services/team-notifications";
 import { deleteEvent, editEventDetails, setEventSmartScheduling } from "@/lib/actions/event";
 import type { EditEventDetailsInput } from "@/lib/validations/event";
@@ -13,10 +13,10 @@ import { expireTag, isObject } from "@/lib/mobile/route";
 import {
     InvitationStatus,
     OrgRole,
+    RoleCategory,
     type ActivityType,
     type KeyQuality,
     type Pitch,
-    type RoleCategory,
     type VolunteerRole,
 } from "@/generated/prisma/enums";
 
@@ -66,6 +66,14 @@ type TeamLead = {
     userId: string;
     firstName: string;
     lastName: string;
+    /** Handling it for this event only, in place of the service type's lead. */
+    cover: boolean;
+};
+
+/** Somebody picked to handle one team on this event only. */
+type TeamLeadPick = {
+    team: RoleCategory;
+    userId: string;
 };
 
 type EventDetailsAttachment = {
@@ -133,14 +141,29 @@ type EventDetails = {
         canManage: boolean;
         /** Accepted, not merely invited — the same right that opens this page. */
         isAssigned: boolean;
-        /** Getting a heads-up about this event's staffing alerts. Managers only. */
-        watching: boolean;
     };
     /**
-     * Each team's lead, named when a second invite is about to go into one of
-     * their roles. Managers only; empty for everybody else.
+     * Who handles each team on this event — whoever covers it here, else the
+     * service type's lead. Shown on each team, and named when a second invite
+     * is about to go into one of its roles. Managers only; empty for everybody
+     * else.
      */
     teamLeads: Partial<Record<RoleCategory, TeamLead>>;
+    /**
+     * The teams handed to somebody else for this event only, for the edit
+     * screen. Managers only; empty for everybody else.
+     */
+    teamLeadPicks: TeamLeadPick[];
+    /**
+     * Who a team with no lead falls to, for the edit screen's defaults: the
+     * event's creator while they can still act on it. Null means the owners,
+     * and it's always null for members.
+     */
+    createdBy: {
+        userId: string;
+        firstName: string;
+        lastName: string;
+    } | null;
     /** Managers only; empty for everybody else. */
     smartSchedulingActivity: EventDetailsActivityItem[];
     /** Managers only; 0 for everybody else. */
@@ -221,6 +244,7 @@ export async function GET(
                 smartSchedulingEnabled: true,
                 rehearsalStart: true,
                 rehearsalEnd: true,
+                createdById: true,
                 organization: {
                     select: {
                         name: true,
@@ -231,6 +255,12 @@ export async function GET(
                         id: true,
                         name: true,
                         color: true,
+                    },
+                },
+                teamLeads: {
+                    select: {
+                        category: true,
+                        userId: true,
                     },
                 },
                 dates: {
@@ -379,16 +409,33 @@ export async function GET(
 
         // Staffing alerts are a managers' concern, like the invite pickers the
         // leads are named in.
-        const [teamSettings, watching] = canManage
-            ? await Promise.all([
-                getTeamNotificationSettings(orgId),
-                isWatchingEvent(eventId, membership.userId),
-            ])
-            : [null, false];
+        const teamSettings = canManage ? await getTeamNotificationSettings(orgId) : null;
 
-        const teamLeads: Partial<Record<RoleCategory, TeamLead>> = Object.fromEntries(
-            (teamSettings?.teams ?? []).flatMap(({ team, lead }) => (lead ? [[team, lead]] : [])),
+        const teamLeads: Partial<Record<RoleCategory, TeamLead>> = teamSettings
+            ? Object.fromEntries(
+                Object.entries(
+                    eventTeamLeads(teamSettings, event.serviceType.id, event.teamLeads),
+                ).map(([team, handler]) => [team, { ...handler.person, cover: handler.cover }]),
+            )
+            : {};
+
+        // A pick who has since been made a member is already skipped by the
+        // alerts, so the edit screen doesn't offer it back either.
+        const managerIds = new Set(teamSettings?.managers.map((manager) => manager.userId) ?? []);
+
+        const teamLeadPicks: TeamLeadPick[] = event.teamLeads
+            .filter((pick) => managerIds.has(pick.userId))
+            .map((pick) => ({ team: pick.category, userId: pick.userId }));
+
+        // Read off the managers, so a creator who has since been made a member
+        // or has left reads as null — the owners, as the alerts decide it.
+        const creator = teamSettings?.managers.find(
+            (manager) => manager.userId === event.createdById,
         );
+
+        const createdBy = creator
+            ? { userId: creator.userId, firstName: creator.firstName, lastName: creator.lastName }
+            : null;
 
         const details: EventDetails = {
             id: event.id,
@@ -436,9 +483,10 @@ export async function GET(
                 userId: membership.userId,
                 canManage,
                 isAssigned,
-                watching,
             },
             teamLeads,
+            teamLeadPicks,
+            createdBy,
             smartSchedulingActivity: activity.map((item) => ({
                 ...item,
                 createdAt: item.createdAt.toISOString(),
@@ -475,6 +523,12 @@ type EventEdit = {
      * older than this field sends. Null clears it.
      */
     rehearsal?: EditDay | null;
+    /**
+     * The teams handed to somebody else for this event only — the whole set.
+     * Absent leaves them alone, as an older app build sends; empty hands every
+     * team back to the service type.
+     */
+    teamLeads?: TeamLeadPick[];
 };
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
@@ -487,13 +541,21 @@ const isEditDay = (value: unknown): value is EditDay =>
     typeof value.startTime === "string" && CLOCK.test(value.startTime) &&
     typeof value.endTime === "string" && CLOCK.test(value.endTime);
 
+const isTeamLeadPick = (value: unknown): value is TeamLeadPick =>
+    isObject(value) &&
+    typeof value.team === "string" &&
+    (Object.values(RoleCategory) as string[]).includes(value.team) &&
+    typeof value.userId === "string";
+
 const isEventEdit = (value: unknown): value is EventEdit =>
     isObject(value) &&
     typeof value.name === "string" &&
     (value.description === undefined || typeof value.description === "string") &&
     typeof value.location === "string" &&
     Array.isArray(value.days) && value.days.length > 0 && value.days.every(isEditDay) &&
-    (value.rehearsal === undefined || value.rehearsal === null || isEditDay(value.rehearsal));
+    (value.rehearsal === undefined || value.rehearsal === null || isEditDay(value.rehearsal)) &&
+    (value.teamLeads === undefined ||
+        (Array.isArray(value.teamLeads) && value.teamLeads.every(isTeamLeadPick)));
 
 /** `"2026-09-27"`, `"10:00"` -> the UTC instant the app stores. */
 const instant = (date: string, clock: string) => new Date(`${date}T${clock}:00Z`);
@@ -621,6 +683,9 @@ export async function PATCH(
                                 endTime: instant(body.rehearsal.date, body.rehearsal.endTime).toISOString(),
                             },
                     }),
+                // Same rule: omitted when the body carries no key, so the
+                // event's picks stay as they are.
+                ...(body.teamLeads === undefined ? {} : { teamLeads: body.teamLeads }),
             } as EditEventDetailsInput,
             expireTag,
         );

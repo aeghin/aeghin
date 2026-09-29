@@ -8,6 +8,7 @@ import {
 } from "@/lib/services/organization";
 import { getOrgServiceTypes } from "@/lib/services/service-types";
 import { getOrgEventTemplates } from "@/lib/services/event-templates";
+import { getTeamNotificationSettings } from "@/lib/services/team-notifications";
 import { getAiProAccess, getOrgPlan } from "@/lib/billing/entitlements";
 import { PLAN_LIMITS } from "@/lib/config/plans";
 
@@ -27,13 +28,14 @@ export default async function CreateEventPage({
 
   if (!user) redirect("/sign-in");
 
-  const [membership, members, serviceTypes, templates, hasAiPro, plan] = await Promise.all([
+  const [membership, members, serviceTypes, templates, hasAiPro, plan, teamSettings] = await Promise.all([
     getUserMembershipWithOrg(user.id, orgId),
     getOrgMembersWithUser(orgId),
     getOrgServiceTypes(orgId),
     getOrgEventTemplates(orgId),
     getAiProAccess({ userId: user.id, orgId }),
     getOrgPlan(orgId),
+    getTeamNotificationSettings(orgId),
   ])
 
   const organizationName = membership?.organization.name || '';
@@ -42,6 +44,25 @@ export default async function CreateEventPage({
 
   if (!canManage) {
     redirect(`/dashboard/organizations/${orgId}`)
+  };
+
+  // Each service type's leads, so the form can show who handles each team
+  // for whichever service type gets picked.
+  const teamLeads = {
+    byServiceType: Object.fromEntries(
+      teamSettings.serviceTypes.map((serviceType) => [
+        serviceType.serviceTypeId,
+        Object.fromEntries(
+          serviceType.teams.flatMap(({ team, lead }) => (lead ? [[team, lead]] : [])),
+        ),
+      ]),
+    ),
+    managers: teamSettings.managers.map(({ userId, firstName, lastName }) => ({
+      userId,
+      firstName,
+      lastName,
+    })),
+    viewerId: user.id,
   };
 
   return (
@@ -56,6 +77,7 @@ export default async function CreateEventPage({
       canSubscribe={membership?.role === OrgRole.OWNER}
       smartSchedulingAvailable={PLAN_LIMITS[plan].smartScheduling}
       plan={plan}
+      teamLeads={teamLeads}
     />
   )
 }

@@ -3,6 +3,7 @@ import type {
   KeyQuality,
   NotificationCategory,
   Pitch,
+  RoleCategory,
   VolunteerRole,
 } from "@/generated/prisma/enums";
 import type { PaidPlan } from "@/lib/config/plans";
@@ -104,6 +105,11 @@ export type EventDetails = {
     updatedAt: Date
   }
   assignments: EventDetailsAssignment[]
+  /** Who handles a team on this event only, in place of the service type's lead. */
+  teamLeads: {
+    category: RoleCategory
+    userId: string
+  }[]
   setlistSongs: EventDetailsSetlistSong[]
 }
 

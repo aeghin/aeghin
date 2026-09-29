@@ -86,6 +86,13 @@ import { checkMemberAvailability } from "@/lib/actions/event";
 import { createServiceType } from "@/lib/actions/service-type";
 import { createEvent } from "@/lib/actions/event";
 import { AiEventPanel } from "@/components/dashboard/events/ai-event-panel";
+import {
+  EventTeamLeadsField,
+  teamLeadPicksInput,
+  type ServiceTypeTeamLeads,
+  type TeamLeadPicks,
+} from "@/components/dashboard/events/event-team-leads-field";
+import { teamsOfRoles } from "@/lib/config/roles";
 import { AiSetlistProUpsell } from "@/components/dashboard/events/ai-setlist-pro-upsell";
 import { UpgradePlanButton } from "@/components/dashboard/upgrade-plan-button";
 import { NEXT_PLAN, PLAN_LIMITS, PLAN_NAMES, type OrgPlan } from "@/lib/config/plans";
@@ -270,6 +277,8 @@ interface CreateEventPageContentProps {
   // Whether the plan includes auto-fill. Free gets the upgrade in the switch's place.
   smartSchedulingAvailable: boolean;
   plan: OrgPlan;
+  // Each service type's team leads, for "Who handles open spots".
+  teamLeads: ServiceTypeTeamLeads;
 }
 
 export function CreateEventPageContent({
@@ -283,6 +292,7 @@ export function CreateEventPageContent({
   canSubscribe,
   smartSchedulingAvailable,
   plan,
+  teamLeads,
 }: CreateEventPageContentProps) {
   const router = useRouter();
 
@@ -330,6 +340,14 @@ export function CreateEventPageContent({
   const [pickerRole, setPickerRole] = useState<VolunteerRole | null>(null);
   const [pickerSearch, setPickerSearch] = useState("");
 
+  // Teams handed to somebody other than the lead, for this event only. Kept
+  // with the service type they were picked against: switching types starts
+  // over from that type's own leads.
+  const [teamLeadPicks, setTeamLeadPicks] = useState<{
+    serviceTypeId: string;
+    picks: TeamLeadPicks;
+  }>({ serviceTypeId: "", picks: {} });
+
   // React Hook Form
   const form = useForm<CreateEventFormData>({
     resolver: zodResolver(createEventSchema),
@@ -357,6 +375,9 @@ export function CreateEventPageContent({
   const watchedRehearsal = watch("rehearsal");
 
   const rehearsal = watchedRehearsal ?? EMPTY_REHEARSAL;
+
+  const currentTeamLeadPicks =
+    teamLeadPicks.serviceTypeId === watchedServiceTypeId ? teamLeadPicks.picks : {};
 
   const hasRehearsal = Boolean(
     rehearsal.date || rehearsal.startTime || rehearsal.endTime,
@@ -734,6 +755,7 @@ export function CreateEventPageContent({
             dayTimes: dayTimesISO,
             rehearsal: rehearsalISO,
             roleAssignments,
+            teamLeads: teamLeadPicksInput(currentTeamLeadPicks),
           },
           organizationId,
         );
@@ -1711,6 +1733,28 @@ export function CreateEventPageContent({
                           Ask an owner to upgrade
                         </p>
                       )}
+                  </div>
+
+                  {/* Who handles open spots — the service type's leads, changeable for this event only */}
+                  <div className="mt-4">
+                    <EventTeamLeadsField
+                      choices={{
+                        teams: teamsOfRoles(watchedRolesNeeded),
+                        defaults: teamLeads.byServiceType[watchedServiceTypeId] ?? {},
+                        managers: teamLeads.managers,
+                        viewerId: teamLeads.viewerId,
+                        // With no lead, a team falls to whoever creates the event.
+                        fallback: { userId: teamLeads.viewerId, name: "You", short: "you" },
+                        serviceTypeName:
+                          optimisticServiceTypes.find(
+                            (serviceType) => serviceType.id === watchedServiceTypeId,
+                          )?.name ?? null,
+                      }}
+                      value={currentTeamLeadPicks}
+                      onChange={(picks) =>
+                        setTeamLeadPicks({ serviceTypeId: watchedServiceTypeId, picks })
+                      }
+                    />
                   </div>
 
                   {/* Role Assignments — compact rows; picking happens in a modal */}

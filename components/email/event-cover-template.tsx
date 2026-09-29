@@ -13,37 +13,42 @@ import {
 
 import { organizationInitial } from "@/lib/email/organization";
 
-interface TeamLeadEmailProps {
+interface EventCoverEmailProps {
   recipientName: string;
   organizationName: string;
   logoUrl: string | null;
-  /** "Band", "Vocals", "Production" or "Hospitality". */
-  teamLabel: string;
-  /** Which service they lead it for, e.g. "Sunday Worship". */
-  serviceTypeName: string;
-  /** Every role in the team, e.g. "Pianist, Aux Keys, Bassist". */
+  eventName: string;
+  eventDate: string | null;
+  eventTime: string | null;
+  /** The teams they cover, e.g. "Band" or "Band and Vocals". */
+  teamLabels: string;
+  /** Every role in those teams, e.g. "Pianist, Aux Keys, Bassist". */
   roleLabels: string;
+  /** Who usually leads those teams, when the service type has a lead. */
+  regularLeadNames: string | null;
   assignedByName: string;
-  settingsLink: string;
+  viewLink: string;
 }
 
-export default function TeamLeadEmail({
+export default function EventCoverEmail({
   recipientName,
   organizationName,
   logoUrl,
-  teamLabel,
-  serviceTypeName,
+  eventName,
+  eventDate,
+  eventTime,
+  teamLabels,
   roleLabels,
+  regularLeadNames,
   assignedByName,
-  settingsLink,
-}: TeamLeadEmailProps) {
+  viewLink,
+}: EventCoverEmailProps) {
   return (
     <Tailwind>
       <Html>
         <Head />
         <Preview>
-          You&apos;re now the {teamLabel} lead for {serviceTypeName} at{" "}
-          {organizationName}
+          You&apos;re covering {teamLabels} for {eventName}
         </Preview>
         <Body className="bg-gray-100 font-sans">
           <Container className="mx-auto my-10 max-w-120 rounded-2xl bg-white shadow-sm overflow-hidden">
@@ -65,27 +70,37 @@ export default function TeamLeadEmail({
                 </Section>
               )}
               <Text className="text-2xl font-bold tracking-tight text-gray-900 m-0">
-                You&apos;re the {teamLabel} Lead
+                You&apos;re Covering {teamLabels}
               </Text>
               <Text className="mt-2 text-sm text-gray-500 m-0">
-                For {serviceTypeName} · {assignedByName} set this up at{" "}
-                {organizationName}
+                For {eventName} · {assignedByName} set this up
               </Text>
             </Section>
 
             <Section className="px-8 py-6 text-center">
 
               <Text className="text-sm text-gray-600 m-0 mb-6">
-                Hi {recipientName}, when one of {teamLabel}&apos;s roles opens
-                up on a {serviceTypeName} event — somebody declines, an
+                Hi {recipientName}, for this event only, when one of{" "}
+                {teamLabels}&apos;s roles opens up — somebody declines, an
                 invitation expires, or a member leaves — you&apos;ll be the one
-                asked to fill it. Anybody on {teamLabel}&apos;s Also notify gets
-                a heads-up that it&apos;s yours.
+                asked to fill it.
+                {regularLeadNames
+                  ? ` ${regularLeadNames} handles it again from the next event.`
+                  : ""}
               </Text>
 
               <Section className="rounded-xl border border-gray-200 p-4 mb-6">
-                <Text className="text-xs text-gray-500 m-0 mb-1">
-                  {teamLabel} covers
+                <Text className="text-sm font-semibold text-gray-900 m-0">
+                  {eventName}
+                </Text>
+                {eventDate && (
+                  <Text className="text-sm text-gray-600 m-0 mt-1">
+                    {eventDate}
+                    {eventTime ? ` · ${eventTime}` : ""}
+                  </Text>
+                )}
+                <Text className="text-xs text-gray-500 m-0 mt-3 mb-1">
+                  {teamLabels} covers
                 </Text>
                 <Text className="text-sm font-medium text-gray-900 m-0">
                   {roleLabels}
@@ -93,18 +108,18 @@ export default function TeamLeadEmail({
               </Section>
 
               <Button
-                href={settingsLink}
+                href={viewLink}
                 className="rounded-lg bg-black px-6 py-3 text-sm font-semibold text-white no-underline"
               >
-                See Who Leads What
+                View Event
               </Button>
 
             </Section>
 
             <Section className="border-t border-gray-200 px-8 py-6">
               <Text className="text-center text-xs text-gray-400 m-0">
-                You&apos;re receiving this because {assignedByName} made you a
-                team lead at {organizationName}.
+                You&apos;re receiving this because {assignedByName} asked you to
+                cover {teamLabels} for this event at {organizationName}.
               </Text>
             </Section>
           </Container>

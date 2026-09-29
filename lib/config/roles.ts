@@ -73,6 +73,10 @@ const categoryOfTeam: Record<Team, RoleCategory> = {
 export const teamOfRole = (role: VolunteerRole): Team =>
   teamOfCategory[roleToCategory[role]];
 
+/** The teams a set of roles falls into, in TEAM_ORDER. */
+export const teamsOfRoles = (roles: VolunteerRole[]): Team[] =>
+  TEAM_ORDER.filter((team) => roles.some((role) => teamOfRole(role) === team));
+
 export const teamLabel = (team: Team): string =>
   roleCategoryConfig[categoryOfTeam[team]].label;
 

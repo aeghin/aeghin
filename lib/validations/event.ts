@@ -1,5 +1,20 @@
 import { z } from "zod/v4";
-import { VolunteerRole } from "@/generated/prisma/enums";
+import { RoleCategory, VolunteerRole } from "@/generated/prisma/enums";
+
+/**
+ * Who handles a team on this event only, in place of the service type's lead
+ * — the week the band lead is away. Only the teams that differ are sent; a
+ * team left out follows the service type. One person per team.
+ */
+export const eventTeamLeadsSchema = z
+  .array(z.object({ team: z.enum(RoleCategory), userId: z.uuid() }))
+  .max(4)
+  .refine(
+    (rows) => new Set(rows.map((row) => row.team)).size === rows.length,
+    "One person per team",
+  );
+
+export type EventTeamLeadsInput = z.infer<typeof eventTeamLeadsSchema>;
 
 /**
  * The optional rehearsal block: a day plus wall-clock times, all three filled
@@ -102,6 +117,8 @@ export type CreateEventFormData = z.infer<typeof createEventSchema>
 export const createEventInputSchema = createEventBaseSchema
   .extend({
     roleAssignments: z.record(z.enum(VolunteerRole), z.array(z.string()).default([])),
+    // Optional: templates, the assistant and older phone builds don't send it.
+    teamLeads: eventTeamLeadsSchema.optional(),
   })
   .superRefine((data, ctx) => refineRehearsal(data.rehearsal, ctx));
 
@@ -149,6 +166,9 @@ export const editEventDetailsSchema = z.object({
   ),
   location: z.string().trim().min(1, "Location is required").max(20, "Location must be 20 characters or less"),
   rehearsal: rehearsalSchema.optional(),
+  // Left out means "leave as it is" — an older phone build — and an empty
+  // list means every team follows the service type again.
+  teamLeads: eventTeamLeadsSchema.optional(),
 }).superRefine((data, ctx) => {
   refineRehearsal(data.rehearsal, ctx);
 

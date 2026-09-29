@@ -179,6 +179,13 @@ export const getEventDetailsById = async (eventId: string, organizationId: strin
             }
           }
         },
+        // Who handles a team on this event only, in place of its lead.
+        teamLeads: {
+          select: {
+            category: true,
+            userId: true,
+          }
+        },
         setlistSongs: {
           orderBy: { position: "asc" },
           include: {
