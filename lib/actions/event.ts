@@ -498,6 +498,21 @@ export async function createEvent(
 type TagInvalidator = (tag: string) => void;
 
 /**
+ * Whether an assignment still puts somebody on the event: accepted, or
+ * invited and still inside the window to answer. A lapse reads PENDING until
+ * the hourly sweep writes EXPIRED, so the deadline decides, not the status —
+ * the same test the bell's `coversRole` makes.
+ *
+ * Not exported: a "use server" module may only export async functions.
+ */
+const holdsSpot = (
+  assignment: { status: InvitationStatus; expiresAt: Date },
+  now: Date,
+) =>
+  assignment.status === InvitationStatus.ACCEPTED ||
+  (assignment.status === InvitationStatus.PENDING && assignment.expiresAt > now);
+
+/**
  * Why a live-invitation lookup missed, in words the volunteer can act on.
  *
  * Both answer actions find their row by `PENDING` + unexpired, so every cause
@@ -974,6 +989,7 @@ export const cancelUserEventAssignment = async (userId: string, organizationId: 
       select: {
         status: true,
         role: true,
+        expiresAt: true,
         user: { select: { email: true, firstName: true } },
         event: {
           select: {
@@ -1003,10 +1019,10 @@ export const cancelUserEventAssignment = async (userId: string, organizationId: 
     touch(`event-${eventId}-org-${organizationId}-details`);
 
     // Only someone who still held the spot has lost anything. A volunteer who
-    // already declined, or who was taken off once already, is told nothing.
-    const heldTheSpot =
-      assignment.status === InvitationStatus.ACCEPTED ||
-      assignment.status === InvitationStatus.PENDING;
+    // already declined, was taken off once already, or let the invitation
+    // lapse is told nothing — a lapse still reads PENDING until the hourly
+    // sweep, so the deadline is what decides.
+    const heldTheSpot = holdsSpot(assignment, new Date());
 
     if (heldTheSpot) {
       const { name: organizationName, logoUrl } = userMembership.organization;
@@ -1875,6 +1891,7 @@ export const deleteEvent = async (organizationId: string, eventId: string, touch
           select: {
             userId: true,
             status: true,
+            expiresAt: true,
             user: { select: { email: true, firstName: true } },
           },
         },
@@ -1897,10 +1914,10 @@ export const deleteEvent = async (organizationId: string, eventId: string, touch
     // else, and createEvent already mails them "You've been assigned" for
     // their own assignment — suppressing only the cancellation would be the
     // odd half of that pair.
-    const strandedTeam = event.assignments.filter(
-      (assignment) =>
-        assignment.status === InvitationStatus.ACCEPTED ||
-        assignment.status === InvitationStatus.PENDING,
+    const now = new Date();
+
+    const strandedTeam = event.assignments.filter((assignment) =>
+      holdsSpot(assignment, now),
     );
 
     // Before the delete, not after: the cascade removes these rows silently,
@@ -2169,6 +2186,7 @@ export const editEventDetails = async (
               select: {
                 userId: true,
                 status: true,
+                expiresAt: true,
                 user: { select: { email: true, firstName: true } },
               },
             },
@@ -2320,10 +2338,10 @@ export const editEventDetails = async (
         });
       }
 
-      const roster = event.assignments.filter(
-        (assignment) =>
-          assignment.status === InvitationStatus.ACCEPTED ||
-          assignment.status === InvitationStatus.PENDING,
+      const now = new Date();
+
+      const roster = event.assignments.filter((assignment) =>
+        holdsSpot(assignment, now),
       );
 
       // A save that moved nothing mails nobody — opening the form and pressing
