@@ -169,6 +169,13 @@ export const getEventDetailsById = async (eventId: string, organizationId: strin
                 lastName: true,
                 userImageUrl: true,
               }
+            },
+            // Who sent it, for the invite screen's "already waiting" warning.
+            assignedBy: {
+              select: {
+                firstName: true,
+                lastName: true,
+              }
             }
           }
         },

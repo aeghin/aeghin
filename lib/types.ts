@@ -23,6 +23,11 @@ export type EventDetailsAssignment = {
     lastName: string
     userImageUrl: string | null
   }
+  /** Who sent the invitation. Null once they have left the organization. */
+  assignedBy: {
+    firstName: string
+    lastName: string
+  } | null
 }
 
 export type EventDetailsSetlistSong = {

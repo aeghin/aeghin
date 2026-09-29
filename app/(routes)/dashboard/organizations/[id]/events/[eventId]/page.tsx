@@ -24,6 +24,10 @@ import {
   getOrgMembersWithUser,
   getUserMembershipRole,
 } from "@/lib/services/organization";
+import {
+  getTeamNotificationSettings,
+  isWatchingEvent,
+} from "@/lib/services/team-notifications";
 import { getOrgPlan } from "@/lib/billing/entitlements";
 import { getEmailAllowance } from "@/lib/billing/limits";
 import { PLAN_LIMITS } from "@/lib/config/plans";
@@ -90,6 +94,20 @@ export default async function EventDetailPage({
 
   const smartSchedulingAvailable = plan !== null && PLAN_LIMITS[plan].smartScheduling;
 
+  // Managers only, like the invite pickers the leads are named in.
+  const [teamSettings, watching] = canManage
+    ? await Promise.all([
+        getTeamNotificationSettings(orgId),
+        isWatchingEvent(eventId, user.id),
+      ])
+    : [null, false];
+
+  const teamLeads = Object.fromEntries(
+    (teamSettings?.teams ?? []).flatMap(({ team, lead }) =>
+      lead ? [[team, lead]] : [],
+    ),
+  );
+
   return (
     <main className="mx-auto max-w-screen-2xl px-4 py-6 sm:px-6 sm:py-8">
       <div className="space-y-6 sm:space-y-8">
@@ -138,6 +156,8 @@ export default async function EventDetailPage({
               emailAllowance={emailAllowance}
               smartSchedulingAvailable={smartSchedulingAvailable}
               canUpgrade={membership.role === OrgRole.OWNER}
+              watching={watching}
+              teamLeads={teamLeads}
             />
             <EventChatPanel
               eventId={eventId}

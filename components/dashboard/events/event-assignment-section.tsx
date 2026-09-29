@@ -17,7 +17,12 @@ import {
 import { cn } from "@/lib/utils";
 import type { EventDetails, EventDetailsAssignment } from "@/lib/types";
 import type { EmailAllowance } from "@/lib/billing/limits";
-import { InvitationStatus, VolunteerRole } from "@/generated/prisma/enums";
+import type { TeamPerson } from "@/lib/services/team-notifications";
+import {
+  InvitationStatus,
+  VolunteerRole,
+  type RoleCategory as Team,
+} from "@/generated/prisma/enums";
 import { statusStyles } from "@/lib/config/status";
 import { colorClasses } from "@/lib/config/service-types-config";
 // import { VolunteerRowMenu } from "./volunteer-row-menu";
@@ -27,13 +32,16 @@ import {
   roleCategoryConfig,
   roleToCategory,
   RoleCategory,
+  teamLabel,
+  teamOfRole,
 } from "@/lib/config/roles";
 import { EventVolunteerRowMenu } from "./event-volunteer-row-menu";
 import { EmailTeamDialog } from "./email-team-dialog";
 import { AddEventRolesDialog } from "./add-event-roles-dialog";
-import { InviteToEventDialog } from "./invite-to-event-dialog";
+import { InviteToEventDialog, type RoleHolder } from "./invite-to-event-dialog";
 import { EventRoleRemoveButton } from "./event-role-remove-button";
 import { EventSmartSchedulingToggle } from "./event-smart-scheduling-toggle";
+import { EventWatchToggle } from "./event-watch-toggle";
 
 export type TeamMember = {
   userId: string;
@@ -58,6 +66,10 @@ interface EventAssignmentsCardProps {
   smartSchedulingAvailable: boolean;
   /** Owners, the only ones who can upgrade */
   canUpgrade: boolean;
+  /** Whether the caller is watching this event — managers only */
+  watching: boolean;
+  /** Each team's lead, named when a second invite is about to go into their role */
+  teamLeads: Partial<Record<Team, TeamPerson>>;
 }
 
 const roleOrder: VolunteerRole[] = [
@@ -113,6 +125,8 @@ export function EventAssignmentsCard({
   emailAllowance,
   smartSchedulingAvailable,
   canUpgrade,
+  watching,
+  teamLeads,
 }: EventAssignmentsCardProps) {
   const serviceColors = colorClasses[event.serviceType.color];
 
@@ -142,6 +156,35 @@ export function EventAssignmentsCard({
         (a.status === InvitationStatus.PENDING && a.expiresAt > now),
     )
     .map((a) => a.userId);
+
+  // Who is already live on each role, for the invite dialog's warning.
+  const holdersFor = (role: VolunteerRole): RoleHolder[] =>
+    event.assignments
+      .filter(
+        (a) =>
+          a.role === role &&
+          (a.status === InvitationStatus.ACCEPTED ||
+            (a.status === InvitationStatus.PENDING && a.expiresAt > now)),
+      )
+      .map((a) => ({
+        name:
+          a.userId === currentUserId
+            ? "You"
+            : `${a.user.firstName} ${a.user.lastName}`,
+        confirmed: a.status === InvitationStatus.ACCEPTED,
+        invitedBy: a.assignedBy
+          ? `${a.assignedBy.firstName} ${a.assignedBy.lastName}`
+          : null,
+      }));
+
+  const leadFor = (role: VolunteerRole) => {
+    const team = teamOfRole(role);
+    const lead = teamLeads[team];
+
+    return lead && lead.userId !== currentUserId
+      ? { name: `${lead.firstName} ${lead.lastName}`, team: teamLabel(team) }
+      : null;
+  };
 
   const membersByRole: Record<string, TeamMember[]> = {};
   const memberCountByRole: Record<string, number> = {};
@@ -240,6 +283,11 @@ export function EventAssignmentsCard({
                 available={smartSchedulingAvailable}
                 canUpgrade={canUpgrade}
               />
+              <EventWatchToggle
+                organizationId={event.organizationId}
+                eventId={event.id}
+                watching={watching}
+              />
               <AddEventRolesDialog
                 organizationId={event.organizationId}
                 eventId={event.id}
@@ -315,6 +363,8 @@ export function EventAssignmentsCard({
                                 unavailableUserIds={unavailableUserIds}
                                 eventDates={eventDates}
                                 serviceColor={event.serviceType.color}
+                                holders={holdersFor(group.role)}
+                                teamLead={leadFor(group.role)}
                               />
                             )}
                             <EventRoleRemoveButton
@@ -337,6 +387,8 @@ export function EventAssignmentsCard({
                             eventDates={eventDates}
                             variant="row"
                             serviceColor={event.serviceType.color}
+                            holders={holdersFor(group.role)}
+                            teamLead={leadFor(group.role)}
                           />
                         ) : (
                           <p className="px-3 py-2.5 text-sm text-muted-foreground">
