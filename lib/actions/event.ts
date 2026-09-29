@@ -55,7 +55,10 @@ import { sendEmailBatches } from "@/lib/email/send";
 import { assignmentPush } from "@/lib/push/notices";
 import { sendPushNotices } from "@/lib/push/send";
 import { notifyDeclineShortage } from "@/lib/notifications/declines";
-import { notifyEventCovers } from "@/lib/notifications/team-lead";
+import {
+  notifyCoverChanges,
+  notifyEventCovers,
+} from "@/lib/notifications/team-lead";
 import {
   clearEventNotifications,
   syncEventNotifications,
@@ -555,6 +558,24 @@ export async function createEvent(
           eventId: newEventId,
           covers: coversToTell,
           assignedByName: `${users.firstName} ${users.lastName}`,
+        }),
+      );
+    }
+
+    // Picks apply at once but are never silent: the regular lead of each team
+    // handed off hears, and the owners do too when an admin made the pick.
+    if (covers.length > 0) {
+      after(() =>
+        notifyCoverChanges({
+          organizationId,
+          eventId: newEventId,
+          before: [],
+          after: covers,
+          changedBy: {
+            userId: id,
+            name: `${users.firstName} ${users.lastName}`,
+            role: membership.role,
+          },
         }),
       );
     }
@@ -2508,6 +2529,29 @@ export const editEventDetails = async (
             eventId,
             covers: newlyPicked,
             assignedByName: `${user.firstName} ${user.lastName}`,
+          }),
+        );
+      }
+
+      // Picks apply at once but are never silent: the regular lead of each
+      // team handed off or handed back hears, and the owners do too when an
+      // admin made the change. A save that left the picks as they were tells
+      // nobody.
+      if (nextTeamLeads !== undefined) {
+        after(() =>
+          notifyCoverChanges({
+            organizationId,
+            eventId,
+            before: event.teamLeads.map((pick) => ({
+              team: pick.category,
+              userId: pick.userId,
+            })),
+            after: nextTeamLeads,
+            changedBy: {
+              userId: user.id,
+              name: `${user.firstName} ${user.lastName}`,
+              role: membership.role,
+            },
           }),
         );
       }

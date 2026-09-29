@@ -21,6 +21,7 @@ import {
 } from "@/lib/notifications/staffing";
 import { syncEventNotifications } from "@/lib/notifications/sync";
 import { sendDayBeforeReminders, sendExpiryNudges } from "@/lib/push/reminders";
+import { checkPushReceipts } from "@/lib/push/send";
 import {
     forgetOldPushClaims,
     sendLapsePushes,
@@ -510,6 +511,20 @@ export async function GET(req: Request) {
             );
         }
 
+        // Whether Apple and Google delivered what Expo accepted. `failed`
+        // above zero is the first sign of a bad APNs key or FCM credential,
+        // which nothing else would ever report.
+        let receipts: { read: number; failed: number } | null = null;
+
+        try {
+            receipts = await checkPushReceipts(now);
+        } catch (err) {
+            console.error(
+                "GET /api/cron/expire-invitations: reading push receipts failed —",
+                err,
+            );
+        }
+
         // The bell, last. It is the one piece of this tick that can afford to be
         // late: a reconcile is idempotent and the next tick heals whatever this
         // one misses, where the mail above cannot be retried — those rows are
@@ -589,6 +604,7 @@ export async function GET(req: Request) {
             lastCallFailed,
             pushed,
             pushesFailed,
+            receipts,
             reconciled: toReconcile.length,
             reconcileSkipped,
             // A full page on either table means there is very likely more

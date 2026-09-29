@@ -292,17 +292,24 @@ export async function sendLapsePushes(now: Date): Promise<number> {
     owed.set(bucket, [...(owed.get(bucket) ?? []), lapse]);
   }
 
-  const notices: PushNotice[] = [...owed].map(([bucket, lapsed]) => ({
-    email: bucket.recipient.email,
-    title: lapseSubject(lapsed, bucket.eventName),
-    subtitle: bucket.organizationName,
-    body: lapseBody(lapsed),
-    data: {
-      type: "event",
-      organizationId: bucket.organizationId,
-      eventId: bucket.eventId,
-    },
-  }));
+  const notices: PushNotice[] = [...owed].map(([bucket, lapsed]) => {
+    const subject = lapseSubject(lapsed, bucket.eventName);
+
+    return {
+      email: bucket.recipient.email,
+      // A heads-up when none of what this push carries is theirs to act on —
+      // judged on these lapses, not the bucket, since some may have gone out
+      // on an earlier tick. The email's heading makes the same call.
+      title: lapsed.every((lapse) => lapse.headsUp) ? `Heads-up: ${subject}` : subject,
+      subtitle: bucket.organizationName,
+      body: lapseBody(lapsed),
+      data: {
+        type: "event",
+        organizationId: bucket.organizationId,
+        eventId: bucket.eventId,
+      },
+    };
+  });
 
   await sendPushNotices("lapsed invitation", notices);
 

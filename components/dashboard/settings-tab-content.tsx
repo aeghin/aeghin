@@ -9,6 +9,7 @@ import { ManageSubscriptionButton } from "./manage-subscription-button";
 import { PlanUsageSection } from "./plan-usage-section";
 import { ServiceTypesSettings } from "./service-types-settings";
 import { OrgLogoUploader } from "./org-logo-uploader";
+import { TeamNotificationsOverview } from "./team-notifications-overview";
 import { TeamNotificationsSettings } from "./team-notifications-settings";
 
 interface SettingsTabContentProps {
@@ -25,7 +26,9 @@ export const SettingsTabContent = async ({
   isOwner,
 }: SettingsTabContentProps) => {
 
-  // Staffing alerts are a managers' concern: members are never asked to fill a role.
+  // Staffing alerts are the owners' to set. Admins see them read-only: they
+  // hand a team to somebody else one event at a time, from the event forms,
+  // but don't change who leads it. Members are never asked to fill a role.
   const [org, teamSettings] = await Promise.all([
     getOrganizationSettings(organizationId),
     canManage ? getTeamNotificationSettings(organizationId) : null,
@@ -97,13 +100,16 @@ export const SettingsTabContent = async ({
       {canManage && (
         <ServiceTypesSettings organizationId={organizationId} serviceTypes={org?.serviceTypes ?? []} />
       )}
-      {teamSettings && (
-        <TeamNotificationsSettings
-          organizationId={organizationId}
-          settings={teamSettings}
-          viewerId={userId}
-        />
-      )}
+      {teamSettings &&
+        (isOwner ? (
+          <TeamNotificationsSettings
+            organizationId={organizationId}
+            settings={teamSettings}
+            viewerId={userId}
+          />
+        ) : (
+          <TeamNotificationsOverview settings={teamSettings} viewerId={userId} />
+        ))}
       {canManage && (
         <PlanUsageSection organizationId={organizationId} isOwner={isOwner} />
       )}

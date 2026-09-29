@@ -18,7 +18,9 @@ const expo = new Expo({ accessToken: process.env.EXPO_ACCESS_TOKEN });
  *   somebody who has accepted.
  * - `invitation`: the Pending list, where an invitation is answered.
  * - `organization`: the organization's events, for anything with no page left
- *   to open.
+ *   to open. `tab: "all"` asks for every event rather than the viewer's own —
+ *   for a manager told about several at once. Builds that predate it open
+ *   the default tab.
  * - `organization-invite`: an invitation to join, which has no organization to
  *   switch to yet.
  * - `chat`: the event's chat — only for people on its team. Builds that predate
@@ -27,7 +29,7 @@ const expo = new Expo({ accessToken: process.env.EXPO_ACCESS_TOKEN });
 export type PushData =
   | { type: "event"; organizationId: string; eventId: string }
   | { type: "invitation"; organizationId: string; eventId: string }
-  | { type: "organization"; organizationId: string }
+  | { type: "organization"; organizationId: string; tab?: "all" }
   | { type: "organization-invite"; token: string }
   | { type: "chat"; organizationId: string; eventId: string };
 
@@ -72,7 +74,9 @@ const clip = (text: string, limit: number) => {
  * have the email.
  *
  * A ticket reporting `DeviceNotRegistered` means the app is gone from that
- * phone, and Expo asks senders to stop, so its token is deleted.
+ * phone, and Expo asks senders to stop, so its token is deleted. Every ticket
+ * Expo accepted is kept for `checkPushReceipts`, which learns whether it was
+ * actually delivered.
  */
 export async function sendPushNotices(
   label: string,
@@ -120,6 +124,9 @@ export async function sendPushNotices(
     );
 
     const gone: string[] = [];
+    // Taken by Expo. Whether Apple or Google took them too is a receipt away,
+    // read back by `checkPushReceipts`.
+    const accepted: { id: string; token: string; label: string }[] = [];
 
     for (const chunk of expo.chunkPushNotifications(messages)) {
       try {
@@ -127,10 +134,15 @@ export async function sendPushNotices(
         const tickets = await expo.sendPushNotificationsAsync(chunk);
 
         tickets.forEach((ticket, index) => {
-          if (ticket.status === "ok") return;
+          const token = chunk[index].to as string;
+
+          if (ticket.status === "ok") {
+            accepted.push({ id: ticket.id, token, label });
+            return;
+          }
 
           if (ticket.details?.error === "DeviceNotRegistered") {
-            gone.push(chunk[index].to as string);
+            gone.push(token);
             return;
           }
 
@@ -144,7 +156,96 @@ export async function sendPushNotices(
     if (gone.length > 0) {
       await prisma.pushToken.deleteMany({ where: { token: { in: gone } } });
     }
+
+    if (accepted.length > 0) {
+      await prisma.pushReceipt.createMany({ data: accepted, skipDuplicates: true });
+    }
   } catch (err) {
     console.error(`${label}: push failed`, err);
   }
+}
+
+/** Expo has a receipt ready within about 15 minutes of the send. */
+const RECEIPT_READY_MS = 15 * 60 * 1000;
+
+/** And keeps it for a day, so one that isn't back by then never will be. */
+const RECEIPT_KEPT_MS = 24 * 60 * 60 * 1000;
+
+/** Receipts read per run. Everything sent is read in time; this bounds one run. */
+const RECEIPT_BATCH = 3000;
+
+/**
+ * Reads back what Apple and Google made of the pushes Expo accepted.
+ *
+ * A send's ticket only says Expo took the message. Whatever goes wrong after
+ * that — a revoked APNs key, a bad FCM credential, a push Apple throttled —
+ * shows up nowhere but the receipt, so without this a broken credential stops
+ * every phone on one platform ringing and nothing says so. A phone that has
+ * deleted the app is reported here too, and its token goes, as `sendPushNotices`
+ * does with a ticket.
+ *
+ * Run by the hourly cron. Returns how many receipts were read, and how many of
+ * those were failures other than a deleted app — the number worth watching.
+ */
+export async function checkPushReceipts(
+  now: Date,
+): Promise<{ read: number; failed: number }> {
+  const pending = await prisma.pushReceipt.findMany({
+    where: { createdAt: { lte: new Date(now.getTime() - RECEIPT_READY_MS) } },
+    orderBy: { createdAt: "asc" },
+    take: RECEIPT_BATCH,
+    select: { id: true, token: true, label: true },
+  });
+
+  const byId = new Map(pending.map((row) => [row.id, row]));
+  const read: string[] = [];
+  const gone: string[] = [];
+  let failed = 0;
+
+  for (const ids of expo.chunkPushNotificationReceiptIds([...byId.keys()])) {
+    try {
+      const receipts = await expo.getPushNotificationReceiptsAsync(ids);
+
+      for (const [id, receipt] of Object.entries(receipts)) {
+        const row = byId.get(id);
+
+        if (!row) continue;
+
+        read.push(id);
+
+        if (receipt.status === "ok") continue;
+
+        if (receipt.details?.error === "DeviceNotRegistered") {
+          gone.push(row.token);
+          continue;
+        }
+
+        failed += 1;
+        console.error(
+          `${row.label}: push not delivered`,
+          receipt.details?.error,
+          receipt.message,
+        );
+      }
+    } catch (err) {
+      // Left for the next run: a receipt stays readable for a day.
+      console.error(`push receipts: batch of ${ids.length} threw`, err);
+    }
+  }
+
+  // Read, or old enough that Expo has let it go.
+  await prisma.pushReceipt.deleteMany({
+    where: {
+      OR: [
+        { id: { in: read } },
+        { createdAt: { lt: new Date(now.getTime() - RECEIPT_KEPT_MS) } },
+      ],
+    },
+  });
+
+  if (gone.length > 0) {
+    await prisma.pushToken.deleteMany({ where: { token: { in: gone } } });
+  }
+
+  return { read: read.length, failed };
 }

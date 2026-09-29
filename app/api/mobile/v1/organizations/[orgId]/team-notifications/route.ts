@@ -58,9 +58,11 @@ const isTeam = (value: unknown): value is RoleCategory =>
  * GET /api/mobile/v1/organizations/[orgId]/team-notifications
  *
  * Who leads each team on each service type and who else gets a heads-up — the
- * same cached read the dashboard's Settings tab renders. Owners and admins
- * only: members are never asked to fill a role, so there is nothing here for
- * them.
+ * same cached read the dashboard's Settings tab renders. Owners and admins:
+ * only owners change it (PATCH), but admins read it too — read-only on the
+ * Staffing alerts screen, and for the create and edit event screens' "Who
+ * handles open spots". Members are never asked to fill a role, so there is
+ * nothing here for them.
  */
 export const GET = route<Params>("GET /team-notifications", async (_req, { params }) => {
     const clerkId = await clerkIdOf();
@@ -92,8 +94,8 @@ export const GET = route<Params>("GET /team-notifications", async (_req, { param
  *   { serviceTypeId, team, userId, watching: boolean }  — somebody on or off
  *                                                          its "Also notify".
  *
- * The dashboard's own actions do the work, so the permission rules and the
- * refusals are worded the same on both.
+ * Owners only. The dashboard's own actions do the work, so the permission
+ * rules and the refusals are worded the same on both.
  */
 export const PATCH = route<Params>("PATCH /team-notifications", async (req, { params }) => {
     const clerkId = await clerkIdOf();

@@ -24,7 +24,8 @@ interface TeamLeadEmailProps {
   /** Every role in the team, e.g. "Pianist, Aux Keys, Bassist". */
   roleLabels: string;
   assignedByName: string;
-  settingsLink: string;
+  /** The organization's events, where the team's open spots show up. */
+  eventsLink: string;
 }
 
 export default function TeamLeadEmail({
@@ -35,7 +36,7 @@ export default function TeamLeadEmail({
   serviceTypeName,
   roleLabels,
   assignedByName,
-  settingsLink,
+  eventsLink,
 }: TeamLeadEmailProps) {
   return (
     <Tailwind>
@@ -93,10 +94,10 @@ export default function TeamLeadEmail({
               </Section>
 
               <Button
-                href={settingsLink}
+                href={eventsLink}
                 className="rounded-lg bg-black px-6 py-3 text-sm font-semibold text-white no-underline"
               >
-                See Who Leads What
+                View Events
               </Button>
 
             </Section>

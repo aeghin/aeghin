@@ -129,7 +129,9 @@ export async function notifyDeclineShortage({
       "declineEventInvitation shortage",
       recipients.map(({ person, headsUp }) => ({
         email: person.email,
-        title: subject,
+        // Worded like the email's subject, so a lock screen never asks somebody
+        // who's only copied in to go and fill it.
+        title: headsUp ? `Heads-up: ${subject}` : subject,
         subtitle: organization.name,
         body: `${declinerName} declined. ${headsUp ?? reason}`,
         data: { type: "event", organizationId, eventId },

@@ -13,45 +13,58 @@ import {
 
 import { organizationInitial } from "@/lib/email/organization";
 
-interface EventCoverEmailProps {
+/** One team whose handling changed on the event, and who has it now. */
+export type TeamHandoff = {
+  /** "Band". */
+  teamLabel: string;
+  /** "Kevin Ng · this event only", or "Back to James Lee, the lead". */
+  handler: string;
+};
+
+interface EventTeamHandoffEmailProps {
   recipientName: string;
   organizationName: string;
   logoUrl: string | null;
+  /** "Band Handed Off", or "Heads-up: Team Change" for an owner. */
+  heading: string;
+  /** Who made the change, for the line under the heading. */
+  changedByName: string;
+  /** The sentence after "Hi …,". */
+  message: string;
   eventName: string;
   eventDate: string | null;
   eventTime: string | null;
-  /** The teams they cover, e.g. "Band" or "Band and Vocals". */
-  teamLabels: string;
-  /** The same teams as a choice, e.g. "Band or Vocals": "when a … role opens up". */
-  teamChoice: string;
-  /** Every role in those teams, e.g. "Pianist, Aux Keys, Bassist". */
-  roleLabels: string;
-  /** Who usually leads those teams, when the service type has a lead. */
-  regularLeadNames: string | null;
-  assignedByName: string;
+  handoffs: TeamHandoff[];
   viewLink: string;
+  /** The footer's "why you got this". */
+  footer: string;
 }
 
-export default function EventCoverEmail({
+/**
+ * An admin handed a team to somebody else on one event. Sent to the team's
+ * regular lead, whose alerts for that event go elsewhere, and to the owners,
+ * who set the standing leads and can change it back.
+ */
+export default function EventTeamHandoffEmail({
   recipientName,
   organizationName,
   logoUrl,
+  heading,
+  changedByName,
+  message,
   eventName,
   eventDate,
   eventTime,
-  teamLabels,
-  teamChoice,
-  roleLabels,
-  regularLeadNames,
-  assignedByName,
+  handoffs,
   viewLink,
-}: EventCoverEmailProps) {
+  footer,
+}: EventTeamHandoffEmailProps) {
   return (
     <Tailwind>
       <Html>
         <Head />
         <Preview>
-          You&apos;re covering {teamLabels} for {eventName}
+          {heading} · {eventName}
         </Preview>
         <Body className="bg-gray-100 font-sans">
           <Container className="mx-auto my-10 max-w-120 rounded-2xl bg-white shadow-sm overflow-hidden">
@@ -73,22 +86,17 @@ export default function EventCoverEmail({
                 </Section>
               )}
               <Text className="text-2xl font-bold tracking-tight text-gray-900 m-0">
-                You&apos;re Covering {teamLabels}
+                {heading}
               </Text>
               <Text className="mt-2 text-sm text-gray-500 m-0">
-                For {eventName} · {assignedByName} set this up
+                For {eventName} · {changedByName} set this up
               </Text>
             </Section>
 
             <Section className="px-8 py-6 text-center">
 
               <Text className="text-sm text-gray-600 m-0 mb-6">
-                Hi {recipientName}, for this event only, when a {teamChoice}{" "}
-                role opens up — somebody declines, an invitation expires, or a
-                member leaves — you&apos;ll be the one asked to fill it.
-                {regularLeadNames
-                  ? ` ${regularLeadNames} handles it again from the next event.`
-                  : ""}
+                Hi {recipientName}, {message}
               </Text>
 
               <Section className="rounded-xl border border-gray-200 p-4 mb-6">
@@ -101,12 +109,15 @@ export default function EventCoverEmail({
                     {eventTime ? ` · ${eventTime}` : ""}
                   </Text>
                 )}
-                <Text className="text-xs text-gray-500 m-0 mt-3 mb-1">
-                  {teamLabels} roles
-                </Text>
-                <Text className="text-sm font-medium text-gray-900 m-0">
-                  {roleLabels}
-                </Text>
+                {handoffs.map((handoff) => (
+                  <Text
+                    key={handoff.teamLabel}
+                    className="text-sm text-gray-900 m-0 mt-3"
+                  >
+                    <span className="font-semibold">{handoff.teamLabel}</span>
+                    <span className="text-gray-600"> — {handoff.handler}</span>
+                  </Text>
+                ))}
               </Section>
 
               <Button
@@ -120,8 +131,7 @@ export default function EventCoverEmail({
 
             <Section className="border-t border-gray-200 px-8 py-6">
               <Text className="text-center text-xs text-gray-400 m-0">
-                You&apos;re receiving this because {assignedByName} asked you to
-                cover {teamLabels} for this event at {organizationName}.
+                {footer}
               </Text>
             </Section>
           </Container>

@@ -17,8 +17,9 @@ import {
 
 /**
  * Who handles each team's open spots on each service type, and who else hears
- * about them. Admins and owners manage it, as they manage the service types
- * and events it applies to.
+ * about them. Owners only: this is the standing arrangement for every event.
+ * Admins can still hand a team to somebody else on one event, from the create
+ * and edit event forms (`resolveEventTeamLeads` in lib/actions/event.ts).
  *
  * How a caller expires cache tags: `updateTag` throws inside a Route Handler,
  * so the mobile routes pass `revalidateTag`. Not exported: a "use server"
@@ -28,7 +29,7 @@ type TagInvalidator = (tag: string) => void;
 
 type ActionResponse = { success: true } | { success: false; error: string };
 
-const MANAGERS_ONLY = "Only admins and owners can change staffing alerts.";
+const OWNERS_ONLY = "Only owners can change staffing alerts.";
 
 const isManager = (role: OrgRole) =>
   role === OrgRole.OWNER || role === OrgRole.ADMIN;
@@ -74,7 +75,7 @@ export const setTeamLead = async (
 
     if (!role) return { success: false, error: "Unable to find membership" };
 
-    if (!isManager(role)) return { success: false, error: MANAGERS_ONLY };
+    if (role !== OrgRole.OWNER) return { success: false, error: OWNERS_ONLY };
 
     if (!(await liveServiceType(serviceTypeId, organizationId))) {
       return { success: false, error: "Unable to find that service type" };
@@ -151,7 +152,7 @@ export const setTeamWatcher = async (
 
     if (!role) return { success: false, error: "Unable to find membership" };
 
-    if (!isManager(role)) return { success: false, error: MANAGERS_ONLY };
+    if (role !== OrgRole.OWNER) return { success: false, error: OWNERS_ONLY };
 
     if (!(await liveServiceType(serviceTypeId, organizationId))) {
       return { success: false, error: "Unable to find that service type" };

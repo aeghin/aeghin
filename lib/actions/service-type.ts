@@ -6,6 +6,7 @@ import { currentUser } from "@/lib/services/user";
 import { revalidatePath, updateTag } from "next/cache";
 import { editServiceTypeSchema, type EditServiceTypeInput } from "@/lib/validations/service-types";
 import { serviceTypeLimitError } from "@/lib/billing/limits";
+import { syncOrganizationNotifications } from "@/lib/notifications/sync";
 
 /**
  * How a caller expires cache tags. `updateTag` throws inside a Route Handler,
@@ -144,6 +145,15 @@ export const deleteServiceType = async (organizationId: string, serviceTypeId: s
 
     touch(`org-${organizationId}-st`);
     revalidatePath(`/dashboard/organizations/${organizationId}/events/create`);
+
+    // Its team leads stop counting once it's gone, so the open spots on its
+    // events pass to whoever is next in line. The bell follows now rather than
+    // at the next hourly reconcile. Nothing changes hands without a lead.
+    const hadLeads = await prisma.teamLead.count({ where: { serviceTypeId } });
+
+    if (hadLeads > 0) {
+        await syncOrganizationNotifications(organizationId, touch);
+    }
 
     return { success: true }
 

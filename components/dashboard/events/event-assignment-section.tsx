@@ -67,8 +67,8 @@ interface EventAssignmentsCardProps {
   canUpgrade: boolean;
   /**
    * Who handles each team on this event — whoever covers it here, else the
-   * service type's lead. Shown on each team, and named when a second invite
-   * is about to go into one of its roles. Empty for members.
+   * service type's lead. Named in the invite dialog when a second invite is
+   * about to go into one of its roles. Empty for members.
    */
   teamLeads: Partial<Record<Team, EventTeamLead>>;
 }
@@ -188,20 +188,6 @@ export function EventAssignmentsCard({
           cover: handler.cover,
         }
       : null;
-  };
-
-  // "James" or "Kevin · this event only", on each team's header.
-  const handlerLabel = (team: Team) => {
-    const handler = teamLeads[team];
-
-    if (!handler) return null;
-
-    const name =
-      handler.person.userId === currentUserId
-        ? "You"
-        : `${handler.person.firstName} ${handler.person.lastName}`;
-
-    return handler.cover ? `${name} · this event only` : name;
   };
 
   const membersByRole: Record<string, TeamMember[]> = {};
@@ -331,31 +317,16 @@ export function EventAssignmentsCard({
           defaultValue={["band"]}
           className="w-full"
         >
-          {categories.map((category) => {
-            const handler = canManage
-              ? handlerLabel(teamOfRole(category.roleGroups[0].role))
-              : null;
-
-            return (
+          {categories.map((category) => (
             <AccordionItem
               key={category.key}
               value={category.key}
               className="border-border/40"
             >
               <AccordionTrigger className="py-3 hover:no-underline">
-                <div className="flex w-full items-center justify-between gap-2 pr-2">
-                  <span className="flex min-w-0 items-baseline gap-2">
-                    <span className="text-sm font-semibold">{category.label}</span>
-                    {handler && (
-                      <span
-                        className="truncate text-xs font-normal text-muted-foreground"
-                        title="Asked to fill this team's open spots on this event"
-                      >
-                        {handler}
-                      </span>
-                    )}
-                  </span>
-                  <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                <div className="flex w-full items-center justify-between pr-2">
+                  <span className="text-sm font-semibold">{category.label}</span>
+                  <span className="text-xs text-muted-foreground tabular-nums">
                     {category.acceptedCount}/{category.total}
                   </span>
                 </div>
@@ -519,8 +490,7 @@ export function EventAssignmentsCard({
                 })}
               </AccordionContent>
             </AccordionItem>
-            );
-          })}
+          ))}
         </Accordion>
       </CardContent>
     </Card>

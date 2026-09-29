@@ -686,6 +686,24 @@ model PushToken {
   @@index([userId])
 }
 
+/// A push Expo accepted, waiting on its delivery receipt. The send only says
+/// Expo took the message; whether Apple or Google then did comes back later,
+/// as a receipt the hourly cron reads. That is the only place a bad APNs key
+/// or FCM credential ever shows up, and where a phone that deleted the app is
+/// most often reported. Deleted once read, or after a day, when Expo stops
+/// keeping receipts.
+model PushReceipt {
+  /// The ticket id Expo returned for the send, which is also the receipt's.
+  id        String   @id
+  /// The token it went to, so a "DeviceNotRegistered" receipt can drop it.
+  token     String
+  /// Which notification it was, e.g. "last call", for the log.
+  label     String
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
+
 /// The four teams the twelve volunteer roles fall into. Which role sits in
 /// which team is `roleToCategory` in lib/config/roles.ts — this only names
 /// the teams, so a lead or a watcher can point at one.

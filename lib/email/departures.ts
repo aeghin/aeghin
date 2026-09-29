@@ -248,16 +248,19 @@ export async function notifyDeparture({
       "departure shortage",
       [...byRecipient.values()].map(({ recipient, owns, vacated, eventIds }) => ({
         email: recipient.email,
-        title: subjectFor(vacated),
+        // Worded like the email's subject.
+        title: owns ? subjectFor(vacated) : `Heads-up: ${subjectFor(vacated)}`,
         subtitle: organizationName,
         body:
           vacated.length === 1
             ? `${departedName} ${departed}. ${vacated[0].headsUp ?? `Nobody else is confirmed as ${vacated[0].roleLabel}.`}`
             : `${departedName} ${departed}, leaving ${vacated.length} upcoming events short.${owns ? "" : " Others have been asked to fill them."}`,
+        // Several events open on All, where each one's staffing shows: they
+        // may not be on the manager's own schedule.
         data:
           eventIds.length === 1
             ? { type: "event", organizationId, eventId: eventIds[0] }
-            : { type: "organization", organizationId },
+            : { type: "organization", organizationId, tab: "all" },
       })),
     );
   } catch (err) {
