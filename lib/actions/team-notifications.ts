@@ -6,7 +6,11 @@ import { after } from "next/server";
 import prisma from "@/lib/prisma";
 import { OrgRole } from "@/generated/prisma/enums";
 import { syncOrganizationNotifications } from "@/lib/notifications/sync";
-import { notifyNewTeamLead } from "@/lib/notifications/team-lead";
+import {
+  notifyFormerTeamLead,
+  notifyNewTeamLead,
+  notifyNewTeamWatcher,
+} from "@/lib/notifications/team-lead";
 import { currentUser } from "@/lib/services/user";
 import {
   teamLeadSchema,
@@ -120,6 +124,20 @@ export const setTeamLead = async (
       );
     }
 
+    // And whoever led it before hears that it's moved on, unless they moved it.
+    if (previous && previous.userId !== userId && previous.userId !== user.id) {
+      after(() =>
+        notifyFormerTeamLead({
+          organizationId,
+          serviceTypeId,
+          team,
+          formerLeadId: previous.userId,
+          newLeadId: userId,
+          changedByName: `${user.firstName} ${user.lastName}`,
+        }),
+      );
+    }
+
     return { success: true };
   } catch {
     return { success: false, error: "Unable to update the team lead, please try again" };
@@ -129,7 +147,7 @@ export const setTeamLead = async (
 /**
  * Puts somebody on a team's "Also notify" for one service type, or takes them
  * off. Only admins and owners can be on it, since a member can't act on what
- * it says.
+ * it says. Somebody newly put on it is told once, unless they added themselves.
  *
  * The bell is left alone: being copied in never earns a bell row.
  */
@@ -158,6 +176,9 @@ export const setTeamWatcher = async (
       return { success: false, error: "Unable to find that service type" };
     }
 
+    // Whether this put them on it, rather than finding them there already.
+    let added = false;
+
     if (watching) {
       const targetRole = userId === user.id ? role : await roleIn(userId, organizationId);
 
@@ -165,12 +186,18 @@ export const setTeamWatcher = async (
         return { success: false, error: "Only admins and owners can be notified about a team" };
       }
 
+      const key = { serviceTypeId, category: team, userId };
+
+      added =
+        (await prisma.teamWatcher.findUnique({
+          where: { serviceTypeId_category_userId: key },
+          select: { id: true },
+        })) === null;
+
       await prisma.teamWatcher.upsert({
-        where: {
-          serviceTypeId_category_userId: { serviceTypeId, category: team, userId },
-        },
+        where: { serviceTypeId_category_userId: key },
         update: {},
-        create: { organizationId, serviceTypeId, category: team, userId },
+        create: { organizationId, ...key },
       });
     } else {
       await prisma.teamWatcher.deleteMany({
@@ -179,6 +206,18 @@ export const setTeamWatcher = async (
     }
 
     touch(`org-${organizationId}-team-notifications`);
+
+    if (added && userId !== user.id) {
+      after(() =>
+        notifyNewTeamWatcher({
+          organizationId,
+          serviceTypeId,
+          team,
+          userId,
+          addedByName: `${user.firstName} ${user.lastName}`,
+        }),
+      );
+    }
 
     return { success: true };
   } catch {

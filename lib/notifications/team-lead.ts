@@ -6,6 +6,7 @@ import EventCoverEmail from "@/components/email/event-cover-template";
 import EventTeamHandoffEmail, {
   type TeamHandoff,
 } from "@/components/email/event-team-handoff-template";
+import TeamAlertsChangeEmail from "@/components/email/team-alerts-change-template";
 import TeamLeadEmail from "@/components/email/team-lead-template";
 import { volunteerRoleLabels } from "@/lib/activity";
 import { roleToCategory, TEAM_ORDER, teamLabel, teamOfRole } from "@/lib/config/roles";
@@ -85,8 +86,8 @@ export async function notifyNewTeamLead({
           serviceTypeName: serviceType.name,
           roleLabels: rolesOf(team),
           assignedByName,
-          // The events, not Settings: only owners see who leads what, and a
-          // lead is often an admin.
+          // The events, where the team's open spots show up — not Settings,
+          // which only owners can change.
           eventsLink: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/organizations/${organizationId}`,
         }),
       },
@@ -105,6 +106,217 @@ export async function notifyNewTeamLead({
     ]);
   } catch (err) {
     console.error(`Failed to tell a new ${team} lead in org ${organizationId}`, err);
+  }
+}
+
+/**
+ * Tells somebody they've been put on a team's "Also notify" for one service
+ * type, so their first heads-up doesn't arrive out of nowhere — and who is
+ * asked to act, so a heads-up never reads as a request.
+ *
+ * Best effort, like `notifyNewTeamLead`.
+ */
+export async function notifyNewTeamWatcher({
+  organizationId,
+  serviceTypeId,
+  team,
+  userId,
+  addedByName,
+}: {
+  organizationId: string;
+  serviceTypeId: string;
+  team: Team;
+  userId: string;
+  addedByName: string;
+}): Promise<void> {
+  try {
+    const [person, organization, serviceType] = await Promise.all([
+      prisma.user.findUnique({
+        where: { id: userId },
+        select: { email: true, firstName: true },
+      }),
+      prisma.organization.findUnique({
+        where: { id: organizationId },
+        select: { name: true, logoUrl: true },
+      }),
+      prisma.serviceType.findUnique({
+        where: { id: serviceTypeId },
+        select: {
+          name: true,
+          teamLeads: {
+            where: { category: team },
+            select: {
+              userId: true,
+              membership: {
+                select: {
+                  role: true,
+                  user: { select: { firstName: true, lastName: true } },
+                },
+              },
+            },
+          },
+        },
+      }),
+    ]);
+
+    if (!person || !organization || !serviceType) return;
+
+    const leadRow = serviceType.teamLeads[0];
+
+    // Their own team's lead is asked already, and hears nothing from this.
+    if (leadRow?.userId === userId) return;
+
+    // A lead who has been made a member no longer counts, as the alerts decide it.
+    const lead =
+      leadRow && leadRow.membership.role !== OrgRole.MEMBER
+        ? `${leadRow.membership.user.firstName} ${leadRow.membership.user.lastName}`
+        : null;
+
+    const label = teamLabel(team);
+    const asked = lead ?? "the event's creator";
+
+    await sendEmailBatches("team watcher added", [
+      {
+        from: organizationSender(organization.name),
+        to: person.email,
+        subject: `You'll get heads-ups about ${label} for ${serviceType.name}`,
+        react: TeamAlertsChangeEmail({
+          recipientName: person.firstName,
+          organizationName: organization.name,
+          logoUrl: organization.logoUrl,
+          heading: `Heads-Ups for ${label}`,
+          serviceTypeName: serviceType.name,
+          changedByName: addedByName,
+          message: `${addedByName} added you to Also notify for ${label} on ${serviceType.name}. When one of ${label}'s roles opens up — somebody declines, an invitation expires, or a member leaves — ${asked} is asked to fill it, and you'll get a heads-up saying so. You don't need to act on it.`,
+          teamLabel: label,
+          roleLabels: rolesOf(team),
+          eventsLink: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/organizations/${organizationId}`,
+          footer: `You're receiving this because ${addedByName} added you to Also notify at ${organization.name}.`,
+        }),
+      },
+    ]);
+
+    await sendPushNotices("team watcher added", [
+      {
+        email: person.email,
+        title: `Also notify: ${label} for ${serviceType.name}`,
+        subtitle: organization.name,
+        body: `${addedByName} added you. When one of ${label}'s roles opens up, ${asked} is asked to fill it and you'll get a heads-up.`,
+        data: { type: "organization", organizationId, tab: "all" },
+      },
+    ]);
+  } catch (err) {
+    console.error(`Failed to tell a new ${team} watcher in org ${organizationId}`, err);
+  }
+}
+
+/**
+ * Tells somebody they no longer lead a team for one service type — replaced,
+ * or the lead cleared — so they know its open spots won't come to them now.
+ *
+ * Only while they're still an admin or owner: one who was made a member had
+ * already stopped hearing about it. Best effort, like `notifyNewTeamLead`.
+ */
+export async function notifyFormerTeamLead({
+  organizationId,
+  serviceTypeId,
+  team,
+  formerLeadId,
+  newLeadId,
+  changedByName,
+}: {
+  organizationId: string;
+  serviceTypeId: string;
+  team: Team;
+  formerLeadId: string;
+  /** Who leads it now, or null when the lead was cleared. */
+  newLeadId: string | null;
+  changedByName: string;
+}): Promise<void> {
+  try {
+    const [membership, organization, serviceType, newLead, stillWatching] =
+      await Promise.all([
+        prisma.membership.findUnique({
+          where: { userId_organizationId: { userId: formerLeadId, organizationId } },
+          select: { role: true, user: { select: { email: true, firstName: true } } },
+        }),
+        prisma.organization.findUnique({
+          where: { id: organizationId },
+          select: { name: true, logoUrl: true },
+        }),
+        prisma.serviceType.findUnique({
+          where: { id: serviceTypeId },
+          select: { name: true },
+        }),
+        newLeadId
+          ? prisma.user.findUnique({
+              where: { id: newLeadId },
+              select: { firstName: true, lastName: true },
+            })
+          : null,
+        // Also notify can outlast being the lead, and then its heads-ups carry on.
+        prisma.teamWatcher.findUnique({
+          where: {
+            serviceTypeId_category_userId: {
+              serviceTypeId,
+              category: team,
+              userId: formerLeadId,
+            },
+          },
+          select: { id: true },
+        }),
+      ]);
+
+    if (!membership || membership.role === OrgRole.MEMBER) return;
+    if (!organization || !serviceType) return;
+
+    const label = teamLabel(team);
+
+    const change = newLead
+      ? `${changedByName} made ${newLead.firstName} ${newLead.lastName} the ${label} lead for ${serviceType.name}`
+      : `${changedByName} cleared the ${label} lead for ${serviceType.name}`;
+
+    const consequence = [
+      `you won't be asked to fill ${label}'s open spots on its events anymore`,
+      newLead ? "" : " — each event's creator is, until there's a new lead",
+    ].join("");
+
+    const watching = stillWatching
+      ? ` You're still on Also notify, so you'll keep getting a heads-up when one opens up.`
+      : "";
+
+    await sendEmailBatches("team lead replaced", [
+      {
+        from: organizationSender(organization.name),
+        to: membership.user.email,
+        subject: `You're no longer the ${label} lead for ${serviceType.name}`,
+        react: TeamAlertsChangeEmail({
+          recipientName: membership.user.firstName,
+          organizationName: organization.name,
+          logoUrl: organization.logoUrl,
+          heading: `No Longer ${label} Lead`,
+          serviceTypeName: serviceType.name,
+          changedByName,
+          message: `${change}, so ${consequence}.${watching}`,
+          teamLabel: label,
+          roleLabels: rolesOf(team),
+          eventsLink: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/organizations/${organizationId}`,
+          footer: `You're receiving this because you were the ${label} lead for ${serviceType.name} at ${organization.name}.`,
+        }),
+      },
+    ]);
+
+    await sendPushNotices("team lead replaced", [
+      {
+        email: membership.user.email,
+        title: `No longer ${label} lead: ${serviceType.name}`,
+        subtitle: organization.name,
+        body: `${change}. You won't be asked to fill its open spots anymore.${watching}`,
+        data: { type: "organization", organizationId },
+      },
+    ]);
+  } catch (err) {
+    console.error(`Failed to tell a former ${team} lead in org ${organizationId}`, err);
   }
 }
 
