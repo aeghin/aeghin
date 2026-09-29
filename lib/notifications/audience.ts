@@ -14,7 +14,9 @@ import { teamLabel, teamOfRole } from "@/lib/config/roles";
  * found by walking down one list and stopping at the first that exists:
  *
  *   1. the team's lead, for an alert about one role;
- *   2. whoever sent the invitation it is about;
+ *   2. whoever sent the invitation it is about — or, once that invitation is
+ *      gone, the newest one still on the event for the role, which is all the
+ *      bell can see;
  *   3. the event's creator;
  *   4. the organization's owners, the last resort.
  *
@@ -24,9 +26,9 @@ import { teamLabel, teamOfRole } from "@/lib/config/roles";
  * reaches somebody who can act.
  *
  * Copied in, and told who has it rather than asked to act: the team's "Also
- * notify" list, anybody watching the event, and the sender when a lead owns
- * the alert instead. Somebody who is both owner and copied in is an owner, and
- * hears once.
+ * notify" list, anybody watching the event, and whoever sent the invitation
+ * when somebody else owns the alert. Somebody who is both owner and copied in
+ * is an owner, and hears once.
  *
  * Pure: `lib/notifications/directory.ts` reads the people, this decides.
  */
@@ -78,8 +80,15 @@ export type RoleAlert = {
   eventId: string;
   createdById: string | null;
   role: VolunteerRole;
-  /** Who sent the invitation this is about, when it is about one. */
+  /** Who sent the invitation the hole is routed by. */
   senderId: string | null;
+  /**
+   * Who sent the invitation this is about, when that isn't `senderId`: a
+   * departure deletes its invitations, so its hole is routed the way the bell
+   * sees it, by what's left on the event, and whoever invited the person who
+   * left is copied in. Defaults to `senderId`.
+   */
+  inviterId?: string | null;
 };
 
 /** A staffing alert about a whole event: the last call, or it filling up. */
@@ -198,7 +207,10 @@ export function roleAudience(
     [
       // Only when somebody else owns it, which `assemble` works out: a sender
       // who is also the owner is already on the list.
-      { userId: alert.senderId, reason: "sender" },
+      {
+        userId: alert.inviterId === undefined ? alert.senderId : alert.inviterId,
+        reason: "sender",
+      },
       ...(directory.teamWatchers.get(team) ?? []).map((userId) => ({
         userId,
         reason: "team" as const,

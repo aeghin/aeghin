@@ -27,7 +27,7 @@ export type DepartingSpot = {
   role: VolunteerRole;
   status: InvitationStatus;
   expiresAt: Date;
-  /** Who invited them, which can make this spot theirs to refill. */
+  /** Who invited them: copied in when somebody else is asked to refill it. */
   assignedById: string | null;
 };
 
@@ -45,8 +45,14 @@ export type DepartureReason = "left" | "removed" | "deleted";
  * One email per recipient, listing every spot of theirs this leaves short, so
  * a creator who runs four upcoming services hears once, not four times. Each
  * spot is owned the way every staffing alert is (lib/notifications/audience.ts)
- * — its team lead, else whoever invited them, else the event's creator, else
- * the owners — with its followers copied in. Resolved after the departure, so
+ * — its team lead, else the event's creator, else the owners — with whoever
+ * invited the person who left, and the spot's followers, copied in.
+ *
+ * Routed by what's left on the event, not by the invitation that went: the
+ * bell can only see what's left, and an email asking one person to fill a
+ * hole the bell has put on somebody else's count is how it gets filled twice.
+ * So an older invitation for the role, still on record, can make its sender
+ * the owner, as it does in the bell. Resolved after the departure, so
  * somebody who is the one leaving falls through to the next in line.
  *
  * A role somebody else has already confirmed is skipped: the same rule the
@@ -95,10 +101,10 @@ export async function notifyDeparture({
           name: true,
           createdById: true,
           dates: { select: { startTime: true, endTime: true } },
-          // Whoever is still confirmed, after the departure.
+          // What's left after the departure, newest last — as the bell reads it.
           assignments: {
-            where: { status: InvitationStatus.ACCEPTED },
-            select: { role: true },
+            orderBy: { updatedAt: "asc" },
+            select: { role: true, status: true, assignedById: true },
           },
         },
       }),
@@ -166,7 +172,11 @@ export async function notifyDeparture({
 
       if (!event) continue;
 
-      if (event.assignments.some((assignment) => assignment.role === spot.role)) {
+      const forRole = event.assignments.filter(
+        (assignment) => assignment.role === spot.role,
+      );
+
+      if (forRole.some((assignment) => assignment.status === InvitationStatus.ACCEPTED)) {
         continue;
       }
 
@@ -183,7 +193,8 @@ export async function notifyDeparture({
         eventId: event.id,
         createdById: event.createdById,
         role: spot.role,
-        senderId: spot.assignedById,
+        senderId: forRole.at(-1)?.assignedById ?? null,
+        inviterId: spot.assignedById,
       });
 
       for (const owner of audience.owners) {
