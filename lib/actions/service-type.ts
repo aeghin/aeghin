@@ -1,5 +1,6 @@
 "use server";
 
+import { auth } from "@clerk/nextjs/server";
 import prisma from "@/lib/prisma";
 import { ServiceType, OrgRole } from "@/generated/prisma/client";
 import { currentUser } from "@/lib/services/user";
@@ -245,6 +246,54 @@ export const editServiceType = async (input: EditServiceTypeInput, touch: TagInv
         revalidatePath(`/dashboard/organizations/${organizationId}/events/create`);
 
         return { success: true, serviceType };
+
+    } catch (err) {
+        console.log(err);
+        return { success: false, error: "Something went wrong. Try again" };
+    }
+}
+
+/**
+ * Saves the caller's own order for the service-type pills on Events. Anyone
+ * in the organization may arrange theirs; it changes nothing for anyone else.
+ *
+ * Reads `auth()` rather than `currentUser()`, which redirects, so the mobile
+ * route can call it too.
+ */
+export const setServiceTypeOrder = async (organizationId: string, serviceTypeIds: string[], touch: TagInvalidator = updateTag): Promise<{ success: true } | { success: false; error: string }> => {
+
+    try {
+
+        const { userId: clerkId } = await auth();
+
+        if (!clerkId) return { success: false, error: "Unauthorized" };
+
+        if (!organizationId || !Array.isArray(serviceTypeIds) || serviceTypeIds.length > 200 || !serviceTypeIds.every((id) => typeof id === "string")) {
+            return { success: false, error: "Expected a list of service type ids." };
+        }
+
+        const membership = await prisma.membership.findFirst({
+            where: { organizationId, user: { clerkId } },
+            select: { id: true, userId: true },
+        });
+
+        if (!membership) return { success: false, error: "Unable to locate membership." };
+
+        const live = await prisma.serviceType.findMany({
+            where: { organizationId, deletedAt: null, id: { in: serviceTypeIds } },
+            select: { id: true },
+        });
+
+        const known = new Set(live.map(({ id }) => id));
+
+        await prisma.membership.update({
+            where: { id: membership.id },
+            data: { serviceTypeOrder: [...new Set(serviceTypeIds)].filter((id) => known.has(id)) },
+        });
+
+        touch(`user-${membership.userId}-st-order-${organizationId}`);
+
+        return { success: true };
 
     } catch (err) {
         console.log(err);

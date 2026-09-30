@@ -1,6 +1,6 @@
 import { MemberEventsDashboard } from "@/components/dashboard/events-member-dashboard";
 import { UpNextBanner, findUpNext } from "@/components/dashboard/up-next-banner";
-import { getOrgServiceTypes } from "@/lib/services/service-types";
+import { getOrgServiceTypes, getServiceTypeOrder } from "@/lib/services/service-types";
 import { getUserEvents, getOrgEvents } from "@/lib/services/events";
 
 interface EventsTabContentProps {
@@ -15,8 +15,9 @@ export const EventsTabContent = async ({
   canManage,
 }: EventsTabContentProps) => {
 
-  const [serviceTypes, events, allEvents] = await Promise.all([
+  const [serviceTypes, serviceTypeOrder, events, allEvents] = await Promise.all([
     getOrgServiceTypes(organizationId),
+    getServiceTypeOrder(userId, organizationId),
     getUserEvents(organizationId, userId),
     canManage ? getOrgEvents(organizationId, userId) : Promise.resolve([]),
   ]);
@@ -37,6 +38,7 @@ export const EventsTabContent = async ({
         events={events}
         allEvents={allEvents}
         serviceTypes={serviceTypes}
+        serviceTypeOrder={serviceTypeOrder}
         organizationId={organizationId}
         canManage={canManage}
         upNextEventId={upNext?.event.id ?? null}

@@ -146,6 +146,11 @@ model Membership {
   role OrgRole @default(MEMBER)
   volunteerRoles VolunteerRole[]
 
+  // This person's own order for the service-type pills on Events. Ids no
+  // longer in the organization are skipped on read; ones missing from it go
+  // last, alphabetically.
+  serviceTypeOrder String[] @default([])
+
   userId String
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

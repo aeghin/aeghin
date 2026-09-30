@@ -20,6 +20,8 @@ type OrganizationSummary = {
     memberCount: number;
     /** The caller's own volunteer roles here — what the phone gates My Keys on. */
     volunteerRoles: VolunteerRole[];
+    /** The caller's own order for the service-type pills on Events. */
+    serviceTypeOrder: string[];
 };
 
 /**
@@ -45,6 +47,7 @@ export async function GET() {
             select: {
                 role: true,
                 volunteerRoles: true,
+                serviceTypeOrder: true,
                 organization: {
                     select: {
                         id: true,
@@ -60,7 +63,7 @@ export async function GET() {
             },
         });
 
-        const organizations: OrganizationSummary[] = memberships.map(({ role, volunteerRoles, organization }) => ({
+        const organizations: OrganizationSummary[] = memberships.map(({ role, volunteerRoles, serviceTypeOrder, organization }) => ({
             id: organization.id,
             name: organization.name,
             description: organization.description,
@@ -68,6 +71,7 @@ export async function GET() {
             role,
             memberCount: organization._count.memberships,
             volunteerRoles,
+            serviceTypeOrder,
         }));
 
         return NextResponse.json(

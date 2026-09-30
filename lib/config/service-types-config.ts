@@ -167,3 +167,21 @@ export const colorClasses: Record<
 
 export const getServiceColors = (color: string) =>
   colorClasses[color] ?? colorClasses.indigo;
+
+/**
+ * Service types in one person's own order: the ones they arranged first, then
+ * any added since, alphabetically. Ids no longer in the list are skipped.
+ * Mirrored by `orderServiceTypes` in the Expo app — keep the two in step.
+ */
+export const orderServiceTypes = <T extends { id: string; name: string }>(
+  serviceTypes: T[],
+  order: readonly string[],
+): T[] => {
+  const rank = new Map(order.map((id, index) => [id, index]));
+
+  return [...serviceTypes].sort((a, b) => {
+    const left = rank.get(a.id) ?? Infinity;
+    const right = rank.get(b.id) ?? Infinity;
+    return left === right ? a.name.localeCompare(b.name) : left - right;
+  });
+};

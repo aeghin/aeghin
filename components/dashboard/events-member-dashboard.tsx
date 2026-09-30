@@ -23,6 +23,7 @@ import {
   declineEventInvitation,
 } from "@/lib/actions/event";
 import { Spinner } from "@/components/ui/spinner";
+import { ServiceTypeFilter } from "@/components/dashboard/events/service-type-filter";
 import { getServiceColors as getColorClasses } from "@/lib/config/service-types-config";
 
 interface EventDate {
@@ -311,6 +312,8 @@ interface MemberEventsDashboardProps {
   /** All org events — only supplied for owners/admins; powers the "All Events" tab. */
   allEvents?: Event[];
   serviceTypes: ServiceType[];
+  /** The caller's own order for the service-type pills. */
+  serviceTypeOrder: string[];
   organizationId: string;
   canManage: boolean;
   /** Event already shown in the Upcoming banner — kept out of My Schedule rows. */
@@ -332,6 +335,7 @@ export function MemberEventsDashboard({
   events,
   allEvents = [],
   serviceTypes,
+  serviceTypeOrder,
   organizationId,
   canManage,
   upNextEventId = null,
@@ -756,47 +760,13 @@ export function MemberEventsDashboard({
       </m.div>
 
       {/* Service Type Filters */}
-      <m.div
-        initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.15 }}
-        className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide snap-x snap-mandatory sm:snap-none"
-        style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
-      >
-        <m.button
-          whileTap={{ scale: 0.97 }}
-          onClick={() => setSelectedServiceType(null)}
-          className={`flex shrink-0 snap-start items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-all cursor-pointer ${
-            !selectedServiceType
-              ? "bg-foreground text-background"
-              : "border border-border bg-background text-muted-foreground hover:border-foreground/20 hover:text-foreground"
-          }`}
-        >
-          All
-        </m.button>
-        {serviceTypes.map((service) => {
-          const colors = getColorClasses(service.color);
-          return (
-            <m.button
-              key={service.id}
-              whileTap={{ scale: 0.97 }}
-              onClick={() =>
-                setSelectedServiceType(
-                  service.id === selectedServiceType ? null : service.id,
-                )
-              }
-              className={`flex shrink-0 snap-start items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-all cursor-pointer ${
-                selectedServiceType === service.id
-                  ? "bg-foreground text-background"
-                  : "border border-border bg-background text-muted-foreground hover:border-foreground/20 hover:text-foreground"
-              }`}
-            >
-              <span className={`h-2 w-2 rounded-full ${colors.dot}`} />
-              {service.name}
-            </m.button>
-          );
-        })}
-      </m.div>
+      <ServiceTypeFilter
+        serviceTypes={serviceTypes}
+        serviceTypeOrder={serviceTypeOrder}
+        organizationId={organizationId}
+        selected={selectedServiceType}
+        onSelect={setSelectedServiceType}
+      />
 
       {/* Content */}
       <AnimatePresence mode="wait">
