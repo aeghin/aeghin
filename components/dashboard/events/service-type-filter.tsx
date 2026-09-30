@@ -43,7 +43,7 @@ interface ServiceTypeFilterProps {
 const pillClass = (active: boolean) =>
   `flex shrink-0 snap-start items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-all cursor-pointer ${
     active
-      ? "bg-foreground text-background"
+      ? "border border-transparent bg-foreground text-background"
       : "border border-border bg-background text-muted-foreground hover:border-foreground/20 hover:text-foreground"
   }`;
 
