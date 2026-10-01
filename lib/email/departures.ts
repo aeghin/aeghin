@@ -2,8 +2,7 @@ import "server-only";
 
 import prisma from "@/lib/prisma";
 import { InvitationStatus, type VolunteerRole } from "@/generated/prisma/enums";
-import { volunteerRoleLabels } from "@/lib/activity";
-import { teamOfRole } from "@/lib/config/roles";
+import { teamOfRole, volunteerRoleConfig } from "@/lib/config/roles";
 import EventDepartureEmail, {
   type VacatedSpot,
 } from "@/components/email/event-departure-template";
@@ -180,7 +179,7 @@ export async function notifyDeparture({
 
       const vacated: VacatedSpot = {
         eventName: event.name,
-        roleLabel: volunteerRoleLabels[spot.role],
+        roleLabel: volunteerRoleConfig[spot.role].label,
         when: when ? `${when.date} · ${when.time}` : null,
         viewLink: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/organizations/${organizationId}/events/${event.id}`,
       };

@@ -40,7 +40,7 @@ type ServiceTypeTeams = {
 };
 
 type TeamNotificationSettings = {
-    /** Live service types, oldest first, each with its four teams. */
+    /** Live service types, oldest first, each with every team. */
     serviceTypes: ServiceTypeTeams[];
     /** Admins and owners: everybody who can lead a team or be copied in. */
     managers: (TeamPerson & { role: OrgRole })[];

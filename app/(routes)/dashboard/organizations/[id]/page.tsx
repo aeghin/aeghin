@@ -12,7 +12,8 @@ import { z } from "zod/v4";
 import { Suspense } from "react";
 import { getOrganizationDetailsById } from "@/lib/services/organization";
 import { redirect } from "next/navigation";
-import { OrgRole, VolunteerRole } from "@/generated/prisma/enums";
+import { OrgRole } from "@/generated/prisma/enums";
+import { hasSingingRole } from "@/lib/config/roles";
 import { currentUser, userRoles } from "@/lib/services/user";
 
 
@@ -55,9 +56,7 @@ export default async function OrganizationPage({
   // volunteer roles costs no extra query.
   const volunteerRoles = roles?.volunteerRoles ?? [];
 
-  const isVocalist =
-    volunteerRoles.includes(VolunteerRole.LEAD_VOCALIST) ||
-    volunteerRoles.includes(VolunteerRole.BGVS);
+  const isVocalist = hasSingingRole(volunteerRoles);
 
 
  return (

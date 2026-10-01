@@ -1,22 +1,7 @@
 import "server-only";
 
 import prisma from "@/lib/prisma";
-import { ActivityType, OrgRole, VolunteerRole } from "@/generated/prisma/enums";
-
-export const volunteerRoleLabels: Record<VolunteerRole, string> = {
-  GUITARIST: "Guitarist",
-  PIANIST: "Pianist",
-  AUX_KEYS: "Aux Keys",
-  DRUMMER: "Drummer",
-  LEAD_VOCALIST: "Lead Vocalist",
-  BGVS: "BGVs",
-  BASSIST: "Bassist",
-  SOUND_TECH: "Sound Tech",
-  STREAM_TECH: "Stream Tech",
-  PROJECTION_TECH: "Projection",
-  USHER: "Usher",
-  GREETER: "Greeter",
-};
+import { ActivityType, OrgRole } from "@/generated/prisma/enums";
 
 export const orgRoleLabels: Record<OrgRole, string> = {
   OWNER: "Owner",

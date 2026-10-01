@@ -31,12 +31,12 @@ import {
 import { getOrgPlan } from "@/lib/billing/entitlements";
 import { getEmailAllowance } from "@/lib/billing/limits";
 import { PLAN_LIMITS } from "@/lib/config/plans";
-import { TEAM_ORDER, teamsOfRoles } from "@/lib/config/roles";
+import { TEAM_ORDER, teamsOfRoles, volunteerRoleConfig } from "@/lib/config/roles";
 import type {
   TeamLeadChoices,
   TeamLeadPicks,
 } from "@/components/dashboard/events/event-team-leads-field";
-import { InvitationStatus, OrgRole, VolunteerRole } from "@/generated/prisma/enums";
+import { InvitationStatus, OrgRole } from "@/generated/prisma/enums";
 
 export default async function EventDetailPage({
   params,
@@ -76,7 +76,7 @@ export default async function EventDetailPage({
     (a) =>
       a.userId === user.id &&
       a.status === InvitationStatus.ACCEPTED &&
-      (a.role === VolunteerRole.LEAD_VOCALIST || a.role === VolunteerRole.BGVS),
+      volunteerRoleConfig[a.role].sings,
   );
 
   const myKeys = isEventVocalist ? await getUserSongKeys(user.id, orgId) : [];

@@ -4,7 +4,8 @@ import { auth } from "@clerk/nextjs/server";
 import prisma from "@/lib/prisma";
 import { orgInvitationSchema, OrgInvitationInput } from "../validations/invitations";
 import { OrgRole, InvitationStatus, ActivityType, type VolunteerRole } from "@/generated/prisma/enums";
-import { logActivity, volunteerRoleLabels } from "@/lib/activity";
+import { logActivity } from "@/lib/activity";
+import { volunteerRoleConfig } from "@/lib/config/roles";
 
 import { Resend } from "resend";
 import InvitationEmail from "@/components/email/email-template";
@@ -60,7 +61,7 @@ const pushInvitation = async (invitation: {
 
         if (!invitee) return;
 
-        const roles = invitation.volunteerRoles.map((role) => volunteerRoleLabels[role]).join(", ");
+        const roles = invitation.volunteerRoles.map((role) => volunteerRoleConfig[role].label).join(", ");
 
         await sendPushNotices("organization invitation", [{
             email: invitee.email,
@@ -145,7 +146,7 @@ export async function inviteMember(data: OrgInvitationInput, touch: TagInvalidat
             actorName: `${user.firstName} ${user.lastName}`,
             targetName: email,
             detail: volunteerRoles.length
-                ? volunteerRoles.map((role) => volunteerRoleLabels[role]).join(", ")
+                ? volunteerRoles.map((role) => volunteerRoleConfig[role].label).join(", ")
                 : undefined,
         });
 

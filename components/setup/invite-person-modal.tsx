@@ -28,7 +28,7 @@ import {
 } from "@/components/ui/form";
 
 import { VolunteerRole } from "@/generated/prisma/enums";
-import { volunteerRoleConfig } from "@/lib/config/roles";
+import { ROLE_ORDER, volunteerRoleConfig } from "@/lib/config/roles";
 
 import { inviteMember } from "@/lib/actions/invitation";
 import { PlanLimitReached } from "@/components/dashboard/plan-limit-reached";
@@ -226,7 +226,7 @@ export function InvitePersonModal({
                   <FormItem>
                     <FormLabel>Volunteer Roles</FormLabel>
                     <div className="space-y-1 rounded-lg border border-border/50 bg-muted/30 p-2 sm:space-y-2 sm:p-3">
-                      {Object.values(VolunteerRole).map((role) => {
+                      {ROLE_ORDER.map((role) => {
                         const config = volunteerRoleConfig[role];
                         return (
                           <label

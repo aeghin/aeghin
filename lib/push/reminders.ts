@@ -2,7 +2,7 @@ import "server-only";
 
 import prisma from "@/lib/prisma";
 import { InvitationStatus } from "@/generated/prisma/enums";
-import { volunteerRoleLabels } from "@/lib/activity";
+import { volunteerRoleConfig } from "@/lib/config/roles";
 import { formatEventShort, formatRehearsal } from "@/lib/email/event-when";
 import { sendPushNotices, type PushNotice } from "@/lib/push/send";
 import {
@@ -164,7 +164,7 @@ export async function sendDayBeforeReminders(now: Date): Promise<number> {
             title: `Tomorrow: ${event.name}`,
             subtitle: event.organization.name,
             body: [
-              [volunteerRoleLabels[role], formatEventShort(event.dates)]
+              [volunteerRoleConfig[role].label, formatEventShort(event.dates)]
                 .filter(Boolean)
                 .join(" · "),
               rehearsal && `Rehearsal ${rehearsal}`,
@@ -299,7 +299,7 @@ export async function sendExpiryNudges(now: Date): Promise<number> {
         title: `Still need your answer: ${event.name}`,
         subtitle: event.organization.name,
         body: [
-          [volunteerRoleLabels[role], formatEventShort(event.dates)]
+          [volunteerRoleConfig[role].label, formatEventShort(event.dates)]
             .filter(Boolean)
             .join(" · "),
           `Expires ${deadline}. Tap to accept or decline.`,

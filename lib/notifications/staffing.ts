@@ -4,8 +4,7 @@ import prisma from "@/lib/prisma";
 import { InvitationStatus, type VolunteerRole } from "@/generated/prisma/enums";
 import type { Prisma } from "@/generated/prisma/client";
 import type { LapsedInvite } from "@/components/email/event-invite-expired-template";
-import { volunteerRoleLabels } from "@/lib/activity";
-import { teamOfRole } from "@/lib/config/roles";
+import { teamOfRole, volunteerRoleConfig } from "@/lib/config/roles";
 import {
   reasonLine,
   roleAudience,
@@ -79,10 +78,10 @@ export function rosterGaps(
       waiting.length === 0,
     unfilledRoles: event.rolesNeeded
       .filter((role) => !confirmed.has(role) && !deciding.has(role))
-      .map((role) => volunteerRoleLabels[role]),
+      .map((role) => volunteerRoleConfig[role].label),
     waitingOn: waiting.map((row) => ({
       inviteeName: `${row.user.firstName} ${row.user.lastName}`,
-      roleLabel: volunteerRoleLabels[row.role],
+      roleLabel: volunteerRoleConfig[row.role].label,
     })),
   };
 }
@@ -228,7 +227,7 @@ export async function lapseBuckets(
   ) => {
     const lapse: Lapse = {
       inviteeName: `${row.user.firstName} ${row.user.lastName}`,
-      roleLabel: volunteerRoleLabels[row.role],
+      roleLabel: volunteerRoleConfig[row.role].label,
       assignmentId: row.id,
       lapsedAt: row.lapsedAt,
       headsUp,

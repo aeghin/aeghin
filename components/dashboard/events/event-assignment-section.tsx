@@ -20,8 +20,8 @@ import type { EmailAllowance } from "@/lib/billing/limits";
 import type { EventTeamLead } from "@/lib/services/team-notifications";
 import {
   InvitationStatus,
+  RoleCategory as Team,
   VolunteerRole,
-  type RoleCategory as Team,
 } from "@/generated/prisma/enums";
 import { statusStyles } from "@/lib/config/status";
 import { colorClasses } from "@/lib/config/service-types-config";
@@ -29,9 +29,8 @@ import { colorClasses } from "@/lib/config/service-types-config";
 
 import {
   volunteerRoleConfig,
-  roleCategoryConfig,
-  roleToCategory,
-  RoleCategory,
+  ROLE_ORDER,
+  TEAM_ORDER,
   teamLabel,
   teamOfRole,
 } from "@/lib/config/roles";
@@ -72,21 +71,6 @@ interface EventAssignmentsCardProps {
    */
   teamLeads: Partial<Record<Team, EventTeamLead>>;
 }
-
-const roleOrder: VolunteerRole[] = [
-  VolunteerRole.PIANIST,
-  VolunteerRole.AUX_KEYS,
-  VolunteerRole.BASSIST,
-  VolunteerRole.GUITARIST,
-  VolunteerRole.DRUMMER,
-  VolunteerRole.LEAD_VOCALIST,
-  VolunteerRole.BGVS,
-  VolunteerRole.SOUND_TECH,
-  VolunteerRole.STREAM_TECH,
-  VolunteerRole.PROJECTION_TECH,
-  VolunteerRole.USHER,
-  VolunteerRole.GREETER,
-];
 
 // Tiny corner badge icon shown on the avatar
 const statusBadgeIcons: Record<InvitationStatus, LucideIcon> = {
@@ -193,7 +177,7 @@ export function EventAssignmentsCard({
   const membersByRole: Record<string, TeamMember[]> = {};
   const memberCountByRole: Record<string, number> = {};
 
-  for (const role of roleOrder) {
+  for (const role of ROLE_ORDER) {
     const eligible = members.filter((m) => m.volunteerRoles.includes(role));
     membersByRole[role] = eligible;
     memberCountByRole[role] = eligible.length;
@@ -206,14 +190,10 @@ export function EventAssignmentsCard({
     endTime: d.endTime.toISOString(),
   }));
 
-  const categoryKeys = (Object.keys(roleCategoryConfig) as RoleCategory[]).sort(
-    (a, b) => roleCategoryConfig[a].order - roleCategoryConfig[b].order,
-  );
-
-  const categories = categoryKeys
+  const categories = TEAM_ORDER
     .map((key) => {
-      const roleGroups = roleOrder
-        .filter((role) => roleToCategory[role] === key && rosterRoles.has(role))
+      const roleGroups = ROLE_ORDER
+        .filter((role) => teamOfRole(role) === key && rosterRoles.has(role))
         .map((role) => ({
           role,
           items: event.assignments.filter((a) => a.role === role),
@@ -226,7 +206,7 @@ export function EventAssignmentsCard({
 
       return {
         key,
-        label: roleCategoryConfig[key].label,
+        label: teamLabel(key),
         roleGroups,
         total: items.length,
         acceptedCount,
@@ -314,7 +294,7 @@ export function EventAssignmentsCard({
       <CardContent className="relative">
         <Accordion
           type="multiple"
-          defaultValue={["band"]}
+          defaultValue={[Team.BAND]}
           className="w-full"
         >
           {categories.map((category) => (

@@ -26,6 +26,9 @@ enum VolunteerRole {
   PROJECTION_TECH
   USHER
   GREETER
+  CHOIR
+  CAMERA
+  LIGHTING
 }
 
 enum InvitationStatus {
@@ -709,14 +712,15 @@ model PushReceipt {
   @@index([createdAt])
 }
 
-/// The four teams the twelve volunteer roles fall into. Which role sits in
-/// which team is `roleToCategory` in lib/config/roles.ts — this only names
-/// the teams, so a lead or a watcher can point at one.
+/// The teams the volunteer roles fall into. Which role sits in which team is
+/// `volunteerRoleConfig` in lib/config/roles.ts — this only names the teams,
+/// so a lead or a watcher can point at one.
 enum RoleCategory {
   BAND
   VOCALS
   PRODUCTION
   HOSPITALITY
+  MEDIA
 }
 
 /// Who handles one team's open spots on one service type's events: the person

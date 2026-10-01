@@ -8,7 +8,7 @@ import { RoleCategory, VolunteerRole } from "@/generated/prisma/enums";
  */
 export const eventTeamLeadsSchema = z
   .array(z.object({ team: z.enum(RoleCategory), userId: z.uuid() }))
-  .max(4)
+  .max(Object.values(RoleCategory).length)
   .refine(
     (rows) => new Set(rows.map((row) => row.team)).size === rows.length,
     "One person per team",

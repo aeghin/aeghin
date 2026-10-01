@@ -19,7 +19,7 @@ export type TeamSettings = {
   watchers: TeamPerson[];
 };
 
-/** One service type's four teams. */
+/** One service type's teams. */
 export type ServiceTypeTeams = {
   serviceTypeId: string;
   name: string;

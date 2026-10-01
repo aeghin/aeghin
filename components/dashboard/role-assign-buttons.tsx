@@ -20,7 +20,7 @@ import { Button } from "@/components/ui/button";
 import { MoreVertical, Shield, Users, Trash2, Settings2, Crown } from "lucide-react";
 
 import { OrgRole, VolunteerRole } from "@/generated/prisma/enums";
-import { volunteerRoleConfig } from "@/lib/config/roles";
+import { ROLE_ORDER, volunteerRoleConfig } from "@/lib/config/roles";
 
 import { useOptimistic, useState, useTransition } from "react";
 
@@ -150,7 +150,7 @@ export const RoleAssignButtons = ({ currentRole, userId, organizationId, memberN
                                 Manage Roles
                             </DropdownMenuSubTrigger>
                             <DropdownMenuSubContent className="w-52">
-                                {Object.values(VolunteerRole).map((role) => {
+                                {ROLE_ORDER.map((role) => {
                                     const config = volunteerRoleConfig[role];
                                     return (
                                         <DropdownMenuCheckboxItem

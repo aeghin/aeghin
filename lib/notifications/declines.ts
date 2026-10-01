@@ -3,11 +3,10 @@ import "server-only";
 import prisma from "@/lib/prisma";
 import { InvitationStatus, type VolunteerRole } from "@/generated/prisma/enums";
 import EventShortageEmail from "@/components/email/event-shortage-template";
-import { volunteerRoleLabels } from "@/lib/activity";
 import { formatEventWhen } from "@/lib/email/event-when";
 import { organizationSender } from "@/lib/email/organization";
 import { sendEmailBatches } from "@/lib/email/send";
-import { teamOfRole } from "@/lib/config/roles";
+import { teamOfRole, volunteerRoleConfig } from "@/lib/config/roles";
 import { reasonLine, roleAudience } from "@/lib/notifications/audience";
 import { loadStaffingDirectory } from "@/lib/notifications/directory";
 import { sendPushNotices } from "@/lib/push/send";
@@ -98,7 +97,7 @@ export async function notifyDeclineShortage({
 
     if (recipients.length === 0) return;
 
-    const roleLabel = volunteerRoleLabels[role];
+    const roleLabel = volunteerRoleConfig[role].label;
     const when = formatEventWhen(dates);
     const subject = `Needs a ${roleLabel}: ${eventName}`;
 

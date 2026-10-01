@@ -9,7 +9,8 @@ import {
   VolunteerRole,
 } from "@/generated/prisma/enums";
 
-import { logActivity, volunteerRoleLabels } from "@/lib/activity";
+import { logActivity } from "@/lib/activity";
+import { volunteerRoleConfig } from "@/lib/config/roles";
 
 import {
   SMART_SCHEDULING_PLAN_ERROR,
@@ -310,7 +311,7 @@ export async function createEvent(
       const assignedUserIdSet = new Set(assignedUserIds);
 
       // Every assignment has to land in a role the event declared. Zod fills
-      // roleAssignments with all twelve keys, so it's the non-empty ones that
+      // roleAssignments with every role's key, so it's the non-empty ones that
       // count. Catches crafted requests, and a role dropped in step one after
       // it was already staffed in step two.
       const offRoster = Object.entries(roleAssignments)
@@ -320,7 +321,7 @@ export async function createEvent(
 
       if (offRoster.length > 0) {
         const labels = offRoster
-          .map((role) => volunteerRoleLabels[role])
+          .map((role) => volunteerRoleConfig[role].label)
           .join(", ");
 
         return {
@@ -511,7 +512,7 @@ export async function createEvent(
               eventId: newEventId,
               organizationName,
               organizationId,
-              roleLabel: role ? volunteerRoleLabels[role] : null,
+              roleLabel: role ? volunteerRoleConfig[role].label : null,
               when,
             });
           }),
@@ -720,7 +721,7 @@ export const acceptEventInvitation = async (
       eventName: event.event.name,
       type: ActivityType.INVITE_ACCEPTED,
       actorName: `${user.firstName} ${user.lastName}`,
-      targetName: volunteerRoleLabels[event.role],
+      targetName: volunteerRoleConfig[event.role].label,
     });
 
     touch(`user-${user.id}-events-${organizationId}`);
@@ -807,7 +808,7 @@ export const declineEventInvitation = async (
     touch(`org-${organizationId}-acceptance-stats`);
 
     const declinerName = `${user.firstName} ${user.lastName}`;
-    const roleLabel = volunteerRoleLabels[assignment.role];
+    const roleLabel = volunteerRoleConfig[assignment.role].label;
     const eventName = assignment.event.name;
 
     /**
@@ -1101,7 +1102,7 @@ export const cancelUserEventAssignment = async (userId: string, organizationId: 
             organizationName,
             logoUrl,
             removedByName: `${user.firstName} ${user.lastName}`,
-            roleLabel: volunteerRoleLabels[assignment.role],
+            roleLabel: volunteerRoleConfig[assignment.role].label,
             eventDate: when?.date ?? null,
             eventTime: when?.time ?? null,
             viewLink: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/organizations/${organizationId}`,
@@ -1120,7 +1121,7 @@ export const cancelUserEventAssignment = async (userId: string, organizationId: 
             subtitle: organizationName,
             body: [
               `${user.firstName} ${user.lastName} took you off the team.`,
-              [volunteerRoleLabels[assignment.role], shortWhen].filter(Boolean).join(" · "),
+              [volunteerRoleConfig[assignment.role].label, shortWhen].filter(Boolean).join(" · "),
             ].join("\n"),
             data: { type: "organization", organizationId },
           },
@@ -1208,7 +1209,7 @@ export const resendEventInvitation = async (
     if (!targetMembership.volunteerRoles.includes(assignment.role)) {
       return {
         success: false,
-        error: `Unable to reinvite — they no longer have the ${volunteerRoleLabels[assignment.role]} role`,
+        error: `Unable to reinvite — they no longer have the ${volunteerRoleConfig[assignment.role].label} role`,
       };
     }
 
@@ -1269,7 +1270,7 @@ export const resendEventInvitation = async (
           eventId,
           organizationName,
           organizationId,
-          roleLabel: volunteerRoleLabels[assignment.role],
+          roleLabel: volunteerRoleConfig[assignment.role].label,
           when: formatEventShort(assignment.event.dates),
         }),
       ]),
@@ -1282,7 +1283,7 @@ export const resendEventInvitation = async (
       type: ActivityType.INVITE_SENT,
       actorName: `${user.firstName} ${user.lastName}`,
       targetName: assignment.event.name,
-      detail: `${volunteerRoleLabels[assignment.role]} · reinvited after expiry`,
+      detail: `${volunteerRoleConfig[assignment.role].label} · reinvited after expiry`,
     });
 
     await syncEventNotifications(eventId, touch);
@@ -1868,7 +1869,7 @@ export const inviteMembersToEvent = async (
             eventId,
             organizationName,
             organizationId,
-            roleLabel: volunteerRoleLabels[role],
+            roleLabel: volunteerRoleConfig[role].label,
             when,
           }),
         ),
@@ -1882,7 +1883,7 @@ export const inviteMembersToEvent = async (
       type: ActivityType.INVITE_SENT,
       actorName: `${user.firstName} ${user.lastName}`,
       targetName: event.name,
-      detail: `${volunteerRoleLabels[role]} · ${invitedUserIds.length} invited`,
+      detail: `${volunteerRoleConfig[role].label} · ${invitedUserIds.length} invited`,
     });
 
     for (const uid of invitedUserIds) {

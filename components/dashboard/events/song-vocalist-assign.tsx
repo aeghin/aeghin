@@ -25,7 +25,7 @@ export type VocalistCandidate = {
   firstName: string;
   lastName: string;
   userImageUrl: string | null;
-  role: VolunteerRole; // LEAD_VOCALIST | BGVS
+  role: VolunteerRole; // one that sings
 };
 
 export type AssignedVocalist = {
@@ -39,7 +39,7 @@ interface SongVocalistAssignProps {
   setlistSongId: string;
   /** Vocalists currently assigned to this song. */
   assigned: AssignedVocalist[];
-  /** Accepted Lead/BGV vocalists for the event — the pickable pool. */
+  /** Accepted singers for the event — the pickable pool. */
   candidates: VocalistCandidate[];
   /** Only managers get the ⊕ trigger; everyone sees the avatar stack. */
   canManage: boolean;

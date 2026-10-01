@@ -2,10 +2,11 @@
 
 import prisma from "@/lib/prisma";
 import { currentUser } from "@/lib/services/user";
-import { InvitationStatus, OrgRole, VolunteerRole } from "@/generated/prisma/enums";
+import { InvitationStatus, OrgRole } from "@/generated/prisma/enums";
 import type { KeyQuality, Pitch } from "@/generated/prisma/enums";
 import { revalidatePath, updateTag } from "next/cache";
 import type { SetlistSong } from "@/lib/types";
+import { SINGING_ROLES } from "@/lib/config/roles";
 
 type ActionResponse = { success: true } | { success: false; error: string };
 
@@ -177,13 +178,13 @@ export const assignSongVocalist = async (
 
     const { eventId, organizationId } = ids;
 
-    // Only accepted Lead/BGV vocalists on this event may be assigned.
+    // Only accepted singers on this event may be assigned.
     const vocalist = await prisma.eventAssignment.findFirst({
       where: {
         eventId,
         userId,
         status: InvitationStatus.ACCEPTED,
-        role: { in: [VolunteerRole.LEAD_VOCALIST, VolunteerRole.BGVS] },
+        role: { in: SINGING_ROLES },
       },
       select: { id: true },
     });

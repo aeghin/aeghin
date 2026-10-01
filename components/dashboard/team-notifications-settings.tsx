@@ -20,9 +20,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { VolunteerRole, type RoleCategory as Team } from "@/generated/prisma/enums";
+import type { RoleCategory as Team } from "@/generated/prisma/enums";
 import { setTeamLead, setTeamWatcher } from "@/lib/actions/team-notifications";
-import { teamLabel, teamOfRole, volunteerRoleConfig } from "@/lib/config/roles";
+import { rolesOfTeam, teamLabel, volunteerRoleConfig } from "@/lib/config/roles";
 import { colorClasses } from "@/lib/config/service-types-config";
 import { cn } from "@/lib/utils";
 import type {
@@ -54,8 +54,7 @@ const fullName = (person: TeamPerson) => `${person.firstName} ${person.lastName}
 
 /** Each team's roles, in the roster's order: "Pianist, Aux Keys, …". */
 const rolesOf = (team: Team) =>
-  Object.values(VolunteerRole)
-    .filter((role) => teamOfRole(role) === team)
+  rolesOfTeam(team)
     .map((role) => volunteerRoleConfig[role].label)
     .join(", ");
 

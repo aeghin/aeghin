@@ -1,5 +1,6 @@
 import { ToolLoopAgent, tool, stepCountIs, InferAgentUIMessage } from "ai";
 import { VolunteerRole } from "@/generated/prisma/enums";
+import { ROLE_ORDER, teamLabel, teamOfRole, volunteerRoleConfig } from "@/lib/config/roles";
 import type { RoleEligibility } from "@/lib/types";
 import {
   checkAvailabilityInputSchema,
@@ -122,6 +123,13 @@ function buildInstructions(opts: {
     .map((t) => `- ${t.id} | ${t.name}`)
     .join("\n");
 
+  // Every role with its name and team, so "drums" or "the band" maps onto
+  // the ids without the model guessing from the ids alone.
+  const roleRows = ROLE_ORDER.map(
+    (role) =>
+      `- ${role} | ${volunteerRoleConfig[role].label} | ${teamLabel(teamOfRole(role))}`,
+  ).join("\n");
+
   const templateRows = templates.length
     ? templates
         .map(
@@ -150,6 +158,10 @@ TODAY IS ${today} (${todayWeekday}).
 SERVICE TYPES (id | name):
 ${serviceTypeRows}
 Every event is filed under one of these. There are no others and you cannot create one. If none of them really fits what they asked for, use the closest and say in your summary which one you used and that it may not be the right home — never let a mismatch pass silently.
+
+ROLES (id | name | team):
+${roleRows}
+Read what they ask for by name and by team — "the band" means the Band roles here. In your summary and reasons, call a role by its name, never its id.
 
 TEMPLATES — the org's own recurring patterns. Use one ONLY when they ask for it by name or plainly describe that service ("the youth gathering", "Sunday morning"). Never reach for one to fill in something they simply did not mention. When you do use one, take its times, location, roles and service type:
 ${templateRows}

@@ -8,8 +8,7 @@ import EventTeamHandoffEmail, {
 } from "@/components/email/event-team-handoff-template";
 import TeamAlertsChangeEmail from "@/components/email/team-alerts-change-template";
 import TeamLeadEmail from "@/components/email/team-lead-template";
-import { volunteerRoleLabels } from "@/lib/activity";
-import { roleToCategory, TEAM_ORDER, teamLabel, teamOfRole } from "@/lib/config/roles";
+import { rolesOfTeam, TEAM_ORDER, teamLabel, volunteerRoleConfig } from "@/lib/config/roles";
 import { formatEventShort, formatEventWhen } from "@/lib/email/event-when";
 import { organizationSender } from "@/lib/email/organization";
 import { sendEmailBatches } from "@/lib/email/send";
@@ -23,9 +22,8 @@ import { sendPushNotices, type PushNotice } from "@/lib/push/send";
 
 /** Every role in one team, e.g. "Pianist, Aux Keys, Bassist". */
 const rolesOf = (team: Team) =>
-  (Object.keys(roleToCategory) as (keyof typeof roleToCategory)[])
-    .filter((role) => teamOfRole(role) === team)
-    .map((role) => volunteerRoleLabels[role])
+  rolesOfTeam(team)
+    .map((role) => volunteerRoleConfig[role].label)
     .join(", ");
 
 const names = new Intl.ListFormat("en", { type: "conjunction" });

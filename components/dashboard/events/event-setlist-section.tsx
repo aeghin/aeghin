@@ -7,7 +7,8 @@ import { EditSetlistButton } from "./edit-setlist-button";
 import { cn } from "@/lib/utils";
 import { colorClasses } from "@/lib/config/service-types-config";
 import { formatKey } from "@/lib/constants/key";
-import { InvitationStatus, VolunteerRole } from "@/generated/prisma/enums";
+import { InvitationStatus } from "@/generated/prisma/enums";
+import { volunteerRoleConfig } from "@/lib/config/roles";
 import { SongVocalistAssign } from "./song-vocalist-assign";
 import { SongKeySaveButton } from "./song-key-save-button";
 import type { EventDetails, SetlistSong, SongKeyEntry } from "@/lib/types";
@@ -56,12 +57,12 @@ export function EventSetlistSection({
     ),
   );
 
-  // Accepted Lead/BGV vocalists for this event — the pool you can assign to songs.
+  // Accepted singers for this event — the pool you can assign to songs.
   const vocalistCandidates = event.assignments
     .filter(
       (a) =>
         a.status === InvitationStatus.ACCEPTED &&
-        (a.role === VolunteerRole.LEAD_VOCALIST || a.role === VolunteerRole.BGVS),
+        volunteerRoleConfig[a.role].sings,
     )
     .map((a) => ({
       userId: a.userId,
