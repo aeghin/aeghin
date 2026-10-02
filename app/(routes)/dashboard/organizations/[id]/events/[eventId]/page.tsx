@@ -9,6 +9,7 @@ import { notFound } from "next/navigation";
 import { AnimatedSection } from "@/components/dashboard/animate-section";
 import { BackLink } from "@/components/dashboard/back-link-button";
 import { EventHeader } from "@/components/dashboard/events/event-header";
+import { EventPager } from "@/components/dashboard/events/event-pager";
 import { EventDetailsCard } from "@/components/dashboard/events/event-details-card";
 import { EventSetlistSection } from "@/components/dashboard/events/event-setlist-section";
 import { EventAssignmentsCard } from "@/components/dashboard/events/event-assignment-section";
@@ -16,7 +17,7 @@ import { EventChatPanel } from "@/components/dashboard/events/event-chat-panel";
 import { SmartSchedulingActivity } from "@/components/dashboard/events/smart-scheduling-activity";
 // import { EventStatusCard } from "@/components/dashboard/events/event-status-card";
 import { currentUser } from "@/lib/services/user";
-import { getEventDetailsById } from "@/lib/services/events";
+import { getAdjacentEvents, getEventDetailsById } from "@/lib/services/events";
 import { getUserSongKeys } from "@/lib/services/song-keys";
 import { getEventSmartSchedulingActivity } from "@/lib/services/activity";
 import { getEventMessages } from "@/lib/services/chat";
@@ -67,6 +68,9 @@ export default async function EventDetailPage({
   const hasAccess = canManage || hasAssignment;
 
   if (!hasAccess) notFound();
+
+  // Prev/next follow the same rule as the guard above, so a step never 404s.
+  const adjacent = await getAdjacentEvents(eventId, orgId, user.id, canManage);
 
   // Offering the save-to-journal button comes off this event's roster, not off
   // the membership's volunteer roles — if you're singing here you get it, and
@@ -170,10 +174,19 @@ export default async function EventDetailPage({
     <main className="mx-auto max-w-screen-2xl px-4 py-6 sm:px-6 sm:py-8">
       <div className="space-y-6 sm:space-y-8">
         <AnimatedSection delay={0.05}>
-          <BackLink
-            href={`/dashboard/organizations/${orgId}`}
-            label={`Back to ${event.organization.name}`}
-          />
+          <div className="flex items-center justify-between gap-3">
+            <BackLink
+              href={`/dashboard/organizations/${orgId}`}
+              label={`Back to ${event.organization.name}`}
+            />
+            <EventPager
+              organizationId={orgId}
+              serviceName={event.serviceType.name}
+              serviceColor={event.serviceType.color}
+              previous={adjacent.previous}
+              next={adjacent.next}
+            />
+          </div>
         </AnimatedSection>
 
         <AnimatedSection delay={0.1}>

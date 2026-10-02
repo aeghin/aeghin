@@ -138,6 +138,68 @@ export const getOrgEvents = async (organizationId: string, userId: string) => {
 };
 
 
+type AdjacentEvent = {
+  id: string
+  name: string
+  startTime: Date
+};
+
+type AdjacentEvents = {
+  previous: AdjacentEvent | null
+  next: AdjacentEvent | null
+};
+
+// The events either side of this one within its service type, for prev/next on
+// the event page — Sunday steps to Sunday, never to the Wednesday in between.
+// Walks the same two cached lists the Events tab reads, with the same arguments,
+// so it shares their entries and tags and needs no cache of its own. Managers
+// step through every event in the org; everyone else only through events
+// they've accepted, the only ones the event page opens for them, so a step
+// can't land on a 404.
+export const getAdjacentEvents = async (
+  eventId: string,
+  organizationId: string,
+  userId: string,
+  canManage: boolean,
+): Promise<AdjacentEvents> => {
+
+  const events = canManage
+    ? await getOrgEvents(organizationId, userId)
+    : (await getUserEvents(organizationId, userId)).filter((event) =>
+        event.assignments.some((a) => a.status === InvitationStatus.ACCEPTED),
+      );
+
+  const serviceTypeId = events.find((event) => event.id === eventId)?.serviceTypeId;
+
+  // By first start time, like the schedule list. The id breaks ties so two
+  // events at the same time can't trade places between pages and skip or loop.
+  const timeline = events
+    .filter((event) => event.serviceTypeId === serviceTypeId && event.dates.length > 0)
+    .map((event) => ({
+      id: event.id,
+      name: event.name,
+      startTime: new Date(
+        Math.min(...event.dates.map((d) => d.startTime.getTime())),
+      ),
+    }))
+    .sort(
+      (a, b) =>
+        a.startTime.getTime() - b.startTime.getTime() ||
+        a.id.localeCompare(b.id),
+    );
+
+  const index = timeline.findIndex((event) => event.id === eventId);
+
+  // Only while a cached list is catching up with a change made a moment ago.
+  if (index === -1) return { previous: null, next: null };
+
+  return {
+    previous: timeline[index - 1] ?? null,
+    next: timeline[index + 1] ?? null,
+  };
+};
+
+
 export const getEventDetailsById = async (eventId: string, organizationId: string) => {
   
   "use cache";
