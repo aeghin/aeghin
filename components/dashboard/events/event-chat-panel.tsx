@@ -149,7 +149,12 @@ export function EventChatPanel({
   const draftRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    // Scroll the chat's own box to the newest message. scrollIntoView also
+    // scrolled the window, so every event page opened down at the chat.
+    const box = bottomRef.current?.closest<HTMLElement>(
+      '[data-slot="scroll-area-viewport"]',
+    );
+    box?.scrollTo({ top: box.scrollHeight, behavior: "smooth" });
   }, [messages.length]);
 
   async function handleSend() {
