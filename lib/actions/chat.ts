@@ -71,7 +71,7 @@ export async function sendMessage(
   }
 }
 
-type OlderMessagesResult =
+type MessagesPageResult =
   | { success: true; messages: ChatMessage[]; nextCursor: string | null }
   | { success: false; error: string };
 
@@ -79,11 +79,25 @@ type OlderMessagesResult =
 export async function fetchOlderMessages(
   eventId: string,
   cursor: string,
-): Promise<OlderMessagesResult> {
+): Promise<MessagesPageResult> {
   // View access is enough — previewing admins page back through history too.
   const ctx = await getChatAccess(eventId);
   if (!ctx) return { success: false, error: "Unauthorized" };
 
   const { messages, nextCursor } = await getEventMessages(eventId, { cursor });
+  return { success: true, messages, nextCursor };
+}
+
+/**
+ * The newest page, for a chat catching up after its page was hidden and its
+ * subscription torn down (gate re-checked). Read-only, so it never revalidates.
+ */
+export async function fetchLatestMessages(
+  eventId: string,
+): Promise<MessagesPageResult> {
+  const ctx = await getChatAccess(eventId);
+  if (!ctx) return { success: false, error: "Unauthorized" };
+
+  const { messages, nextCursor } = await getEventMessages(eventId);
   return { success: true, messages, nextCursor };
 }

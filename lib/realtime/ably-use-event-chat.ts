@@ -2,7 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as Ably from "ably";
-import { sendMessage, fetchOlderMessages } from "@/lib/actions/chat";
+import {
+  sendMessage,
+  fetchOlderMessages,
+  fetchLatestMessages,
+} from "@/lib/actions/chat";
 import { channelName } from "@/lib/realtime/channels";
 import type {
   ChatMessage,
@@ -11,6 +15,48 @@ import type {
   UseEventChatOptions,
   UseEventChatReturn,
 } from "./types";
+
+const isSending = (m: ChatMessage) => m.id.startsWith("temp-");
+
+/** Oldest first, as the server orders them; the id breaks a same-millisecond tie. */
+function byPosted(a: ChatMessage, b: ChatMessage): number {
+  if (a.createdAt !== b.createdAt) return a.createdAt < b.createdAt ? -1 : 1;
+  if (a.id !== b.id) return a.id < b.id ? -1 : 1;
+  return 0;
+}
+
+/** The newest message the server has saved, skipping any still sending. */
+function newestSavedId(messages: ChatMessage[]): string | null {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (!isSending(messages[i])) return messages[i].id;
+  }
+  return null;
+}
+
+/**
+ * Folds the server's newest page (oldest first) into what the chat holds after
+ * being away. A union by id, so live messages that landed during the fetch stay
+ * and the overlap dedupes. On a restart — the page doesn't reach back to what
+ * was held — held messages older than the page are dropped rather than left
+ * across a hole; "Load earlier messages" brings them back. Messages still
+ * sending stay last.
+ */
+function foldLatestPage(
+  held: ChatMessage[],
+  page: ChatMessage[],
+  restart: boolean,
+): ChatMessage[] {
+  const saved = new Map<string, ChatMessage>();
+  for (const m of page) saved.set(m.id, m);
+  for (const m of held) if (!isSending(m)) saved.set(m.id, m);
+
+  const oldest = page[0];
+  const kept = [...saved.values()].filter(
+    (m) => !restart || !oldest || byPosted(m, oldest) >= 0,
+  );
+
+  return [...kept.sort(byPosted), ...held.filter(isSending)];
+}
 
 export function useEventChat(
   eventId: string,
@@ -27,6 +73,18 @@ export function useEventChat(
   );
   const [hasMore, setHasMore] = useState<boolean>(initial.length >= 30);
 
+  // What the chat holds as of the last commit, for the catch-up below to read
+  // without re-subscribing on every message.
+  const messagesRef = useRef(messages);
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
+  // Next keeps a visited page mounted but hidden (Activity), which tears the
+  // subscription below down — so connecting a second time means this chat was
+  // away and missed whatever was posted meanwhile.
+  const connectedBefore = useRef(false);
+
   // Append with id-dedupe (covers our own echoed publish vs. optimistic temp).
   const upsert = useCallback((incoming: ChatMessage) => {
     setMessages((prev) => {
@@ -36,6 +94,35 @@ export function useEventChat(
   }, []);
 
   useEffect(() => {
+    // Read before re-subscribing, so no live message can stand in for one that
+    // was missed.
+    const returning = connectedBefore.current;
+    const anchorId = newestSavedId(messagesRef.current);
+    connectedBefore.current = true;
+    let active = true;
+
+    // Best-effort: if it fails, the chat stays exactly as it was.
+    const catchUp = async () => {
+      try {
+        const res = await fetchLatestMessages(eventId);
+        if (!active || !res.success) return;
+
+        const page = [...res.messages].reverse();
+        // The page covers everything missed only if it reaches back to the
+        // newest message held before.
+        const restart =
+          anchorId === null || !page.some((m) => m.id === anchorId);
+
+        setMessages((prev) => foldLatestPage(prev, page, restart));
+        if (restart) {
+          setCursor(res.nextCursor);
+          setHasMore(Boolean(res.nextCursor));
+        }
+      } catch {
+        // Network or server error — leave the chat as it is.
+      }
+    };
+
     const client = new Ably.Realtime({
       authUrl: `/api/realtime/ably/token?eventId=${eventId}`,
       clientId: me.id,
@@ -79,6 +166,10 @@ export function useEventChat(
     channel
       .attach()
       .then(async () => {
+        // After attach, so anything posted from here on arrives live and the
+        // union in foldLatestPage absorbs the overlap. Not awaited: presence
+        // shouldn't wait on it.
+        if (returning) void catchUp();
         if (canPost) {
           await channel.presence.enter({
             firstName: me.firstName,
@@ -94,6 +185,7 @@ export function useEventChat(
       .catch(() => {});
 
     return () => {
+      active = false;
       // Remove listeners synchronously so no state updates fire post-unmount.
       channel.unsubscribe();
       channel.presence.unsubscribe();
