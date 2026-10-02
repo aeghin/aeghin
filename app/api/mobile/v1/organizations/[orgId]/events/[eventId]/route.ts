@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 
 import prisma from "@/lib/prisma";
 import { SMART_SCHEDULING_ACTIVITY_TYPES } from "@/lib/services/activity";
+import { getAdjacentEvents } from "@/lib/services/events";
 import {
     eventTeamLeads,
     getTeamNotificationSettings,
@@ -168,7 +169,30 @@ type EventDetails = {
     smartSchedulingActivity: EventDetailsActivityItem[];
     /** Managers only; 0 for everybody else. */
     expiredInviteCount: number;
+    /**
+     * The events either side of this one in its service type, for stepping
+     * between them — every one for a manager, only accepted ones for anybody
+     * else, which is what this route will open. Null at either end.
+     */
+    adjacent: {
+        previous: EventNeighbor | null;
+        next: EventNeighbor | null;
+    };
 };
+
+/** Enough of a neighbouring event to label the step to it. */
+type EventNeighbor = {
+    id: string;
+    name: string;
+    /** The first day's start, floating wall clock like `dates`. */
+    startTime: string;
+};
+
+const toNeighbor = (event: { id: string; name: string; startTime: Date }): EventNeighbor => ({
+    id: event.id,
+    name: event.name,
+    startTime: event.startTime.toISOString(),
+});
 
 
 const NO_STORE = { "Cache-Control": "private, no-store" };
@@ -371,6 +395,11 @@ export async function GET(
             );
         };
 
+        // Started now so it overlaps the reads below rather than adding to them,
+        // and best-effort: a failure here costs the arrows, never the event.
+        const adjacentRead = getAdjacentEvents(eventId, orgId, membership.userId, canManage)
+            .catch(() => ({ previous: null, next: null }));
+
         const now = new Date();
 
         // Both of these answer questions only a manager has, and the dashboard
@@ -437,6 +466,8 @@ export async function GET(
             ? { userId: creator.userId, firstName: creator.firstName, lastName: creator.lastName }
             : null;
 
+        const adjacent = await adjacentRead;
+
         const details: EventDetails = {
             id: event.id,
             name: event.name,
@@ -492,6 +523,10 @@ export async function GET(
                 createdAt: item.createdAt.toISOString(),
             })),
             expiredInviteCount,
+            adjacent: {
+                previous: adjacent.previous && toNeighbor(adjacent.previous),
+                next: adjacent.next && toNeighbor(adjacent.next),
+            },
         };
 
         return NextResponse.json({ event: details }, { headers: NO_STORE });
