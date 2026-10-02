@@ -1,7 +1,9 @@
 import Link from "next/link"
+import Image from "next/image"
 import { Button } from "@/components/ui/button"
-import { ArrowRight, Sparkles, Users, Calendar, Music } from "lucide-react"
+import { ArrowRight, Sparkles } from "lucide-react"
 import { AppBadges } from "@/components/landing/app-badges"
+import eventPage from "@/public/landing/event-page.png"
 
 export function HeroSection() {
   return (
@@ -14,7 +16,7 @@ export function HeroSection() {
       </div>
 
       <div className="mx-auto max-w-7xl px-6 lg:px-8">
-        <div className="mx-auto max-w-4xl text-center">
+        <div className="mx-auto max-w-5xl text-center">
           {/* Badge */}
           <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-5 py-2 mb-8">
             <Sparkles className="h-4 w-4 text-primary" />
@@ -22,17 +24,17 @@ export function HeroSection() {
           </div>
 
           {/* Headline */}
-          <h1 className="text-5xl font-bold tracking-tight sm:text-6xl lg:text-7xl text-balance leading-[1.1]">
-            Organize your team.
+          <h1 className="text-4xl font-bold tracking-tight sm:text-6xl lg:text-7xl text-balance leading-[1.1]">
+            Your worship team, scheduled.
             <span className="block bg-gradient-to-r from-primary via-primary to-primary/70 bg-clip-text text-transparent">
-              Amplify your impact.
+              Without the group texts.
             </span>
           </h1>
 
           {/* Subheadline */}
           <p className="mt-8 text-xl text-muted-foreground max-w-2xl mx-auto text-pretty leading-relaxed">
-            Aeghin is the modern platform for volunteer coordination. Manage events, assign roles, and keep your entire
-            worship team in perfect harmony.
+            Aeghin schedules volunteers by the roles they actually play, builds setlists from your own song library,
+            and reminds everyone on their phone the day before they serve.
           </p>
 
           {/* CTAs */}
@@ -60,28 +62,17 @@ export function HeroSection() {
           <AppBadges className="mt-8 justify-center" />
         </div>
 
-        {/* Feature preview cards */}
-        <div className="mt-24 grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto">
-          <div className="group relative rounded-2xl border border-border bg-card/50 backdrop-blur-sm p-6 hover:border-primary/50 hover:bg-card transition-all duration-300">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary mb-4 group-hover:scale-110 transition-transform">
-              <Users className="h-6 w-6" />
-            </div>
-            <h3 className="text-lg font-semibold mb-1">Team Management</h3>
-            <p className="text-sm text-muted-foreground">Invite members and assign the roles they play</p>
-          </div>
-          <div className="group relative rounded-2xl border border-border bg-card/50 backdrop-blur-sm p-6 hover:border-primary/50 hover:bg-card transition-all duration-300">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary mb-4 group-hover:scale-110 transition-transform">
-              <Calendar className="h-6 w-6" />
-            </div>
-            <h3 className="text-lg font-semibold mb-1">Event Scheduling</h3>
-            <p className="text-sm text-muted-foreground">Templates, blockout dates, and automatic refills</p>
-          </div>
-          <div className="group relative rounded-2xl border border-border bg-card/50 backdrop-blur-sm p-6 hover:border-primary/50 hover:bg-card transition-all duration-300">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary mb-4 group-hover:scale-110 transition-transform">
-              <Music className="h-6 w-6" />
-            </div>
-            <h3 className="text-lg font-semibold mb-1">Songs & Setlists</h3>
-            <p className="text-sm text-muted-foreground">Build setlists from your catalog, or let AI draft them</p>
+        {/* Product screenshot */}
+        <div className="relative mx-auto mt-20 max-w-5xl md:mt-24">
+          <div className="absolute -inset-x-6 -top-6 bottom-1/3 -z-10 rounded-[2.5rem] bg-primary/10 blur-3xl" />
+          <div className="overflow-hidden rounded-xl border border-border bg-card shadow-2xl shadow-primary/10 [mask-image:linear-gradient(to_bottom,black_70%,transparent)] md:rounded-2xl">
+            <Image
+              src={eventPage}
+              alt="An Aeghin event page for Communion Sunday, showing the date, rehearsal, Smart Scheduling auto-fill, and the band roster"
+              placeholder="blur"
+              sizes="(min-width: 1024px) 1024px, 100vw"
+              className="h-auto w-full"
+            />
           </div>
         </div>
       </div>

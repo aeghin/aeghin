@@ -14,11 +14,11 @@ const plans = [
       `Up to ${PLAN_LIMITS.free.members} members per organization`,
       `Event templates and ${PLAN_LIMITS.free.serviceTypes} service types`,
       "Blockout dates",
-      "Song library with charts and audio",
-      `Up to ${PLAN_LIMITS.free.songs} songs in your library`,
+      `Song library of up to ${PLAN_LIMITS.free.songs} songs, with charts and audio`,
       `${formatStorage(PLAN_LIMITS.free.storage)} of storage for charts and audio`,
-      "Setlists & per-song assignments",
-      "Event chat and email notifications",
+      "Setlists, per-song assignments, and a vocalist key journal",
+      "Event chat, email, and push notifications in the mobile app",
+      "Staffing alerts when an event fills or someone drops out",
       `${PLAN_LIMITS.free.bulkEmails} group emails a month`,
     ],
     cta: "Get started free",
@@ -36,7 +36,6 @@ const plans = [
       `${PLAN_LIMITS.starter.serviceTypes} service types`,
       `${formatStorage(PLAN_LIMITS.starter.storage)} of storage for charts and audio`,
       `${PLAN_LIMITS.starter.bulkEmails} group emails a month`,
-      "Billed per organization",
     ],
     cta: "Get started free",
     popular: false,
@@ -56,7 +55,6 @@ const plans = [
       "Matches themes, keys, and tempo arc",
       "Works strictly from your song catalog",
       "Apply proposals straight into the editor",
-      "Billed per organization",
     ],
     cta: "Get started free",
     popular: true,
@@ -75,7 +73,6 @@ const plans = [
       "Web search for songs and artists",
       "Suggests songs you don't own yet",
       "Deeper music-theory reasoning",
-      "Billed per organization",
     ],
     cta: "Get started free",
     popular: false,
@@ -107,7 +104,7 @@ export function PricingSection() {
                 <div className="absolute -top-4 left-1/2 -translate-x-1/2">
                   <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground shadow-lg">
                     <Sparkles className="h-3.5 w-3.5" />
-                    Most popular
+                    Recommended
                   </span>
                 </div>
               )}

@@ -78,6 +78,8 @@ export function LandingNavbar() {
           <button
             type="button"
             className="lg:hidden p-2 -mr-2"
+            aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
+            aria-expanded={mobileMenuOpen}
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
           >
             {mobileMenuOpen ? (

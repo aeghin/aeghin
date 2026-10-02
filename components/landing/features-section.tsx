@@ -1,4 +1,22 @@
-import { Calendar, Users, Music, Mail, CalendarOff, Sparkles, MessageSquare, Repeat } from "lucide-react"
+import {
+  Activity,
+  BellRing,
+  CalendarCheck,
+  CalendarOff,
+  Mail,
+  MessageSquare,
+  Mic2,
+  Music,
+  Repeat,
+  Smartphone,
+  Sparkles,
+  Users,
+} from "lucide-react"
+import { ROLE_ORDER, TEAM_ORDER, teamConfig } from "@/lib/config/roles"
+
+const teamList = new Intl.ListFormat("en", { style: "long", type: "conjunction" }).format(
+  TEAM_ORDER.map((team) => teamConfig[team].label),
+)
 
 const features = [
   {
@@ -8,16 +26,33 @@ const features = [
       "On Premium, describe the service and get an ordered setlist from your own catalog. Pro also drafts whole events, with dates, roles, and volunteers who are actually free.",
   },
   {
+    icon: CalendarCheck,
+    title: "Smart Scheduling",
+    description:
+      "On Premium and Pro, turn it on for an event and declined spots refill themselves: the best eligible member for that role is invited, skipping anyone with a conflict or blockout.",
+  },
+  {
+    icon: Users,
+    title: "Roles & Teams",
+    description: `${ROLE_ORDER.length} roles across ${teamList}, from pianist and BGVs to camera, lighting, and projection. People are only scheduled for the roles they actually serve in.`,
+  },
+  {
+    icon: Repeat,
+    title: "Event Templates",
+    description:
+      "Save your weekly service once — roles, location, time blocks, and rehearsal — then spin up the next one without retyping it.",
+  },
+  {
     icon: Music,
     title: "Song Library",
     description:
       "Keep your songs with their key, BPM, time signature, and themes. Attach charts and audio, and link straight to Spotify or YouTube.",
   },
   {
-    icon: Repeat,
-    title: "Event Templates",
+    icon: Mic2,
+    title: "Key Journal",
     description:
-      "Save your weekly service once — roles, location, and multi-day time blocks — then spin up the next one without retyping it.",
+      "Singers save the key they sang each song in, one tap from the event's setlist, so nobody has to work it out again before rehearsal.",
   },
   {
     icon: CalendarOff,
@@ -26,10 +61,10 @@ const features = [
       "Members mark the dates they're away. Those dates are blocked everywhere scheduling happens, so nobody gets assigned while on vacation.",
   },
   {
-    icon: Calendar,
-    title: "Smart Scheduling",
+    icon: BellRing,
+    title: "Staffing Alerts",
     description:
-      "On Premium, when someone declines, the best eligible member for that role is found automatically — skipping anyone with a conflict or blockout.",
+      "Leads hear when an event is fully staffed, or when someone declines or drops out and leaves a gap. On Premium and Pro, a last call goes out 3 days and 1 day before an event with open roles.",
   },
   {
     icon: MessageSquare,
@@ -38,16 +73,22 @@ const features = [
       "Every event gets its own realtime thread for the volunteers serving on it. Details stay with the event instead of scattered in group texts.",
   },
   {
-    icon: Users,
-    title: "Volunteer Roles",
+    icon: Smartphone,
+    title: "Mobile App",
     description:
-      "Guitarist, pianist, aux keys, drummer, lead vocalist, BGVs, bassist, sound tech, usher, and greeter — assign people to what they actually play.",
+      "Volunteers accept or decline, chat, and open the setlist from their phone, with a push reminder the day before they serve and a nudge before an invite expires.",
   },
   {
     icon: Mail,
-    title: "Email Invites & Updates",
+    title: "Invites & Group Email",
     description:
-      "Invite members by email, notify them when they're scheduled, and reach your whole organization in one send.",
+      "Invite members by email, and reach your whole organization, or just the people serving on an event, in one send.",
+  },
+  {
+    icon: Activity,
+    title: "Activity Log",
+    description:
+      "See who was invited, who declined, and who Smart Scheduling brought in, so admins always know how a roster got the way it is.",
   },
 ]
 
@@ -61,7 +102,7 @@ export function FeaturesSection() {
           <p className="text-sm font-semibold text-primary mb-4 tracking-wide uppercase">Features</p>
           <h2 className="text-4xl font-bold tracking-tight sm:text-5xl text-balance">Everything your team needs</h2>
           <p className="mt-6 text-lg text-muted-foreground text-pretty">
-            Powerful tools designed specifically for worship teams, churches, and community organizations.
+            Built around how worship teams actually run a service: the roles, the songs, and the people who fill them.
           </p>
         </div>
 

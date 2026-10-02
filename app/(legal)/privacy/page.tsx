@@ -4,20 +4,21 @@ import Link from "next/link";
 export const metadata: Metadata = {
   title: "Privacy Policy | Aeghin",
   description:
-    "How Aeghin collects, uses, and protects your information, including our SMS and text messaging practices.",
+    "How Aeghin collects, uses, and protects your information on the web and in the mobile app.",
 };
 
 export default function PrivacyPolicyPage() {
   return (
     <>
       <h1 className="text-3xl font-bold tracking-tight">Privacy Policy</h1>
-      <p className="text-sm">Last updated: July 16, 2026</p>
+      <p className="text-sm">Last updated: October 2, 2026</p>
 
       <h2>1. Overview</h2>
       <p>
         Aeghin (&quot;Aeghin&quot;, &quot;we&quot;, &quot;us&quot;, or &quot;our&quot;) operates the Aeghin
         platform at{" "}
-        <a href="https://aeghin.com">https://aeghin.com</a> (the &quot;Service&quot;), an event
+        <a href="https://aeghin.com">https://aeghin.com</a> and the Aeghin mobile app (together,
+        the &quot;Service&quot;), an event
         planning and volunteer management tool that helps organizations such as churches and
         nonprofits plan events, manage volunteer teams, and coordinate schedules. This Privacy
         Policy explains what information we collect, how we use and share it, and the choices you
@@ -35,12 +36,17 @@ export default function PrivacyPolicyPage() {
           <strong>Organization and scheduling content.</strong> Information you or your
           organization add to the Service, such as organizations and their members, volunteer
           roles, events and event dates, volunteer assignments, availability and blockout dates,
-          songs and setlists, and files you upload.
+          songs, setlists, and song keys, event chat messages, and files you upload.
         </li>
         <li>
-          <strong>Invitation details.</strong> When a member invites someone to join an
-          organization, we collect the invitee&apos;s email address (and, if provided, mobile
-          phone number) in order to deliver the invitation.
+          <strong>Invitation details.</strong> When an owner or administrator invites someone to
+          join an organization, we collect the invitee&apos;s email address and mobile phone
+          number in order to deliver the invitation.
+        </li>
+        <li>
+          <strong>Mobile app and notifications.</strong> If you use the mobile app and allow
+          notifications, we store a push notification token for your device and your
+          device&apos;s time zone, so reminders arrive at a reasonable local time.
         </li>
         <li>
           <strong>Payment information.</strong> If you purchase a paid feature, payments are
@@ -61,14 +67,16 @@ export default function PrivacyPolicyPage() {
           and availability.
         </li>
         <li>
-          Send service communications by email and text message (SMS), such as organization
+          Send service communications by email and push notification, such as organization
           invitations, event invitations and scheduling requests, event reminders, and updates
           about events or your account.
         </li>
         <li>Process payments and manage subscriptions for paid features.</li>
         <li>
-          Power AI-assisted features (such as setlist suggestions), which may involve processing
-          your organization&apos;s song and event data through our AI infrastructure providers.
+          Power AI-assisted features (such as setlist suggestions and event drafts), which may
+          involve processing your organization&apos;s song, event, and volunteer availability data
+          through our AI providers. On the Pro plan, the AI can also search the web for song and
+          artist information.
         </li>
         <li>
           Keep the Service secure, prevent abuse, troubleshoot problems, and improve
@@ -81,36 +89,7 @@ export default function PrivacyPolicyPage() {
         advertising.
       </p>
 
-      <h2>4. SMS / Text Messaging</h2>
-      <p>
-        If you provide your mobile phone number and agree to receive text messages, we may send
-        you SMS notifications such as organization invitations, event invitations and volunteer
-        scheduling requests, event reminders, and updates about events or your account. Consent to
-        receive text messages is not a condition of using the Service or of any purchase.
-      </p>
-      <ul>
-        <li>
-          Message frequency varies based on your organization&apos;s activity and your
-          notification settings.
-        </li>
-        <li>Message and data rates may apply, depending on your mobile plan.</li>
-        <li>
-          You can opt out at any time by replying <strong>STOP</strong> to any message. Reply{" "}
-          <strong>HELP</strong> for assistance, or contact us at{" "}
-          <a href="mailto:support@aeghin.com">support@aeghin.com</a>.
-        </li>
-      </ul>
-      <p>
-        <strong>
-          No mobile information will be shared with third parties or affiliates for marketing or
-          promotional purposes.
-        </strong>{" "}
-        All other categories of information described in this policy exclude text messaging
-        originator opt-in data and consent; this information will not be shared with any third
-        parties, except for the SMS delivery providers acting on our behalf.
-      </p>
-
-      <h2>5. How We Share Information</h2>
+      <h2>4. How We Share Information</h2>
       <ul>
         <li>
           <strong>Within your organizations.</strong> Members and administrators of an
@@ -120,7 +99,8 @@ export default function PrivacyPolicyPage() {
         <li>
           <strong>Service providers.</strong> We rely on trusted providers to run the Service:
           Clerk (authentication), Neon (database hosting), Vercel (application hosting and AI
-          infrastructure), Resend (email delivery), Sent (SMS delivery), Stripe (payment
+          gateway), Anthropic (AI models), Ably (realtime event chat), Expo (push notification
+          delivery, through Apple and Google), Resend (email delivery), Stripe (payment
           processing), and UploadThing (file storage). These providers may process your
           information only to perform services for us.
         </li>
@@ -134,13 +114,9 @@ export default function PrivacyPolicyPage() {
           will notify you before your information becomes subject to a different privacy policy.
         </li>
       </ul>
-      <p>
-        We do not sell or rent your personal information to anyone. As stated above, mobile phone
-        numbers and SMS opt-in data are never shared with third parties or affiliates for
-        marketing or promotional purposes.
-      </p>
+      <p>We do not sell or rent your personal information to anyone.</p>
 
-      <h2>6. Data Retention</h2>
+      <h2>5. Data Retention</h2>
       <p>
         We keep your information for as long as your account is active or as needed to provide the
         Service. When you delete your account, or ask us to delete it, we remove or anonymize your
@@ -150,18 +126,20 @@ export default function PrivacyPolicyPage() {
         after you leave it.
       </p>
 
-      <h2>7. Security</h2>
+      <h2>6. Security</h2>
       <p>
         We use industry-standard safeguards to protect your information, including encryption in
         transit, access controls, and reputable infrastructure providers. No method of
         transmission or storage is completely secure, so we cannot guarantee absolute security.
       </p>
 
-      <h2>8. Your Choices and Rights</h2>
+      <h2>7. Your Choices and Rights</h2>
       <ul>
         <li>Update your account information at any time through your account settings.</li>
+        <li>Turn off push notifications at any time in your device&apos;s settings.</li>
         <li>
-          Opt out of text messages by replying <strong>STOP</strong> to any message.
+          Delete your account yourself at any time; our{" "}
+          <Link href="/support">Support page</Link> explains how and what is removed.
         </li>
         <li>
           Request access to, correction of, or deletion of your personal information by emailing{" "}
@@ -173,14 +151,14 @@ export default function PrivacyPolicyPage() {
         </li>
       </ul>
 
-      <h2>9. Children&apos;s Privacy</h2>
+      <h2>8. Children&apos;s Privacy</h2>
       <p>
         The Service is not directed to children under 13, and we do not knowingly collect personal
         information from them. If you believe a child under 13 has provided us personal
         information, contact us and we will delete it.
       </p>
 
-      <h2>10. Changes to This Policy</h2>
+      <h2>9. Changes to This Policy</h2>
       <p>
         We may update this Privacy Policy from time to time. When we do, we will revise the
         &quot;Last updated&quot; date above, and for material changes we will provide additional
@@ -188,7 +166,7 @@ export default function PrivacyPolicyPage() {
         changes take effect means you accept the updated policy.
       </p>
 
-      <h2>11. Contact Us</h2>
+      <h2>10. Contact Us</h2>
       <p>
         Questions about this policy or your data? Email us at{" "}
         <a href="mailto:support@aeghin.com">support@aeghin.com</a>. You can also review our{" "}

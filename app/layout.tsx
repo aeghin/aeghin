@@ -21,6 +21,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://aeghin.com"),
   title: "Aeghin",
   description: "Event Planning and Volunteer Hub",
 };

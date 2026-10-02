@@ -5,26 +5,26 @@ const steps = [
     step: "01",
     title: "Create your organization",
     description:
-      "Set up your church or community organization in minutes. Define your team structure and invite members.",
+      "Set up your church in minutes, invite your team by email, and give each person the roles they serve in.",
     highlights: ["Quick setup", "Invite members by email", "Color-coded service types"],
   },
   {
     step: "02",
     title: "Schedule events & assign roles",
-    description: "Create services, rehearsals, or special events, and assign the volunteers each one needs.",
+    description: "Create services and special events, add a rehearsal, and assign the volunteers each one needs.",
     highlights: ["Reusable event templates", "Multiple time blocks", "Blockout dates respected"],
   },
   {
     step: "03",
     title: "Volunteers accept & prepare",
-    description: "Team members get an email, see the role they're assigned, and accept or decline.",
-    highlights: ["Mobile-friendly interface", "Accept or decline", "Setlist ready ahead of time"],
+    description: "Team members get an email and a push notification, see the role they're assigned, and accept or decline.",
+    highlights: ["Mobile app with reminders", "Accept or decline", "Setlist ready ahead of time"],
   },
   {
     step: "04",
     title: "Stay in sync, always",
-    description: "Each event has its own chat thread, and declined roles get refilled without you chasing anyone.",
-    highlights: ["Realtime event chat", "Automatic replacement", "Org-wide announcements"],
+    description: "Each event has its own chat thread, and leads hear the moment a role opens up or the roster fills.",
+    highlights: ["Realtime event chat", "Staffing alerts", "Auto-refill on Premium & Pro"],
   },
 ]
 

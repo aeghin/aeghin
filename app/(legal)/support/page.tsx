@@ -1,6 +1,21 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { PLAN_LIMITS, formatStorage } from "@/lib/config/plans";
+import { PLAN_LIMITS, PLAN_NAMES, PLAN_PRICES, formatStorage, type OrgPlan } from "@/lib/config/plans";
+
+const PLANS: OrgPlan[] = ["free", "starter", "premium", "pro"];
+
+const unlimited = (limit: number | null) => (limit === null ? "Unlimited" : String(limit));
+
+const PLAN_ROWS: { label: string; value: (plan: OrgPlan) => string }[] = [
+  { label: "Price", value: (plan) => (plan === "free" ? "$0" : `${PLAN_PRICES[plan]}/mo`) },
+  { label: "Members", value: (plan) => unlimited(PLAN_LIMITS[plan].members) },
+  { label: "Songs", value: (plan) => unlimited(PLAN_LIMITS[plan].songs) },
+  { label: "Service types", value: (plan) => unlimited(PLAN_LIMITS[plan].serviceTypes) },
+  { label: "Storage", value: (plan) => formatStorage(PLAN_LIMITS[plan].storage) },
+  { label: "Group emails a month", value: (plan) => String(PLAN_LIMITS[plan].bulkEmails) },
+  { label: "AI requests a month", value: (plan) => (PLAN_LIMITS[plan].aiRuns ? String(PLAN_LIMITS[plan].aiRuns) : "—") },
+  { label: "Smart Scheduling", value: (plan) => (PLAN_LIMITS[plan].smartScheduling ? "Included" : "—") },
+];
 
 export const metadata: Metadata = {
   title: "Support | Aeghin",
@@ -39,16 +54,22 @@ export default function SupportPage() {
           one. You can belong to more than one and switch between them at any time.
         </li>
         <li>
-          <strong>Invite your team.</strong> Owners and managers can invite members by email.
+          <strong>Invite your team.</strong> Owners and admins can invite members by email.
           Invitees receive a link that adds them to the organization once they sign in.
         </li>
         <li>
-          <strong>Set up roles and service types.</strong> Roles describe what a volunteer can be
-          scheduled for. Defining them first makes scheduling much faster later.
+          <strong>Give members their roles.</strong> Roles such as Pianist, Lead Vocalist, or
+          Sound Tech decide what each volunteer can be scheduled for. Pick them when you invite
+          someone, and change them later from the Members tab.
+        </li>
+        <li>
+          <strong>Add service types.</strong> Service types, such as Sunday Worship or Youth Night,
+          color-code your events and decide who hears about staffing on each one.
         </li>
         <li>
           <strong>Create an event.</strong> Pick a date and time, assign volunteers to roles, and
-          build a setlist. Assigned volunteers are notified by email and can accept or decline.
+          build a setlist. Assigned volunteers are notified by email, and by push notification in
+          the mobile app, and can accept or decline.
         </li>
         <li>
           <strong>Add blockout dates.</strong> Volunteers can mark the days they are unavailable,
@@ -59,14 +80,16 @@ export default function SupportPage() {
       <h2>Common questions</h2>
       <ul>
         <li>
-          <strong>I did not receive an invitation email.</strong> Check your spam folder for a
-          message from support@aeghin.com. If it is not there, ask an owner or manager to resend
-          it, and confirm they used the right address.
+          <strong>I did not receive an invitation email.</strong> Invitations show your
+          organization&apos;s name as the sender and come from support@aeghin.com, so check your
+          spam folder for either. If it is not there, ask an owner or admin to resend it, and
+          confirm they used the right address.
         </li>
         <li>
-          <strong>A volunteer declined and someone else was invited.</strong> That is expected.
-          When an assignment is declined, Aeghin looks for another eligible member for that role
-          and invites them automatically.
+          <strong>A volunteer declined and someone else was invited.</strong> That is Smart
+          Scheduling, available on Premium and Pro and turned on per event. When an assignment
+          is declined, Aeghin looks for another eligible member for that role, skipping anyone
+          with a conflict or blockout, and invites them automatically.
         </li>
         <li>
           <strong>Someone cannot see an event.</strong> Events are visible to members of the
@@ -75,8 +98,8 @@ export default function SupportPage() {
         </li>
         <li>
           <strong>I am signed in but the app looks empty.</strong> You are most likely viewing an
-          organization you have just joined and that has no events yet, or you have switched
-          organizations. Check the organization selector first.
+          organization you have just joined and that has no events yet, or a different
+          organization than you meant. Go back to the dashboard and open the right one.
         </li>
       </ul>
 
@@ -85,24 +108,45 @@ export default function SupportPage() {
         Paid plans are purchased on <a href="https://aeghin.com">aeghin.com</a>: owners upgrade
         with the Upgrade button in the top bar or from Plan &amp; usage in the organization&apos;s Settings tab, and manage an
         existing plan from that organization&apos;s Settings tab. Payments are processed by
-        Stripe. Free organizations can have up to {PLAN_LIMITS.free.members} members, including
-        pending invites, {PLAN_LIMITS.free.songs} songs in the library and{" "}
-        {PLAN_LIMITS.free.serviceTypes} service types; Starter raises those to{" "}
-        {PLAN_LIMITS.starter.members}, {PLAN_LIMITS.starter.songs} and {PLAN_LIMITS.starter.serviceTypes},
-        and Premium and Pro have no limit on any of them. Attachment storage is{" "}
-        {formatStorage(PLAN_LIMITS.free.storage)} on Free, {formatStorage(PLAN_LIMITS.starter.storage)} on
-        Starter, {formatStorage(PLAN_LIMITS.premium.storage)} on Premium and{" "}
-        {formatStorage(PLAN_LIMITS.pro.storage)} on Pro. Group emails (Message All and Email Team) are
-        limited to {PLAN_LIMITS.free.bulkEmails} a month on Free, {PLAN_LIMITS.starter.bulkEmails} on
-        Starter, {PLAN_LIMITS.premium.bulkEmails} on Premium and {PLAN_LIMITS.pro.bulkEmails} on Pro;
-        automatic emails never count. Premium and Pro include {PLAN_LIMITS.premium.aiRuns} AI
-        requests a month, and Smart Scheduling with its last-call staffing alerts. Monthly counts
-        start over on the 1st (UTC). A plan applies to an organization
-        rather than to an individual, so upgrading
-        unlocks the paid features for everyone in that organization — including in the mobile
-        app, where the features are available but not sold. Only an organization owner can change
-        a plan. For refunds or billing problems, email{" "}
-        <a href="mailto:support@aeghin.com">support@aeghin.com</a>.
+        Stripe.
+      </p>
+      <div className="mt-6 overflow-x-auto rounded-lg border border-border">
+        <table className="w-full text-xs sm:text-sm">
+          <thead className="bg-muted/50">
+            <tr>
+              <th scope="col" className="px-2 py-2 text-left font-medium text-muted-foreground sm:px-3">
+                <span className="sr-only">Limit</span>
+              </th>
+              {PLANS.map((plan) => (
+                <th key={plan} scope="col" className="whitespace-nowrap px-2 py-2 text-left font-semibold sm:px-3">
+                  {PLAN_NAMES[plan]}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {PLAN_ROWS.map((row) => (
+              <tr key={row.label} className="border-t border-border">
+                <th scope="row" className="px-2 py-2 text-left font-medium sm:px-3">
+                  {row.label}
+                </th>
+                {PLANS.map((plan) => (
+                  <td key={plan} className="whitespace-nowrap px-2 py-2 text-muted-foreground sm:px-3">
+                    {row.value(plan)}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p>
+        Members include pending invites. Group emails are Message All and Email Team sends;
+        automatic emails never count. Monthly counts start over on the 1st (UTC). A plan applies
+        to an organization rather than to an individual, so upgrading unlocks the paid features
+        for everyone in that organization — including in the mobile app, where the features are
+        available but not sold. Only an organization owner can change a plan. For refunds or
+        billing problems, email <a href="mailto:support@aeghin.com">support@aeghin.com</a>.
       </p>
 
       <h2>Deleting your account</h2>
