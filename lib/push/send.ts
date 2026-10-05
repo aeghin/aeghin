@@ -36,7 +36,7 @@ export type PushData =
 /**
  * One notification for one person, addressed by their account email. Where a
  * push goes with an email, it is the address that email goes to, so the two
- * reach exactly the same people; chat, reminders and nudges are push-only.
+ * reach exactly the same people; chat and the day-before reminders are push-only.
  */
 export type PushNotice = {
   email: string;

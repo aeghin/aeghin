@@ -50,7 +50,7 @@ const firstStartOf = (dates: { startTime: Date }[]) =>
   new Date(Math.min(...dates.map((date) => date.startTime.getTime())));
 
 /** Claims each key once, across ticks and overlapping runs; returns the ones this call won. */
-async function claim(keys: string[]): Promise<Set<string>> {
+export async function claimOnce(keys: string[]): Promise<Set<string>> {
   if (keys.length === 0) return new Set();
 
   const won = await prisma.pushClaim.createManyAndReturn({
@@ -191,7 +191,7 @@ export async function sendLastCallPushes(now: Date): Promise<number> {
       }
     });
 
-    const won = await claim(planned.map((item) => item.key));
+    const won = await claimOnce(planned.map((item) => item.key));
 
     const notices: PushNotice[] = planned.flatMap(({ key, email, event }) => {
       if (!won.has(key)) return [];
@@ -282,7 +282,7 @@ export async function sendLapsePushes(now: Date): Promise<number> {
     }
   }
 
-  const won = await claim(planned.map((item) => item.key));
+  const won = await claimOnce(planned.map((item) => item.key));
 
   const owed = new Map<LapseBucket, Lapse[]>();
 

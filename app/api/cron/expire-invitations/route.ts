@@ -20,7 +20,13 @@ import {
     rosterGaps,
 } from "@/lib/notifications/staffing";
 import { syncEventNotifications } from "@/lib/notifications/sync";
-import { sendDayBeforeReminders, sendExpiryNudges } from "@/lib/push/reminders";
+import {
+    sendAnswerReminders,
+    sendClosedInviteNotices,
+    sendNoAnswerAlerts,
+    type SendCount,
+} from "@/lib/notifications/unanswered";
+import { sendDayBeforeReminders } from "@/lib/push/reminders";
 import { checkPushReceipts } from "@/lib/push/send";
 import {
     forgetOldPushClaims,
@@ -484,7 +490,6 @@ export async function GET(req: Request) {
             lastCall: sendLastCallPushes,
             lapsed: sendLapsePushes,
             reminders: sendDayBeforeReminders,
-            nudges: sendExpiryNudges,
         };
 
         const pushed: Partial<Record<keyof typeof pushPasses, number>> = {};
@@ -497,6 +502,32 @@ export async function GET(req: Request) {
                 pushesFailed.push(name);
                 console.error(
                     `GET /api/cron/expire-invitations: ${name} pushes failed —`,
+                    err,
+                );
+            }
+        }
+
+        // An unanswered invitation, from both ends: the invitee's reminders,
+        // the managers' "no answer yet" the day before it closes, and the
+        // invitee's notice once it has. Email and push go together, timed
+        // like the pushes above (lib/notifications/unanswered.ts). After the
+        // sweep, so an invitation it just closed is told about now.
+        const answerPasses = {
+            reminders: sendAnswerReminders,
+            noAnswer: sendNoAnswerAlerts,
+            closed: sendClosedInviteNotices,
+        };
+
+        const unanswered: Partial<Record<keyof typeof answerPasses, SendCount>> = {};
+        const unansweredFailed: string[] = [];
+
+        for (const [name, send] of Object.entries(answerPasses)) {
+            try {
+                unanswered[name as keyof typeof answerPasses] = await send(now);
+            } catch (err) {
+                unansweredFailed.push(name);
+                console.error(
+                    `GET /api/cron/expire-invitations: ${name} notices failed —`,
                     err,
                 );
             }
@@ -604,6 +635,8 @@ export async function GET(req: Request) {
             lastCallFailed,
             pushed,
             pushesFailed,
+            unanswered,
+            unansweredFailed,
             receipts,
             reconciled: toReconcile.length,
             reconcileSkipped,

@@ -152,11 +152,18 @@ export function wakingNext(floating: Date): Date {
 export function isDue(sendAt: Date, now: Date, timeZone: string): boolean {
   const minute = minuteOf(wallClock(now, timeZone));
 
+  return isDueAt(sendAt, now) && minute >= WAKING_FROM && minute < WAKING_UNTIL;
+}
+
+/**
+ * Whether something timed to an instant rather than to somebody's clock goes
+ * out on this tick: an email for a person whose phone has never reported a
+ * zone, so there's no telling when their night is.
+ */
+export function isDueAt(sendAt: Date, now: Date): boolean {
   return (
     sendAt.getTime() <= now.getTime() &&
-    sendAt.getTime() > now.getTime() - GRACE_MS &&
-    minute >= WAKING_FROM &&
-    minute < WAKING_UNTIL
+    sendAt.getTime() > now.getTime() - GRACE_MS
   );
 }
 

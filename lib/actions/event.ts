@@ -1232,10 +1232,12 @@ export const resendEventInvitation = async (
       },
       data: {
         status: InvitationStatus.PENDING,
+        invitedAt: new Date(),
         expiresAt: new Date(Date.now() + RESEND_EXPIRY_DAYS * 24 * 60 * 60 * 1000),
         assignedById: user.id,
         autoAssigned: false,
         // A new window earns its own "still need your answer".
+        midwayNudgedAt: null,
         nudgedAt: null,
       },
     });
@@ -1815,7 +1817,9 @@ export const inviteMembersToEvent = async (
             status: InvitationStatus.PENDING,
             assignedById: user.id,
             autoAssigned: false,
+            invitedAt: now,
             expiresAt: expiry,
+            midwayNudgedAt: null,
             nudgedAt: null,
           },
         });

@@ -108,13 +108,30 @@ export type LapseBucket = {
   lapsed: Lapse[];
 };
 
-/** The email's subject and the push's title. */
+/**
+ * Who, for a subject line, where there's room for two names at most: "Vic
+ * Test", "Vic Test and Dan Test", "3 people".
+ */
+export function nameList(names: string[]): string {
+  const unique = [...new Set(names)];
+
+  if (unique.length === 1) return unique[0];
+  if (unique.length === 2) return `${unique[0]} and ${unique[1]}`;
+
+  return `${unique.length} people`;
+}
+
+/**
+ * The email's subject and the push's title, naming who didn't answer so it
+ * reads in the inbox and on the lock screen without opening anything.
+ */
 export function lapseSubject(lapsed: LapsedInvite[], eventName: string) {
   const roles = [...new Set(lapsed.map((item) => item.roleLabel))];
+  const who = nameList(lapsed.map((item) => item.inviteeName));
 
   return roles.length === 1
-    ? `Needs a ${roles[0]}: ${eventName}`
-    : `Needs ${roles.length} roles filled: ${eventName}`;
+    ? `Needs a ${roles[0]}: ${eventName} — ${who} didn't answer`
+    : `Needs ${roles.length} roles filled: ${eventName} — ${who} didn't answer`;
 }
 
 /** The push's body: whose invitation lapsed, and who has it when that isn't them. */
