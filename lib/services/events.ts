@@ -3,6 +3,7 @@ import "server-only";
 import prisma from "@/lib/prisma";
 import { InvitationStatus } from "@/generated/prisma/enums";
 import { cacheLife, cacheTag } from "next/cache";
+import { staffingOf, staffingTallies } from "@/lib/staffing";
 
 
 const DASHBOARD_ASSIGNMENT_STATUSES: InvitationStatus[] = [
@@ -100,14 +101,16 @@ export const getUserEvents = async (organizationId: string, userId: string) => {
 
 // All events in the org, for owners/admins who oversee every event regardless
 // of assignment. Includes the caller's own assignment (if any) so their role
-// badge still shows. Tagged org-wide so the list refreshes when events change.
+// badge still shows, and each event's staffing for the meter. Tagged org-wide
+// so the list refreshes when events or anybody's answer to one change.
 export const getOrgEvents = async (organizationId: string, userId: string) => {
     "use cache"
 
     cacheLife("minutes");
     cacheTag(`org-${organizationId}-events`);
 
-  const events = await prisma.event.findMany({
+  const [events, tallies] = await Promise.all([
+    prisma.event.findMany({
       where: {
         organizationId,
       },
@@ -132,9 +135,14 @@ export const getOrgEvents = async (organizationId: string, userId: string) => {
           }
         }
       }
-    });
+    }),
+    staffingTallies(organizationId, new Date()),
+  ]);
 
-    return events;
+    return events.map((event) => ({
+      ...event,
+      staffing: staffingOf(event.rolesNeeded, tallies.get(event.id)),
+    }));
 };
 
 

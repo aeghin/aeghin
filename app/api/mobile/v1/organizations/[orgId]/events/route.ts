@@ -9,6 +9,7 @@ import {
     VolunteerRole,
 } from "@/generated/prisma/enums";
 import { createEvent } from "@/lib/actions/event";
+import { staffingOf, staffingTallies } from "@/lib/staffing";
 import type { CreateEventInput } from "@/lib/validations/event";
 import {
     clerkIdOf,
@@ -23,7 +24,7 @@ import {
  * Wire contract for the events screen's All tab. Mirrors `OrganizationEvent`
  * and friends in the Expo app (`src/types/event.ts`) — keep the two in sync,
  * and with the user-events route beside this one, which returns the same shape
- * without `filledRoleCount` and `awaitingRoleCount`.
+ * without `filledRoleCount`, `awaitingRoleCount` and `declinedRoleCount`.
  */
 type EventDate = {
     id: string;
@@ -66,6 +67,12 @@ type OrganizationEvent = {
      * invited" when nothing is filled.
      */
     awaitingRoleCount: number;
+    /**
+     * Roles in `rolesNeeded` somebody turned down with nobody accepted or
+     * deciding in their place. A replacement already on the role counts as
+     * filled or awaiting instead, so the three counts never overlap.
+     */
+    declinedRoleCount: number;
 };
 
 
@@ -136,11 +143,9 @@ export async function GET(
 
         const now = new Date();
 
-        // Two questions of the same table: which events there are, and — for
-        // the staffing meter — who has said yes or is still deciding on each
-        // role. Grouping by role rather than counting rows keeps two
-        // guitarists from reading as a filled drum stool.
-        const [events, liveRoles] = await Promise.all([
+        // Which events there are, and — for the staffing meter — who has said
+        // yes, is still deciding, or said no on each role.
+        const [events, tallies] = await Promise.all([
             prisma.event.findMany({
                 where: {
                     organizationId: orgId,
@@ -191,50 +196,11 @@ export async function GET(
                     },
                 },
             }),
-            prisma.eventAssignment.groupBy({
-                by: ["eventId", "role", "status"],
-                where: {
-                    organizationId: orgId,
-                    OR: [
-                        { status: InvitationStatus.ACCEPTED },
-                        // Past its deadline is nobody deciding, even before
-                        // the hourly sweep writes EXPIRED.
-                        {
-                            status: InvitationStatus.PENDING,
-                            expiresAt: { gt: now },
-                        },
-                    ],
-                },
-                _count: {
-                    _all: true,
-                },
-            }),
+            staffingTallies(orgId, now),
         ]);
 
-        type Tally = {
-            confirmed: Set<VolunteerRole>;
-            deciding: Set<VolunteerRole>;
-        };
-
-        const tallies = new Map<string, Tally>();
-
-        for (const row of liveRoles) {
-            const tally = tallies.get(row.eventId) ?? {
-                confirmed: new Set<VolunteerRole>(),
-                deciding: new Set<VolunteerRole>(),
-            };
-
-            if (row.status === InvitationStatus.ACCEPTED) {
-                tally.confirmed.add(row.role);
-            } else {
-                tally.deciding.add(row.role);
-            };
-
-            tallies.set(row.eventId, tally);
-        }
-
         const orgEvents: OrganizationEvent[] = events.map((event) => {
-            const tally = tallies.get(event.id);
+            const staffing = staffingOf(event.rolesNeeded, tallies.get(event.id));
 
             return {
                 ...event,
@@ -249,14 +215,9 @@ export async function GET(
                     ...assignment,
                     expiresAt: assignment.expiresAt.toISOString(),
                 })),
-                filledRoleCount: event.rolesNeeded.filter(
-                    (role) =>
-                        (tally?.confirmed.has(role) ?? false) &&
-                        !(tally?.deciding.has(role) ?? false),
-                ).length,
-                awaitingRoleCount: event.rolesNeeded.filter(
-                    (role) => tally?.deciding.has(role) ?? false,
-                ).length,
+                filledRoleCount: staffing.filled,
+                awaitingRoleCount: staffing.awaiting,
+                declinedRoleCount: staffing.declined,
             };
         });
 

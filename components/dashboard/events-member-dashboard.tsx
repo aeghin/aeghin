@@ -24,6 +24,11 @@ import {
 } from "@/lib/actions/event";
 import { Spinner } from "@/components/ui/spinner";
 import { ServiceTypeFilter } from "@/components/dashboard/events/service-type-filter";
+import {
+  METER_MAX_WIDTH,
+  StaffingMeter,
+} from "@/components/dashboard/events/staffing-meter";
+import type { Staffing } from "@/lib/staffing";
 import { getServiceColors as getColorClasses } from "@/lib/config/service-types-config";
 
 interface EventDate {
@@ -57,6 +62,9 @@ interface Event {
   dates: EventDate[];
   assignments: EventAssignment[];
   serviceTypeId: string;
+  rolesNeeded: string[];
+  /** Only on All Events — see `getOrgEvents`. */
+  staffing?: Staffing;
 }
 
 // ─── Color config ───────────────────────────────────────────────
@@ -913,6 +921,15 @@ export function MemberEventsDashboard({
                               service?.color || "indigo",
                             );
                             const multiDay = isMultiDay(event.dates);
+                            const meter =
+                              activeTab === "all" &&
+                              event.staffing &&
+                              event.rolesNeeded.length > 0 ? (
+                                <StaffingMeter
+                                  staffing={event.staffing}
+                                  needed={event.rolesNeeded.length}
+                                />
+                              ) : null;
 
                             return (
                               <Link
@@ -955,6 +972,14 @@ export function MemberEventsDashboard({
                                         {roleInfo.icon} {roleInfo.label}
                                       </span>
                                     )}
+                                    {meter && (
+                                      <div
+                                        className="shrink-0"
+                                        style={{ width: METER_MAX_WIDTH }}
+                                      >
+                                        {meter}
+                                      </div>
+                                    )}
                                   </div>
                                   {/* Mobile layout */}
                                   <div className="flex flex-col gap-2 sm:hidden">
@@ -978,6 +1003,7 @@ export function MemberEventsDashboard({
                                         ? `${formatDateRange(event.dates)} · ${formatTimeRange(event.dates)}`
                                         : formatTimeRange(event.dates)}
                                     </span>
+                                    {meter}
                                   </div>
                                 </m.div>
                               </Link>

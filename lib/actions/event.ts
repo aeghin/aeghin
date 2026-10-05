@@ -727,6 +727,7 @@ export const acceptEventInvitation = async (
     touch(`user-${user.id}-events-${organizationId}`);
     touch(`event-${eventId}-org-${organizationId}-details`);
     touch(`org-${organizationId}-acceptance-stats`);
+    touch(`org-${organizationId}-events`);
     touch(`org-${organizationId}-activity`);
     touch(`event-${eventId}-org-${organizationId}-activity`);
 
@@ -806,6 +807,7 @@ export const declineEventInvitation = async (
     touch(`user-${user.id}-events-${organizationId}`);
     touch(`event-${eventId}-org-${organizationId}-details`);
     touch(`org-${organizationId}-acceptance-stats`);
+    touch(`org-${organizationId}-events`);
 
     const declinerName = `${user.firstName} ${user.lastName}`;
     const roleLabel = volunteerRoleConfig[assignment.role].label;
@@ -908,6 +910,7 @@ export const declineEventInvitation = async (
 
         touch(`user-${replacement.userId}-events-${organizationId}`);
         touch(`event-${eventId}-org-${organizationId}-details`);
+        touch(`org-${organizationId}-events`);
 
         after(async () => {
           await resend.emails.send({
@@ -1080,6 +1083,7 @@ export const cancelUserEventAssignment = async (userId: string, organizationId: 
 
     touch(`user-${userId}-events-${organizationId}`);
     touch(`event-${eventId}-org-${organizationId}-details`);
+    touch(`org-${organizationId}-events`);
 
     // Only someone who still held the spot has lost anything. A volunteer who
     // already declined, was taken off once already, or let the invitation

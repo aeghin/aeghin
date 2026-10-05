@@ -215,6 +215,7 @@ export const removeMember = async (userId: string, organizationId: string, touch
         touch(`user-${userId}-orgs`);
         touch(`user-${userId}-events-${organizationId}`);
         touch(`user-${userId}-blockouts-${organizationId}`);
+        touch(`org-${organizationId}-events`);
         touch(`org-${organizationId}-members-list`);
         touch(`org-${organizationId}-member-count`);
         touch(`user-${userId}-org-${organizationId}-role`);
@@ -397,6 +398,7 @@ export const leaveOrganization = async (organizationId: string, touch: TagInvali
           touch(`user-${user.id}-orgs`);
           touch(`user-${user.id}-events-${organizationId}`);
           touch(`user-${user.id}-blockouts-${organizationId}`);
+          touch(`org-${organizationId}-events`);
           touch(`org-${organizationId}-members-list`);
           touch(`org-${organizationId}-member-count`);
           touch(`user-${user.id}-org-${organizationId}-role`);
