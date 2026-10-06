@@ -142,7 +142,7 @@ export const SongAttachments = ({ songId, organizationId, attachments, storage }
                                 <Icon
                                     className={cn(
                                         "h-4 w-4 shrink-0",
-                                        isPdf ? "text-red-500" : "text-sky-500",
+                                        isPdf ? "text-foreground" : "text-sky-500",
                                     )}
                                 />
                                 <a

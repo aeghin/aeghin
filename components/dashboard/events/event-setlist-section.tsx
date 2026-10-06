@@ -183,7 +183,7 @@ export function EventSetlistSection({
                               title={attachment.name}
                               className={cn(
                                 "text-muted-foreground transition-colors max-sm:flex max-sm:h-7 max-sm:w-7 max-sm:items-center max-sm:justify-center max-sm:rounded-md",
-                                isPdf ? "hover:text-red-500" : "hover:text-sky-500",
+                                isPdf ? "hover:text-foreground" : "hover:text-sky-500",
                               )}
                             >
                               <Icon className="h-4.5 w-4.5" />

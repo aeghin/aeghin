@@ -109,7 +109,7 @@ function SongAttachments({ song, max }: { song: Song; max?: number }) {
             title={attachment.name}
             className={cn(
               "flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted",
-              isPdf ? "hover:text-red-600" : "hover:text-sky-600",
+              isPdf ? "hover:text-foreground" : "hover:text-sky-600",
             )}
             aria-label={`Open ${attachment.name}`}
           >
