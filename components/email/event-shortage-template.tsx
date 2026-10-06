@@ -36,6 +36,7 @@ interface EventShortageEmailProps {
   footer?: string;
 }
 
+/** Says what the push says: who declined, then the reason or who has it. */
 export default function EventShortageEmail({
   recipientName,
   eventName,
@@ -55,7 +56,7 @@ export default function EventShortageEmail({
       <Html>
         <Head />
         <Preview>
-          {eventName} still needs a {roleLabel} — {organizationName}
+          {roleLabel} still needed for {eventName} — {organizationName}
         </Preview>
         <Body className="bg-gray-100 font-sans">
           <Container className="mx-auto my-10 max-w-120 rounded-2xl bg-white shadow-sm overflow-hidden">
@@ -77,67 +78,38 @@ export default function EventShortageEmail({
                 </Section>
               )}
               <Text className="text-2xl font-bold tracking-tight text-gray-900 m-0">
-                {headsUp ? "Heads-up: Slot Left Open" : "Slot Left Open"}
-              </Text>
-              <Text className="mt-2 text-sm text-gray-500 m-0">
-                A volunteer declined and the role is still unfilled
+                {headsUp ? "Heads-up: Invitation Declined" : "Invitation Declined"}
               </Text>
             </Section>
 
             <Section className="px-8 py-6 text-center">
 
-              <Text className="text-sm text-gray-600 m-0 mb-6">
-                Hi {recipientName}, {declinedByName} declined this event and
-                nobody has taken the role.
-                {headsUp ? ` ${headsUp}` : ""}
+              <Text className="m-0 mb-6 text-sm text-gray-600">
+                Hi {recipientName}, {declinedByName} can&apos;t make it as{" "}
+                {roleLabel}. {headsUp ?? reason}
               </Text>
 
               <Section className="rounded-xl border border-gray-200 p-4 mb-4">
-                <Text className="text-xs text-gray-500 m-0 mb-1">
-                  Event
-                </Text>
-                <Text className="text-base font-semibold text-gray-900 m-0">
+                <Text className="m-0 text-base font-semibold text-gray-900">
                   {eventName}
                 </Text>
-              </Section>
-
-              <Section className="rounded-xl border border-amber-200 bg-amber-50 p-4 mb-4">
-                <Text className="text-xs text-amber-700 m-0 mb-1">
-                  Still needed
-                </Text>
-                <Text className="text-base font-semibold text-amber-900 m-0">
-                  {roleLabel}
-                </Text>
-              </Section>
-
-              {eventDate ? (
-                <Section className="rounded-xl border border-gray-200 p-4 mb-4">
-                  <Text className="text-xs text-gray-500 m-0 mb-1">
-                    Scheduled for
-                  </Text>
-                  <Text className="text-sm font-medium text-gray-900 m-0">
-                    {eventDate}
-                  </Text>
-                  {eventTime ? (
-                    <Text className="mt-1 text-sm text-gray-500 m-0">
-                      {eventTime}
+                {eventDate ? (
+                  <>
+                    <Text className="m-0 mt-1 text-sm font-medium text-gray-900">
+                      {eventDate}
                     </Text>
-                  ) : null}
-                </Section>
-              ) : null}
-
-              <Section className="rounded-xl border border-gray-200 p-4 mb-6 text-left">
-                <Text className="text-xs text-gray-500 m-0 mb-1">
-                  Why it wasn&apos;t filled
-                </Text>
-                <Text className="text-sm text-gray-900 m-0">
-                  {reason}
-                </Text>
+                    {eventTime ? (
+                      <Text className="m-0 mt-1 text-sm text-gray-500">
+                        {eventTime}
+                      </Text>
+                    ) : null}
+                  </>
+                ) : null}
               </Section>
 
               <Button
                 href={viewLink}
-                className="rounded-lg bg-black px-6 py-3 text-sm font-semibold text-white no-underline"
+                className="mt-2 rounded-lg bg-black px-6 py-3 text-sm font-semibold text-white no-underline"
               >
                 {headsUp ? "View Event" : "Staff This Event"}
               </Button>

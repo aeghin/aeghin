@@ -51,7 +51,7 @@ export async function notifyDeclineShortage({
   try {
     // A role somebody else has already confirmed isn't short — the rule the
     // expired-invite email follows too. Without it, the last extra invite on
-    // a role declining would mail "Needs a BGVs" in the same moment the
+    // a role declining would mail "BGVs needed" in the same moment the
     // roster reports itself fully staffed.
     const [stillConfirmed, event] = await Promise.all([
       prisma.eventAssignment.count({
@@ -99,7 +99,9 @@ export async function notifyDeclineShortage({
 
     const roleLabel = volunteerRoleConfig[role].label;
     const when = formatEventWhen(dates);
-    const subject = `Needs a ${roleLabel}: ${eventName}`;
+    // "Pianist needed", not "Needs a Pianist": half the role labels can't take
+    // an "a" — Aux Keys, Usher, BGVs, Choir, Camera, Lighting.
+    const subject = `${roleLabel} needed: ${eventName}`;
 
     await sendEmailBatches(
       "declineEventInvitation shortage",

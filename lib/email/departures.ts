@@ -62,11 +62,14 @@ export async function notifyDeparture({
   organizationId,
   departedName,
   reason,
+  removedByName = null,
   spots,
 }: {
   organizationId: string;
   departedName: string;
   reason: DepartureReason;
+  /** Who removed them, for a removal. */
+  removedByName?: string | null;
   spots: DepartingSpot[];
 }): Promise<void> {
   try {
@@ -180,8 +183,9 @@ export async function notifyDeparture({
       const vacated: VacatedSpot = {
         eventName: event.name,
         roleLabel: volunteerRoleConfig[spot.role].label,
-        when: when ? `${when.date} · ${when.time}` : null,
-        viewLink: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/organizations/${organizationId}/events/${event.id}`,
+        eventDate: when?.date ?? null,
+        eventTime: when?.time ?? null,
+        viewLink:`${process.env.NEXT_PUBLIC_APP_URL}/dashboard/organizations/${organizationId}/events/${event.id}`,
       };
 
       const audience = roleAudience(directory, {
@@ -212,9 +216,11 @@ export async function notifyDeparture({
       }
     }
 
+    // "Pianist needed", not "Needs a Pianist": half the role labels can't take
+    // an "a" — Aux Keys, Usher, BGVs, Choir, Camera, Lighting.
     const subjectFor = (vacated: VacatedSpot[]) =>
       vacated.length === 1
-        ? `Needs a ${vacated[0].roleLabel}: ${vacated[0].eventName}`
+        ? `${vacated[0].roleLabel} needed: ${vacated[0].eventName}`
         : `${vacated.length} upcoming events need people`;
 
     const messages = [...byRecipient.values()].map(
@@ -228,6 +234,7 @@ export async function notifyDeparture({
           logoUrl: organization?.logoUrl ?? null,
           departedName,
           reason,
+          removedByName,
           vacated,
           footer,
         }),
@@ -236,12 +243,15 @@ export async function notifyDeparture({
 
     await sendEmailBatches("departure shortage", messages);
 
-    const departed =
+    // Who did it, like the email: a removal names whoever removed them.
+    const happened =
       reason === "left"
-        ? "left"
+        ? `${departedName} left`
         : reason === "removed"
-          ? "was removed"
-          : "deleted their account";
+          ? removedByName
+            ? `${removedByName} removed ${departedName}`
+            : `${departedName} was removed`
+          : `${departedName} deleted their account`;
 
     await sendPushNotices(
       "departure shortage",
@@ -252,8 +262,8 @@ export async function notifyDeparture({
         subtitle: organizationName,
         body:
           vacated.length === 1
-            ? `${departedName} ${departed}. ${vacated[0].headsUp ?? `Nobody else is confirmed as ${vacated[0].roleLabel}.`}`
-            : `${departedName} ${departed}, leaving ${vacated.length} upcoming events short.${owns ? "" : " Others have been asked to fill them."}`,
+            ? `${happened}. ${vacated[0].headsUp ?? `Nobody else is confirmed as ${vacated[0].roleLabel}.`}`
+            : `${happened}, leaving ${vacated.length} upcoming events short.${owns ? "" : " Others have been asked to fill them."}`,
         // Several events open on All, where each one's staffing shows: they
         // may not be on the manager's own schedule.
         data:

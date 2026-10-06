@@ -46,6 +46,7 @@ import EventRemovedEmail from "@/components/email/event-removed-template";
 import EventUpdatedEmail, { type EventChange } from "@/components/email/event-updated-template";
 
 import {
+  eventStart,
   formatEventShort,
   formatEventWhen,
   formatRehearsal,
@@ -468,24 +469,6 @@ export async function createEvent(
         touch(`user-${uid}-events-${organizationId}`)
       };
 
-      after(async () => {
-        await sendEmailBatches(
-          "createEvent assignment",
-          assignedUsers.map((user) => ({
-            from: organizationSender(organizationName),
-            to: user.email,
-            subject: `You've been assigned to ${name}`,
-            react: EventAssignmentEmail({
-              recipientName: user.firstName,
-              eventName: name,
-              organizationName: organizationName || "",
-              logoUrl,
-              viewLink: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/organizations/${organizationId}`,
-            }),
-          })),
-        );
-      });
-
       // One role per person per event, so each assignee maps to exactly one.
       const roleByUser = new Map(
         Object.entries(roleAssignments).flatMap(([role, userIds]) =>
@@ -493,12 +476,48 @@ export async function createEvent(
         ),
       );
 
-      const when = formatEventShort(
-        Object.values(dayTimes).map((times) => ({
-          startTime: new Date(times.startTime),
-          endTime: new Date(times.endTime),
-        })),
-      );
+      const eventDates = Object.values(dayTimes).map((times) => ({
+        startTime: new Date(times.startTime),
+        endTime: new Date(times.endTime),
+      }));
+
+      const fullWhen = formatEventWhen(eventDates);
+      const invitedByName = `${users.firstName} ${users.lastName}`;
+      // The rows were written a moment ago with this same window.
+      const answerBy = new Date(Date.now() + expiresAt * 24 * 60 * 60 * 1000);
+
+      after(async () => {
+        await sendEmailBatches(
+          "createEvent assignment",
+          assignedUsers.flatMap((user) => {
+            const role = roleByUser.get(user.id);
+
+            if (!role) return [];
+
+            return [{
+              from: organizationSender(organizationName),
+              to: user.email,
+              subject: `You're invited to serve: ${name}`,
+              react: EventAssignmentEmail({
+                recipientName: user.firstName,
+                eventName: name,
+                organizationName: organizationName || "",
+                logoUrl,
+                roleLabel: volunteerRoleConfig[role].label,
+                kind: "invite",
+                invitedByName,
+                eventDate: fullWhen?.date ?? null,
+                eventTime: fullWhen?.time ?? null,
+                startsAt: eventStart(eventDates),
+                expiresAt: answerBy,
+                viewLink: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/organizations/${organizationId}`,
+              }),
+            }];
+          }),
+        );
+      });
+
+      const when = formatEventShort(eventDates);
 
       after(() =>
         sendPushNotices(
@@ -514,6 +533,8 @@ export async function createEvent(
               organizationId,
               roleLabel: role ? volunteerRoleConfig[role].label : null,
               when,
+              kind: "invite",
+              invitedByName,
             });
           }),
         ),
@@ -880,6 +901,13 @@ export const declineEventInvitation = async (
       if (outcome.status === "FOUND") {
         const replacement = outcome.candidate;
 
+        // Keep the slot's original deadline; fall back to a fresh window only
+        // if that deadline has already passed.
+        const replacementExpiry =
+          assignment.expiresAt > new Date()
+            ? assignment.expiresAt
+            : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
         await prisma.eventAssignment.create({
           data: {
             eventId,
@@ -889,12 +917,7 @@ export const declineEventInvitation = async (
             organizationId,
             status: InvitationStatus.PENDING,
             autoAssigned: true,
-            // Keep the slot's original deadline; fall back to a fresh window
-            // only if that deadline has already passed.
-            expiresAt:
-              assignment.expiresAt > new Date()
-                ? assignment.expiresAt
-                : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+            expiresAt: replacementExpiry,
           },
         });
 
@@ -912,16 +935,27 @@ export const declineEventInvitation = async (
         touch(`event-${eventId}-org-${organizationId}-details`);
         touch(`org-${organizationId}-events`);
 
+        const replacementWhen = formatEventWhen(assignment.event.dates);
+
         after(async () => {
           await resend.emails.send({
             from: organizationSender(assignment.organization.name),
             to: replacement.email,
-            subject: `You've been assigned to ${assignment.event.name}`,
+            subject: `You're invited to serve: ${assignment.event.name}`,
             react: EventAssignmentEmail({
               recipientName: replacement.firstName,
               eventName: assignment.event.name,
               organizationName: assignment.organization.name,
               logoUrl: assignment.organization.logoUrl,
+              roleLabel,
+              // Smart Scheduling picked them, not a person — the inherited
+              // sender is whoever invited the one who declined.
+              kind: "replacement",
+              invitedByName: null,
+              eventDate: replacementWhen?.date ?? null,
+              eventTime: replacementWhen?.time ?? null,
+              startsAt: eventStart(assignment.event.dates),
+              expiresAt: replacementExpiry,
               viewLink: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/organizations/${organizationId}`,
             }),
           });
@@ -937,6 +971,8 @@ export const declineEventInvitation = async (
               organizationId,
               roleLabel,
               when: formatEventShort(assignment.event.dates),
+              kind: "replacement",
+              invitedByName: null,
             }),
           ]),
         );
@@ -1107,6 +1143,7 @@ export const cancelUserEventAssignment = async (userId: string, organizationId: 
             logoUrl,
             removedByName: `${user.firstName} ${user.lastName}`,
             roleLabel: volunteerRoleConfig[assignment.role].label,
+            accepted: assignment.status === InvitationStatus.ACCEPTED,
             eventDate: when?.date ?? null,
             eventTime: when?.time ?? null,
             viewLink: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/organizations/${organizationId}`,
@@ -1115,16 +1152,22 @@ export const cancelUserEventAssignment = async (userId: string, organizationId: 
       });
 
       const shortWhen = formatEventShort(assignment.event.dates);
+      // Somebody still deciding was never on the team: their invitation was withdrawn.
+      const accepted = assignment.status === InvitationStatus.ACCEPTED;
 
       // To their organization rather than the event: they can't open it now.
       after(() =>
         sendPushNotices("cancelUserEventAssignment removed", [
           {
             email: assignment.user.email,
-            title: `Removed: ${assignment.event.name}`,
+            title: accepted
+              ? `Removed: ${assignment.event.name}`
+              : `Invitation withdrawn: ${assignment.event.name}`,
             subtitle: organizationName,
             body: [
-              `${user.firstName} ${user.lastName} took you off the team.`,
+              accepted
+                ? `${user.firstName} ${user.lastName} took you off the team.`
+                : `${user.firstName} ${user.lastName} withdrew your invitation.`,
               [volunteerRoleConfig[assignment.role].label, shortWhen].filter(Boolean).join(" · "),
             ].join("\n"),
             data: { type: "organization", organizationId },
@@ -1229,6 +1272,8 @@ export const resendEventInvitation = async (
       };
     }
 
+    const resentExpiry = new Date(Date.now() + RESEND_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
+
     await prisma.eventAssignment.update({
       where: {
         eventId_userId: { eventId, userId },
@@ -1237,7 +1282,7 @@ export const resendEventInvitation = async (
       data: {
         status: InvitationStatus.PENDING,
         invitedAt: new Date(),
-        expiresAt: new Date(Date.now() + RESEND_EXPIRY_DAYS * 24 * 60 * 60 * 1000),
+        expiresAt: resentExpiry,
         assignedById: user.id,
         autoAssigned: false,
         // A new window earns its own "still need your answer".
@@ -1252,17 +1297,25 @@ export const resendEventInvitation = async (
     touch(`org-${organizationId}-activity`);
 
     const { name: organizationName, logoUrl } = membership.organization;
+    const resentWhen = formatEventWhen(assignment.event.dates);
 
     after(async () => {
       await resend.emails.send({
         from: organizationSender(organizationName),
         to: assignment.user.email,
-        subject: `You've been assigned to ${assignment.event.name}`,
+        subject: `You're invited to serve: ${assignment.event.name}`,
         react: EventAssignmentEmail({
           recipientName: assignment.user.firstName,
           eventName: assignment.event.name,
           organizationName: organizationName || "",
           logoUrl,
+          roleLabel: volunteerRoleConfig[assignment.role].label,
+          kind: "resend",
+          invitedByName: `${user.firstName} ${user.lastName}`,
+          eventDate: resentWhen?.date ?? null,
+          eventTime: resentWhen?.time ?? null,
+          startsAt: eventStart(assignment.event.dates),
+          expiresAt: resentExpiry,
           viewLink: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/organizations/${organizationId}`,
         }),
       });
@@ -1278,6 +1331,8 @@ export const resendEventInvitation = async (
           organizationId,
           roleLabel: volunteerRoleConfig[assignment.role].label,
           when: formatEventShort(assignment.event.dates),
+          kind: "resend",
+          invitedByName: `${user.firstName} ${user.lastName}`,
         }),
       ]),
     );
@@ -1846,6 +1901,7 @@ export const inviteMembersToEvent = async (
     });
 
     const { name: organizationName, logoUrl } = membership.organization;
+    const fullWhen = formatEventWhen(event.dates);
 
     after(async () => {
       await sendEmailBatches(
@@ -1853,12 +1909,19 @@ export const inviteMembersToEvent = async (
         invitedUsers.map((invitee) => ({
           from: organizationSender(organizationName),
           to: invitee.email,
-          subject: `You've been assigned to ${event.name}`,
+          subject: `You're invited to serve: ${event.name}`,
           react: EventAssignmentEmail({
             recipientName: invitee.firstName,
             eventName: event.name,
             organizationName: organizationName || "",
             logoUrl,
+            roleLabel: volunteerRoleConfig[role].label,
+            kind: "invite",
+            invitedByName: `${user.firstName} ${user.lastName}`,
+            eventDate: fullWhen?.date ?? null,
+            eventTime: fullWhen?.time ?? null,
+            startsAt: eventStart(event.dates),
+            expiresAt: expiry,
             viewLink: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/organizations/${organizationId}`,
           }),
         })),
@@ -1879,6 +1942,8 @@ export const inviteMembersToEvent = async (
             organizationId,
             roleLabel: volunteerRoleConfig[role].label,
             when,
+            kind: "invite",
+            invitedByName: `${user.firstName} ${user.lastName}`,
           }),
         ),
       ),
@@ -1961,6 +2026,7 @@ export const deleteEvent = async (organizationId: string, eventId: string, touch
         assignments: {
           select: {
             userId: true,
+            role: true,
             status: true,
             expiresAt: true,
             user: { select: { email: true, firstName: true } },
@@ -2019,6 +2085,7 @@ export const deleteEvent = async (organizationId: string, eventId: string, touch
               organizationName,
               logoUrl,
               canceledByName,
+              roleLabel: volunteerRoleConfig[assignment.role].label,
               eventDate: when?.date ?? null,
               eventTime: when?.time ?? null,
               viewLink: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/organizations/${organizationId}`,
@@ -2165,7 +2232,6 @@ export const emailAcceptedVolunteers = async (
       replyTo: user.email,
       subject,
       react: EventMessageEmail({
-        recipientName: recipient.firstName,
         senderName,
         organizationName,
         logoUrl,
@@ -2408,10 +2474,11 @@ export const editEventDetails = async (
         const previousWhen = formatEventWhen(event.dates);
         const nextWhen = formatEventWhen(nextDates);
 
+        // Date and time on their own lines, so a phone never breaks a time in half.
         changes.push({
           label: "When",
-          from: previousWhen ? `${previousWhen.date} · ${previousWhen.time}` : null,
-          to: nextWhen ? `${nextWhen.date} · ${nextWhen.time}` : "",
+          from: previousWhen ? `${previousWhen.date}\n${previousWhen.time}` : null,
+          to: nextWhen ? `${nextWhen.date}\n${nextWhen.time}` : "",
         });
       }
 
@@ -2477,7 +2544,13 @@ export const editEventDetails = async (
                 logoUrl,
                 updatedByName,
                 changes,
-                viewLink: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/organizations/${organizationId}/events/${eventId}`,
+                accepted: assignment.status === InvitationStatus.ACCEPTED,
+                // Someone still deciding can't open the event page yet; their
+                // invitation waits on the organization's.
+                viewLink:
+                  assignment.status === InvitationStatus.ACCEPTED
+                    ? `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/organizations/${organizationId}/events/${eventId}`
+                    : `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/organizations/${organizationId}`,
               }),
             })),
           );

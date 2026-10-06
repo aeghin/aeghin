@@ -96,7 +96,8 @@ export async function notifyNewTeamLead({
         email: lead.email,
         title: `You're the ${label} lead for ${serviceType.name}`,
         subtitle: organization.name,
-        body: `${assignedByName} made you the ${label} lead for ${serviceType.name}. You'll now get its ${label} staffing alerts.`,
+        // The title already says which team and service.
+        body: `${assignedByName} set this up. When a ${label} spot opens up, you'll be asked to fill it.`,
         // Every event, where each one's staffing shows — the lead's own
         // schedule may not hold any of them.
         data: { type: "organization", organizationId, tab: "all" },
@@ -184,12 +185,11 @@ export async function notifyNewTeamWatcher({
           logoUrl: organization.logoUrl,
           heading: `Heads-Ups for ${label}`,
           serviceTypeName: serviceType.name,
-          changedByName: addedByName,
-          message: `${addedByName} added you to Also notify for ${label} on ${serviceType.name}. When one of ${label}'s roles opens up — somebody declines, an invitation expires, or a member leaves — ${asked} is asked to fill it, and you'll get a heads-up saying so. You don't need to act on it.`,
+          message: `${addedByName} added you to Also notify. When a ${label} spot opens up, ${asked} is asked to fill it and you'll get a heads-up. You don't need to act on it.`,
           teamLabel: label,
           roleLabels: rolesOf(team),
           eventsLink: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/organizations/${organizationId}`,
-          footer: `You're receiving this because ${addedByName} added you to Also notify at ${organization.name}.`,
+          footer: `You're receiving this because you're on Also notify for ${label} at ${organization.name}.`,
         }),
       },
     ]);
@@ -270,12 +270,14 @@ export async function notifyFormerTeamLead({
 
     const label = teamLabel(team);
 
+    // The email's heading and the push's title already name the service, so
+    // the sentence doesn't.
     const change = newLead
-      ? `${changedByName} made ${newLead.firstName} ${newLead.lastName} the ${label} lead for ${serviceType.name}`
-      : `${changedByName} cleared the ${label} lead for ${serviceType.name}`;
+      ? `${changedByName} made ${newLead.firstName} ${newLead.lastName} the ${label} lead`
+      : `${changedByName} cleared the ${label} lead`;
 
     const consequence = [
-      `you won't be asked to fill ${label}'s open spots on its events anymore`,
+      `you won't be asked to fill ${label}'s open spots anymore`,
       newLead ? "" : " — each event's creator is, until there's a new lead",
     ].join("");
 
@@ -294,10 +296,10 @@ export async function notifyFormerTeamLead({
           logoUrl: organization.logoUrl,
           heading: `No Longer ${label} Lead`,
           serviceTypeName: serviceType.name,
-          changedByName,
           message: `${change}, so ${consequence}.${watching}`,
           teamLabel: label,
-          roleLabels: rolesOf(team),
+          // Nothing left for them to cover.
+          roleLabels: null,
           eventsLink: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/organizations/${organizationId}`,
           footer: `You're receiving this because you were the ${label} lead for ${serviceType.name} at ${organization.name}.`,
         }),
@@ -309,7 +311,7 @@ export async function notifyFormerTeamLead({
         email: membership.user.email,
         title: `No longer ${label} lead: ${serviceType.name}`,
         subtitle: organization.name,
-        body: `${change}. You won't be asked to fill its open spots anymore.${watching}`,
+        body: `${change}. You won't be asked to fill ${label}'s open spots anymore.${watching}`,
         data: { type: "organization", organizationId },
       },
     ]);
@@ -406,7 +408,7 @@ export async function notifyEventCovers({
           teamLabels: labels,
           teamChoice: eitherOf.format(teams.map(teamLabel)),
           roleLabels: teams.map(rolesOf).join(", "),
-          regularLeadNames: regulars.length > 0 ? names.format([...new Set(regulars)]) : null,
+          regularLeads: [...new Set(regulars)],
           assignedByName,
           viewLink,
         }),
@@ -578,7 +580,6 @@ export async function notifyCoverChanges({
         organizationName,
         logoUrl: organization?.logoUrl ?? null,
         heading,
-        changedByName: changedBy.name,
         message,
         eventName: event.name,
         eventDate: when?.date ?? null,
@@ -666,7 +667,8 @@ export async function notifyCoverChanges({
         person,
         heading,
         headline,
-        message: [`${changedBy.name} ${what} for ${event.name}.`, ...effects(true)].join(" "),
+        // The card under it names the event.
+        message: [`${changedBy.name} ${what} for this event.`, ...effects(true)].join(" "),
         pushBody: [`${changedBy.name} ${what}.`, ...effects(false)].join(" "),
         teams: [
           ...off.map(handoffFor),

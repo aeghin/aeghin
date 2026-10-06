@@ -160,7 +160,7 @@ export async function inviteMember(data: OrgInvitationInput, touch: TagInvalidat
             react: InvitationEmail({
                 organizationName: membership.organization.name,
                 logoUrl: membership.organization.logoUrl,
-                invitedByName: user.firstName,
+                invitedByName: `${user.firstName} ${user.lastName}`,
                 volunteerRoles: volunteerRoles,
                 inviteLink: `${process.env.NEXT_PUBLIC_APP_URL}/invite/${invitation.token}`
             })
@@ -172,7 +172,7 @@ export async function inviteMember(data: OrgInvitationInput, touch: TagInvalidat
             token: invitation.token,
             volunteerRoles,
             organizationName: membership.organization.name,
-            invitedByName: user.firstName,
+            invitedByName: `${user.firstName} ${user.lastName}`,
         }));
 
         // await twilioClient.messages.create({
@@ -454,7 +454,7 @@ export const resendInvitation = async (organizationId: string, userEmail: string
                 react: InvitationEmail({
                     organizationName: membership.organization.name,
                     logoUrl: membership.organization.logoUrl,
-                    invitedByName: user.firstName,
+                    invitedByName: `${user.firstName} ${user.lastName}`,
                     volunteerRoles: resentInvitation.volunteerRoles,
                     inviteLink: `${process.env.NEXT_PUBLIC_APP_URL}/invite/${resentInvitation.token}`
                 })
@@ -466,7 +466,7 @@ export const resendInvitation = async (organizationId: string, userEmail: string
             token: resentInvitation.token,
             volunteerRoles: resentInvitation.volunteerRoles,
             organizationName: membership.organization.name,
-            invitedByName: user.firstName,
+            invitedByName: `${user.firstName} ${user.lastName}`,
         }));
 
         return { success: true }

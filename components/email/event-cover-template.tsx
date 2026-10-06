@@ -13,21 +13,25 @@ import {
 
 import { organizationInitial } from "@/lib/email/organization";
 
+const names = new Intl.ListFormat("en", { type: "conjunction" });
+
 interface EventCoverEmailProps {
   recipientName: string;
   organizationName: string;
   logoUrl: string | null;
   eventName: string;
+  // Preformatted by `formatEventWhen`, which pins UTC. Null when the event
+  // carried no dates.
   eventDate: string | null;
   eventTime: string | null;
   /** The teams they cover, e.g. "Band" or "Band and Vocals". */
   teamLabels: string;
-  /** The same teams as a choice, e.g. "Band or Vocals": "when a … role opens up". */
+  /** The same teams as a choice, e.g. "Band or Vocals": "when a … spot opens up". */
   teamChoice: string;
   /** Every role in those teams, e.g. "Pianist, Aux Keys, Bassist". */
   roleLabels: string;
-  /** Who usually leads those teams, when the service type has a lead. */
-  regularLeadNames: string | null;
+  /** First names of whoever usually leads those teams; none when the service type has no lead. */
+  regularLeads: string[];
   assignedByName: string;
   viewLink: string;
 }
@@ -42,10 +46,15 @@ export default function EventCoverEmail({
   teamLabels,
   teamChoice,
   roleLabels,
-  regularLeadNames,
+  regularLeads,
   assignedByName,
   viewLink,
 }: EventCoverEmailProps) {
+  const handBack =
+    regularLeads.length > 0
+      ? ` ${names.format(regularLeads)} ${regularLeads.length > 1 ? "take" : "takes"} over again from the next event.`
+      : "";
+
   return (
     <Tailwind>
       <Html>
@@ -75,43 +84,43 @@ export default function EventCoverEmail({
               <Text className="text-2xl font-bold tracking-tight text-gray-900 m-0">
                 You&apos;re Covering {teamLabels}
               </Text>
-              <Text className="mt-2 text-sm text-gray-500 m-0">
-                For {eventName} · {assignedByName} set this up
-              </Text>
             </Section>
 
             <Section className="px-8 py-6 text-center">
 
-              <Text className="text-sm text-gray-600 m-0 mb-6">
-                Hi {recipientName}, for this event only, when a {teamChoice}{" "}
-                role opens up — somebody declines, an invitation expires, or a
-                member leaves — you&apos;ll be the one asked to fill it.
-                {regularLeadNames
-                  ? ` ${regularLeadNames} handles it again from the next event.`
-                  : ""}
+              <Text className="m-0 mb-6 text-sm text-gray-600">
+                Hi {recipientName}, {assignedByName} asked you to cover{" "}
+                {teamLabels} for this event. If a {teamChoice} spot opens up,
+                you&apos;ll be asked to fill it.{handBack}
               </Text>
 
-              <Section className="rounded-xl border border-gray-200 p-4 mb-6">
-                <Text className="text-sm font-semibold text-gray-900 m-0">
+              <Section className="rounded-xl border border-gray-200 p-4 mb-4">
+                <Text className="m-0 text-base font-semibold text-gray-900">
                   {eventName}
                 </Text>
-                {eventDate && (
-                  <Text className="text-sm text-gray-600 m-0 mt-1">
-                    {eventDate}
-                    {eventTime ? ` · ${eventTime}` : ""}
-                  </Text>
-                )}
-                <Text className="text-xs text-gray-500 m-0 mt-3 mb-1">
+                {eventDate ? (
+                  <>
+                    <Text className="m-0 mt-1 text-sm font-medium text-gray-900">
+                      {eventDate}
+                    </Text>
+                    {eventTime ? (
+                      <Text className="m-0 mt-1 text-sm text-gray-500">
+                        {eventTime}
+                      </Text>
+                    ) : null}
+                  </>
+                ) : null}
+                <Text className="m-0 mt-3 mb-1 text-xs text-gray-500">
                   {teamLabels} roles
                 </Text>
-                <Text className="text-sm font-medium text-gray-900 m-0">
+                <Text className="m-0 text-sm font-medium text-gray-900">
                   {roleLabels}
                 </Text>
               </Section>
 
               <Button
                 href={viewLink}
-                className="rounded-lg bg-black px-6 py-3 text-sm font-semibold text-white no-underline"
+                className="mt-2 rounded-lg bg-black px-6 py-3 text-sm font-semibold text-white no-underline"
               >
                 View Event
               </Button>
@@ -120,8 +129,8 @@ export default function EventCoverEmail({
 
             <Section className="border-t border-gray-200 px-8 py-6">
               <Text className="text-center text-xs text-gray-400 m-0">
-                You&apos;re receiving this because {assignedByName} asked you to
-                cover {teamLabels} for this event at {organizationName}.
+                You&apos;re receiving this because you&apos;re covering{" "}
+                {teamLabels} for this event at {organizationName}.
               </Text>
             </Section>
           </Container>

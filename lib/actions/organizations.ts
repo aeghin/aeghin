@@ -427,7 +427,6 @@ export const emailEntireOrganization = async (
             replyTo: user.email,
             subject,
             react: OrganizationMessageEmail({
-                recipientName: recipient.firstName,
                 senderName,
                 organizationName,
                 logoUrl,

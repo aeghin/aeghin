@@ -19,6 +19,10 @@ interface EventInviteReminderEmailProps {
   organizationName: string;
   logoUrl: string | null;
   roleLabel: string;
+  /** Full name of whoever sent it. Null once they're gone from the organization. */
+  invitedByName: string | null;
+  /** Smart Scheduling sent it to fill a spot somebody declined: no person chose them. */
+  autoFilled: boolean;
   /**
    * When the answer is needed: "Your invitation expires Sat, Oct 11, 10:30 PM
    * CDT", or "Sunday Service is in 3 days" when the event comes first.
@@ -39,12 +43,20 @@ export default function EventInviteReminderEmail({
   organizationName,
   logoUrl,
   roleLabel,
+  invitedByName,
+  autoFilled,
   timing,
   eventFirst,
   eventDate,
   eventTime,
   viewLink,
 }: EventInviteReminderEmailProps) {
+  const invited = autoFilled
+    ? `a spot opened up on this event, and you're invited to serve as ${roleLabel}.`
+    : invitedByName
+      ? `${invitedByName} invited you to serve as ${roleLabel}.`
+      : `you're invited to serve as ${roleLabel}.`;
+
   return (
     <Tailwind>
       <Html>
@@ -74,58 +86,50 @@ export default function EventInviteReminderEmail({
               <Text className="text-2xl font-bold tracking-tight text-gray-900 m-0">
                 Still Need Your Answer
               </Text>
-              <Text className="mt-2 text-sm text-gray-500 m-0">
+              <Text className="m-0 mt-2 text-sm text-gray-500">
                 {timing}
               </Text>
             </Section>
 
             <Section className="px-8 py-6 text-center">
 
-              <Text className="text-sm text-gray-600 m-0 mb-6">
-                Hi {recipientName}, you were invited to serve as {roleLabel} and
-                haven&apos;t answered yet. Let {organizationName} know whether
-                you can make it.
+              <Text className="m-0 mb-6 text-sm text-gray-600">
+                Hi {recipientName}, {invited} Let {organizationName} know
+                whether you can make it.
               </Text>
 
               <Section className="rounded-xl border border-gray-200 p-4 mb-4">
-                <Text className="text-xs text-gray-500 m-0 mb-1">
-                  Event
-                </Text>
-                <Text className="text-base font-semibold text-gray-900 m-0">
+                <Text className="m-0 text-base font-semibold text-gray-900">
                   {eventName}
                 </Text>
-                <Text className="mt-1 text-sm text-gray-500 m-0">
+                <Text className="m-0 mt-1 text-sm text-gray-600">
                   {roleLabel}
                 </Text>
-              </Section>
-
-              {eventDate ? (
-                <Section className="rounded-xl border border-gray-200 p-4 mb-6">
-                  <Text className="text-xs text-gray-500 m-0 mb-1">
-                    Scheduled for
-                  </Text>
-                  <Text className="text-sm font-medium text-gray-900 m-0">
-                    {eventDate}
-                  </Text>
-                  {eventTime ? (
-                    <Text className="mt-1 text-sm text-gray-500 m-0">
-                      {eventTime}
+                {eventDate ? (
+                  <>
+                    <Text className="m-0 mt-3 text-sm font-medium text-gray-900">
+                      {eventDate}
                     </Text>
-                  ) : null}
-                </Section>
-              ) : null}
+                    {eventTime ? (
+                      <Text className="m-0 mt-1 text-sm text-gray-500">
+                        {eventTime}
+                      </Text>
+                    ) : null}
+                  </>
+                ) : null}
+              </Section>
 
               <Button
                 href={viewLink}
-                className="rounded-lg bg-black px-6 py-3 text-sm font-semibold text-white no-underline"
+                className="mt-2 rounded-lg bg-black px-6 py-3 text-sm font-semibold text-white no-underline"
               >
                 Accept or Decline
               </Button>
 
-              <Text className="mt-6 text-xs text-gray-500 m-0">
+              <Text className="m-0 mt-6 text-xs text-gray-500">
                 {eventFirst
                   ? "Answering before it starts lets the team know who's coming."
-                  : "If it expires without an answer, the spot is opened up for somebody else."}
+                  : "After it expires, it can't be accepted unless an admin sends it again."}
               </Text>
 
             </Section>

@@ -17,8 +17,10 @@ import { organizationInitial } from "@/lib/email/organization";
 export type VacatedSpot = {
   eventName: string;
   roleLabel: string;
-  /** `formatEventWhen`'s date and time, joined. Null when the event has no dates. */
-  when: string | null;
+  // Preformatted by `formatEventWhen`, which pins UTC. Null when the event
+  // carried no dates.
+  eventDate: string | null;
+  eventTime: string | null;
   viewLink: string;
   /**
    * Set when the recipient is copied in on this one rather than asked to act
@@ -33,6 +35,8 @@ interface EventDepartureEmailProps {
   logoUrl: string | null;
   departedName: string;
   reason: "left" | "removed" | "deleted";
+  /** Who removed them, when an owner or admin did. */
+  removedByName?: string | null;
   /** Every upcoming event of the recipient's this leaves short, soonest first. */
   vacated: VacatedSpot[];
   /** The footer's "why you got this". */
@@ -45,15 +49,18 @@ export default function EventDepartureEmail({
   logoUrl,
   departedName,
   reason,
+  removedByName = null,
   vacated,
   footer,
 }: EventDepartureEmailProps) {
-  const what =
+  const happened =
     reason === "left"
-      ? `left ${organizationName}`
+      ? `${departedName} left ${organizationName}`
       : reason === "removed"
-        ? `was removed from ${organizationName}`
-        : "deleted their account";
+        ? removedByName
+          ? `${removedByName} removed ${departedName} from ${organizationName}`
+          : `${departedName} was removed from ${organizationName}`
+        : `${departedName} deleted their account`;
 
   const one = vacated.length === 1;
   // Nothing here is the recipient's to act on: every spot is somebody else's.
@@ -64,7 +71,7 @@ export default function EventDepartureEmail({
       <Html>
         <Head />
         <Preview>
-          {departedName} {what} — {one ? "an event needs" : `${vacated.length} events need`} people
+          {happened} — {one ? "an event needs" : `${vacated.length} events need`} people
         </Preview>
         <Body className="bg-gray-100 font-sans">
           <Container className="mx-auto my-10 max-w-120 rounded-2xl bg-white shadow-sm overflow-hidden">
@@ -89,34 +96,44 @@ export default function EventDepartureEmail({
                 {headsUp ? "Heads-up: " : ""}
                 {one ? "Role Left Open" : "Roles Left Open"}
               </Text>
-              <Text className="mt-2 text-sm text-gray-500 m-0">
-                {departedName} {what}
+              <Text className="m-0 mt-2 text-sm text-gray-500">
+                {happened}
               </Text>
             </Section>
 
             <Section className="px-8 py-6 text-center">
 
-              <Text className="text-sm text-gray-600 m-0 mb-6">
-                Hi {recipientName}, {departedName} was on{" "}
-                {one ? "an upcoming event" : `${vacated.length} upcoming events`}{" "}
-                {headsUp ? "you follow" : "you manage"}, and{" "}
-                {one ? "that role has" : "those roles have"} nobody confirmed now.
+              <Text className="m-0 mb-6 text-sm text-gray-600">
+                Hi {recipientName}, that leaves{" "}
+                {one ? "an upcoming event" : `${vacated.length} upcoming events`}
+                {headsUp ? "" : " you manage"} short.
               </Text>
 
               {vacated.map((spot) => (
                 <Section
                   key={`${spot.viewLink}-${spot.roleLabel}`}
-                  className="rounded-xl border border-amber-200 bg-amber-50 p-4 mb-3 text-left"
+                  className="rounded-xl border border-amber-200 bg-amber-50 p-4 mb-4 text-left"
                 >
-                  <Text className="text-base font-semibold text-amber-900 m-0">
+                  <Text className="m-0 text-base font-semibold text-amber-900">
                     {spot.eventName}
                   </Text>
-                  <Text className="mt-1 text-sm text-amber-800 m-0">
-                    Needs a {spot.roleLabel}
-                    {spot.when ? ` · ${spot.when}` : ""}
+                  <Text className="m-0 mt-1 text-sm font-medium text-amber-900">
+                    {spot.roleLabel} needed
                   </Text>
+                  {spot.eventDate ? (
+                    <>
+                      <Text className="m-0 mt-3 text-sm text-amber-800">
+                        {spot.eventDate}
+                      </Text>
+                      {spot.eventTime ? (
+                        <Text className="m-0 mt-1 text-sm text-amber-800">
+                          {spot.eventTime}
+                        </Text>
+                      ) : null}
+                    </>
+                  ) : null}
                   {spot.headsUp ? (
-                    <Text className="mt-1 text-sm text-amber-800 m-0">
+                    <Text className="m-0 mt-3 text-sm text-amber-800">
                       {spot.headsUp}
                     </Text>
                   ) : null}
@@ -124,7 +141,7 @@ export default function EventDepartureEmail({
                   {one ? null : (
                     <Link
                       href={spot.viewLink}
-                      className="mt-2 inline-block text-sm font-semibold text-gray-900 underline"
+                      className="mt-3 inline-block text-sm font-semibold text-gray-900 underline"
                     >
                       {spot.headsUp ? "View this event" : "Staff this event"}
                     </Link>
@@ -135,16 +152,16 @@ export default function EventDepartureEmail({
               {one ? (
                 <Button
                   href={vacated[0].viewLink}
-                  className="mt-3 rounded-lg bg-black px-6 py-3 text-sm font-semibold text-white no-underline"
+                  className="mt-2 rounded-lg bg-black px-6 py-3 text-sm font-semibold text-white no-underline"
                 >
                   {headsUp ? "View Event" : "Staff This Event"}
                 </Button>
               ) : null}
 
               {headsUp ? null : (
-                <Text className="mt-6 text-xs text-gray-500 m-0">
-                  From each event&apos;s Team card you can invite somebody else
-                  into the role.
+                <Text className="m-0 mt-6 text-xs text-gray-500">
+                  From {one ? "the" : "each"} event&apos;s Team card you can
+                  invite somebody else into the role.
                 </Text>
               )}
 

@@ -28,6 +28,11 @@ interface EventInviteClosedEmailProps {
   viewLink: string;
 }
 
+/**
+ * Nothing is handed to anybody else when an invitation lapses: the managers
+ * hear about it and usually send it again. So this says what the invitee can
+ * do, and that doing nothing is fine.
+ */
 export default function EventInviteClosedEmail({
   recipientName,
   eventName,
@@ -68,59 +73,44 @@ export default function EventInviteClosedEmail({
               <Text className="text-2xl font-bold tracking-tight text-gray-900 m-0">
                 Invitation Expired
               </Text>
-              <Text className="mt-2 text-sm text-gray-500 m-0">
-                The time to answer has passed
-              </Text>
             </Section>
 
             <Section className="px-8 py-6 text-center">
 
-              <Text className="text-sm text-gray-600 m-0 mb-6">
+              <Text className="m-0 mb-6 text-sm text-gray-600">
                 Hi {recipientName}, your invitation to serve as {roleLabel}{" "}
-                expired before you answered, so the spot has been opened up for
-                somebody else.
+                closed before you answered. If you can still make it, ask{" "}
+                {invitedByName ?? `an admin at ${organizationName}`} to send it
+                again. If not, there&apos;s nothing you need to do.
               </Text>
 
               <Section className="rounded-xl border border-gray-200 p-4 mb-4">
-                <Text className="text-xs text-gray-500 m-0 mb-1">
-                  Event
-                </Text>
-                <Text className="text-base font-semibold text-gray-900 m-0">
+                <Text className="m-0 text-base font-semibold text-gray-900">
                   {eventName}
                 </Text>
-                <Text className="mt-1 text-sm text-gray-500 m-0">
+                <Text className="m-0 mt-1 text-sm text-gray-600">
                   {roleLabel}
                 </Text>
-              </Section>
-
-              {eventDate ? (
-                <Section className="rounded-xl border border-gray-200 p-4 mb-6">
-                  <Text className="text-xs text-gray-500 m-0 mb-1">
-                    Scheduled for
-                  </Text>
-                  <Text className="text-sm font-medium text-gray-900 m-0">
-                    {eventDate}
-                  </Text>
-                  {eventTime ? (
-                    <Text className="mt-1 text-sm text-gray-500 m-0">
-                      {eventTime}
+                {eventDate ? (
+                  <>
+                    <Text className="m-0 mt-3 text-sm font-medium text-gray-900">
+                      {eventDate}
                     </Text>
-                  ) : null}
-                </Section>
-              ) : null}
+                    {eventTime ? (
+                      <Text className="m-0 mt-1 text-sm text-gray-500">
+                        {eventTime}
+                      </Text>
+                    ) : null}
+                  </>
+                ) : null}
+              </Section>
 
               <Button
                 href={viewLink}
-                className="rounded-lg bg-black px-6 py-3 text-sm font-semibold text-white no-underline"
+                className="mt-2 rounded-lg bg-black px-6 py-3 text-sm font-semibold text-white no-underline"
               >
                 View Events
               </Button>
-
-              <Text className="mt-6 text-xs text-gray-500 m-0">
-                If you can still make it, ask{" "}
-                {invitedByName ?? `an admin at ${organizationName}`} to send the
-                invitation again.
-              </Text>
 
             </Section>
 

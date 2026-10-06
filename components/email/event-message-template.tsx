@@ -14,7 +14,6 @@ import {
 import { organizationInitial } from "@/lib/email/organization";
 
 interface EventMessageEmailProps {
-  recipientName: string;
   senderName: string;
   organizationName: string;
   logoUrl: string | null;
@@ -23,8 +22,8 @@ interface EventMessageEmailProps {
   viewLink: string;
 }
 
+/** The message carries its own greeting, so nothing is put in front of it. */
 export default function EventMessageEmail({
-  recipientName,
   senderName,
   organizationName,
   logoUrl,
@@ -61,38 +60,22 @@ export default function EventMessageEmail({
               <Text className="text-2xl font-bold tracking-tight text-gray-900 m-0">
                 Team Update
               </Text>
-              <Text className="mt-2 text-sm text-gray-500 m-0">
-                {senderName} sent a message to the team
+              <Text className="m-0 mt-2 text-sm text-gray-500">
+                From {senderName} · {eventName}
               </Text>
             </Section>
 
             <Section className="px-8 py-6 text-center">
 
-              <Text className="text-sm text-gray-600 m-0 mb-6">
-                Hi {recipientName}, here&apos;s an update about {eventName}.
-              </Text>
-
-              <Section className="rounded-xl border border-gray-200 p-4 mb-4">
-                <Text className="text-xs text-gray-500 m-0 mb-1">
-                  Event
-                </Text>
-                <Text className="text-base font-semibold text-gray-900 m-0">
-                  {eventName}
-                </Text>
-              </Section>
-
-              <Section className="rounded-xl border border-gray-200 p-4 mb-6 text-left">
-                <Text className="text-xs text-gray-500 m-0 mb-2">
-                  Message from {senderName}
-                </Text>
-                <Text className="text-sm text-gray-900 m-0 whitespace-pre-wrap">
+              <Section className="rounded-xl border border-gray-200 p-4 mb-4 text-left">
+                <Text className="m-0 text-sm text-gray-900 whitespace-pre-wrap">
                   {body}
                 </Text>
               </Section>
 
               <Button
                 href={viewLink}
-                className="rounded-lg bg-black px-6 py-3 text-sm font-semibold text-white no-underline"
+                className="mt-2 rounded-lg bg-black px-6 py-3 text-sm font-semibold text-white no-underline"
               >
                 View Event
               </Button>

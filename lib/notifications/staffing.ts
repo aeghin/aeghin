@@ -129,27 +129,32 @@ export function lapseSubject(lapsed: LapsedInvite[], eventName: string) {
   const roles = [...new Set(lapsed.map((item) => item.roleLabel))];
   const who = nameList(lapsed.map((item) => item.inviteeName));
 
+  // "Pianist needed", not "Needs a Pianist": half the role labels can't take
+  // an "a" — Aux Keys, Usher, BGVs, Choir, Camera, Lighting.
   return roles.length === 1
-    ? `Needs a ${roles[0]}: ${eventName} — ${who} didn't answer`
-    : `Needs ${roles.length} roles filled: ${eventName} — ${who} didn't answer`;
+    ? `${roles[0]} needed: ${eventName} — ${who} didn't answer`
+    : `${roles.length} roles needed: ${eventName} — ${who} didn't answer`;
 }
 
-/** The push's body: whose invitation lapsed, and who has it when that isn't them. */
-export function lapseBody(lapsed: LapsedInvite[]) {
-  const what =
-    lapsed.length === 1
-      ? `${lapsed[0].inviteeName}'s invitation expired without an answer.`
-      : `${lapsed.length} invitations expired without an answer.`;
-
+/**
+ * The push's body. The title already says who didn't answer, so this says when
+ * the event is and what to do about it — or, when none of it is theirs, who has
+ * been asked to.
+ */
+export function lapseBody(lapsed: LapsedInvite[], when: string | null) {
   const headsUps = [...new Set(lapsed.map((item) => item.headsUp ?? null))];
 
   // Only when none of it is theirs: a heads-up on one line of several they
   // own reads as though the whole push were somebody else's.
-  if (headsUps.includes(null)) return what;
+  const next = headsUps.includes(null)
+    ? lapsed.length === 1
+      ? "Resend it or invite somebody else."
+      : "Resend them or invite somebody else."
+    : headsUps.length === 1
+      ? headsUps[0]
+      : "Others have been asked to fill them.";
 
-  return headsUps.length === 1
-    ? `${what} ${headsUps[0]}`
-    : `${what} Others have been asked to fill them.`;
+  return [when, next].filter(Boolean).join("\n");
 }
 
 /**

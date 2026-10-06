@@ -35,6 +35,10 @@ interface EventInviteUnansweredEmailProps {
   footer?: string;
 }
 
+/**
+ * Sent while the invitation is still open, so there's nothing to resend yet:
+ * the Team card only offers that once it has expired.
+ */
 export default function EventInviteUnansweredEmail({
   recipientName,
   eventName,
@@ -83,36 +87,46 @@ export default function EventInviteUnansweredEmail({
               <Text className="text-2xl font-bold tracking-tight text-gray-900 m-0">
                 {headsUp ? "Heads-up: " : ""}No Answer Yet
               </Text>
-              <Text className="mt-2 text-sm text-gray-500 m-0">
+              <Text className="m-0 mt-2 text-sm text-gray-500">
                 {timing}
               </Text>
             </Section>
 
             <Section className="px-8 py-6 text-center">
 
-              <Text className="text-sm text-gray-600 m-0 mb-6">
-                Hi {recipientName}, {one ? "this invitation hasn't" : "these invitations haven't"}{" "}
-                been accepted or declined yet. There&apos;s still time to plan
-                around {one ? "it" : "them"}.
+              <Text className="m-0 mb-6 text-sm text-gray-600">
+                Hi {recipientName},{" "}
+                {headsUp
+                  ? "you don't need to do anything."
+                  : "a quick message often gets an answer. If you'd rather not wait, invite somebody else from the event's Team card."}
               </Text>
 
               <Section className="rounded-xl border border-gray-200 p-4 mb-4">
-                <Text className="text-xs text-gray-500 m-0 mb-1">
-                  Event
-                </Text>
-                <Text className="text-base font-semibold text-gray-900 m-0">
+                <Text className="m-0 text-base font-semibold text-gray-900">
                   {eventName}
                 </Text>
+                {eventDate ? (
+                  <>
+                    <Text className="m-0 mt-1 text-sm font-medium text-gray-900">
+                      {eventDate}
+                    </Text>
+                    {eventTime ? (
+                      <Text className="m-0 mt-1 text-sm text-gray-500">
+                        {eventTime}
+                      </Text>
+                    ) : null}
+                  </>
+                ) : null}
               </Section>
 
               <Section className="rounded-xl border border-gray-200 bg-gray-50 p-4 mb-4 text-left">
-                <Text className="text-xs text-gray-500 m-0 mb-2">
-                  Still waiting to hear from
+                <Text className="m-0 mb-2 text-xs text-gray-500">
+                  Waiting on
                 </Text>
                 {waiting.map((invite) => (
                   <Text
                     key={`${invite.inviteeName}-${invite.roleLabel}`}
-                    className="text-sm font-semibold text-gray-900 m-0 mb-1"
+                    className="m-0 mb-1 text-sm font-semibold text-gray-900"
                   >
                     {invite.inviteeName} — {invite.roleLabel}
                     {invite.headsUp ? (
@@ -124,36 +138,12 @@ export default function EventInviteUnansweredEmail({
                 ))}
               </Section>
 
-              {eventDate ? (
-                <Section className="rounded-xl border border-gray-200 p-4 mb-6">
-                  <Text className="text-xs text-gray-500 m-0 mb-1">
-                    Scheduled for
-                  </Text>
-                  <Text className="text-sm font-medium text-gray-900 m-0">
-                    {eventDate}
-                  </Text>
-                  {eventTime ? (
-                    <Text className="mt-1 text-sm text-gray-500 m-0">
-                      {eventTime}
-                    </Text>
-                  ) : null}
-                </Section>
-              ) : null}
-
               <Button
                 href={viewLink}
-                className="rounded-lg bg-black px-6 py-3 text-sm font-semibold text-white no-underline"
+                className="mt-2 rounded-lg bg-black px-6 py-3 text-sm font-semibold text-white no-underline"
               >
                 View Event
               </Button>
-
-              {headsUp ? null : (
-                <Text className="mt-6 text-xs text-gray-500 m-0">
-                  A quick message often gets an answer. From the event&apos;s
-                  Team card you can send the invitation again for three more
-                  days, or invite somebody else.
-                </Text>
-              )}
 
             </Section>
 

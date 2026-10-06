@@ -58,13 +58,18 @@ export default function EventInviteExpiredEmail({
   const oneRole = roles.length === 1;
   // Nothing here is the recipient's to act on: every line is somebody else's.
   const headsUp = lapsed.every((invite) => invite.headsUp);
+  // One invitation the recipient owns is said in full in the sentence; a list
+  // would only repeat it.
+  const listed = headsUp || !one;
+
+  const opened = oneRole ? `${roles[0]} is` : "their roles are";
 
   return (
     <Tailwind>
       <Html>
         <Head />
         <Preview>
-          {eventName} still needs {oneRole ? `a ${roles[0]}` : `${roles.length} roles filled`} — {organizationName}
+          {oneRole ? roles[0] : `${roles.length} roles`} still needed for {eventName} — {organizationName}
         </Preview>
         <Body className="bg-gray-100 font-sans">
           <Container className="mx-auto my-10 max-w-120 rounded-2xl bg-white shadow-sm overflow-hidden">
@@ -89,76 +94,64 @@ export default function EventInviteExpiredEmail({
                 {headsUp ? "Heads-up: " : ""}
                 {one ? "Invitation Expired" : "Invitations Expired"}
               </Text>
-              <Text className="mt-2 text-sm text-gray-500 m-0">
-                The response window closed and {oneRole ? "the role is" : "the roles are"} still open
-              </Text>
             </Section>
 
             <Section className="px-8 py-6 text-center">
 
-              <Text className="text-sm text-gray-600 m-0 mb-6">
-                Hi {recipientName}, {one ? "this invitation" : "these invitations"} expired
-                without an answer, so {oneRole ? "the role is" : "the roles are"} back to
-                needing someone.
+              <Text className="m-0 mb-6 text-sm text-gray-600">
+                Hi {recipientName},{" "}
+                {headsUp
+                  ? "you don't need to do anything."
+                  : one
+                    ? `${lapsed[0].inviteeName} didn't answer in time, so ${opened} open again. Resend the invitation or invite somebody else from the event's Team card.`
+                    : `${lapsed.length} invitations expired without an answer, so ${opened} open again. Resend them or invite somebody else from the event's Team card.`}
               </Text>
 
               <Section className="rounded-xl border border-gray-200 p-4 mb-4">
-                <Text className="text-xs text-gray-500 m-0 mb-1">
-                  Event
-                </Text>
-                <Text className="text-base font-semibold text-gray-900 m-0">
+                <Text className="m-0 text-base font-semibold text-gray-900">
                   {eventName}
                 </Text>
-              </Section>
-
-              <Section className="rounded-xl border border-amber-200 bg-amber-50 p-4 mb-4 text-left">
-                <Text className="text-xs text-amber-700 m-0 mb-2">
-                  No response from
-                </Text>
-                {lapsed.map((invite) => (
-                  <Text
-                    key={`${invite.inviteeName}-${invite.roleLabel}`}
-                    className="text-sm font-semibold text-amber-900 m-0 mb-1"
-                  >
-                    {invite.inviteeName} — {invite.roleLabel}
-                    {invite.headsUp ? (
-                      <span className="font-normal text-amber-800">
-                        {" "}· {invite.headsUp}
-                      </span>
-                    ) : null}
-                  </Text>
-                ))}
-              </Section>
-
-              {eventDate ? (
-                <Section className="rounded-xl border border-gray-200 p-4 mb-6">
-                  <Text className="text-xs text-gray-500 m-0 mb-1">
-                    Scheduled for
-                  </Text>
-                  <Text className="text-sm font-medium text-gray-900 m-0">
-                    {eventDate}
-                  </Text>
-                  {eventTime ? (
-                    <Text className="mt-1 text-sm text-gray-500 m-0">
-                      {eventTime}
+                {eventDate ? (
+                  <>
+                    <Text className="m-0 mt-1 text-sm font-medium text-gray-900">
+                      {eventDate}
                     </Text>
-                  ) : null}
+                    {eventTime ? (
+                      <Text className="m-0 mt-1 text-sm text-gray-500">
+                        {eventTime}
+                      </Text>
+                    ) : null}
+                  </>
+                ) : null}
+              </Section>
+
+              {listed ? (
+                <Section className="rounded-xl border border-amber-200 bg-amber-50 p-4 mb-4 text-left">
+                  <Text className="m-0 mb-2 text-xs text-amber-700">
+                    Didn&apos;t answer
+                  </Text>
+                  {lapsed.map((invite) => (
+                    <Text
+                      key={`${invite.inviteeName}-${invite.roleLabel}`}
+                      className="m-0 mb-1 text-sm font-semibold text-amber-900"
+                    >
+                      {invite.inviteeName} — {invite.roleLabel}
+                      {invite.headsUp ? (
+                        <span className="font-normal text-amber-800">
+                          {" "}· {invite.headsUp}
+                        </span>
+                      ) : null}
+                    </Text>
+                  ))}
                 </Section>
               ) : null}
 
               <Button
                 href={viewLink}
-                className="rounded-lg bg-black px-6 py-3 text-sm font-semibold text-white no-underline"
+                className="mt-2 rounded-lg bg-black px-6 py-3 text-sm font-semibold text-white no-underline"
               >
                 {headsUp ? "View Event" : "Staff This Event"}
               </Button>
-
-              {headsUp ? null : (
-                <Text className="mt-6 text-xs text-gray-500 m-0">
-                  From the event&apos;s Team card you can send the invitation
-                  again, clear it away, or invite somebody else.
-                </Text>
-              )}
 
             </Section>
 

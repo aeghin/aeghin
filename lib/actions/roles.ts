@@ -197,6 +197,7 @@ export const removeMember = async (userId: string, organizationId: string, touch
                 organizationId,
                 departedName: `${assignee.user.firstName} ${assignee.user.lastName}`,
                 reason: "removed",
+                removedByName: `${user.firstName} ${user.lastName}`,
                 spots: upcoming,
             }),
         );

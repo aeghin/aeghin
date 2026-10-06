@@ -65,6 +65,16 @@ export function formatEventWhen(dates: EventWhenDate[]): EventWhen | null {
 }
 
 /**
+ * When the event's first block starts, or null when it has no dates. Floating
+ * like every time here: the wall-clock start written as UTC.
+ */
+export function eventStart(dates: EventWhenDate[]): Date | null {
+  if (dates.length === 0) return null;
+
+  return new Date(Math.min(...dates.map((date) => date.startTime.getTime())));
+}
+
+/**
  * `"Sun, Sep 28 · 9:00 AM"`, or `"Sat, Aug 30 – Mon, Sep 1"` across several
  * days — the "when" a push notification has room for. Null with no dates, like
  * `formatEventWhen`.

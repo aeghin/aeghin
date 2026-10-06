@@ -68,34 +68,32 @@ export default function TeamLeadEmail({
               <Text className="text-2xl font-bold tracking-tight text-gray-900 m-0">
                 You&apos;re the {teamLabel} Lead
               </Text>
-              <Text className="mt-2 text-sm text-gray-500 m-0">
-                For {serviceTypeName} · {assignedByName} set this up at{" "}
-                {organizationName}
+              <Text className="m-0 mt-2 text-sm text-gray-500">
+                For {serviceTypeName}
               </Text>
             </Section>
 
             <Section className="px-8 py-6 text-center">
 
-              <Text className="text-sm text-gray-600 m-0 mb-6">
-                Hi {recipientName}, when one of {teamLabel}&apos;s roles opens
-                up on a {serviceTypeName} event — somebody declines, an
-                invitation expires, or a member leaves — you&apos;ll be the one
-                asked to fill it. Anybody on {teamLabel}&apos;s Also notify gets
-                a heads-up that it&apos;s yours.
+              <Text className="m-0 mb-6 text-sm text-gray-600">
+                Hi {recipientName}, {assignedByName} made you the {teamLabel}{" "}
+                lead. When a {teamLabel} spot opens up — a decline, an expired
+                invitation, or someone leaving — you&apos;ll be asked to fill
+                it. Anyone on {teamLabel}&apos;s Also notify gets a heads-up.
               </Text>
 
-              <Section className="rounded-xl border border-gray-200 p-4 mb-6">
-                <Text className="text-xs text-gray-500 m-0 mb-1">
-                  {teamLabel} covers
+              <Section className="rounded-xl border border-gray-200 p-4 mb-4">
+                <Text className="m-0 mb-1 text-xs text-gray-500">
+                  {teamLabel} roles
                 </Text>
-                <Text className="text-sm font-medium text-gray-900 m-0">
+                <Text className="m-0 text-sm font-medium text-gray-900">
                   {roleLabels}
                 </Text>
               </Section>
 
               <Button
                 href={eventsLink}
-                className="rounded-lg bg-black px-6 py-3 text-sm font-semibold text-white no-underline"
+                className="mt-2 rounded-lg bg-black px-6 py-3 text-sm font-semibold text-white no-underline"
               >
                 View Events
               </Button>
@@ -104,8 +102,8 @@ export default function TeamLeadEmail({
 
             <Section className="border-t border-gray-200 px-8 py-6">
               <Text className="text-center text-xs text-gray-400 m-0">
-                You&apos;re receiving this because {assignedByName} made you a
-                team lead at {organizationName}.
+                You&apos;re receiving this because you lead {teamLabel} for{" "}
+                {serviceTypeName} at {organizationName}.
               </Text>
             </Section>
           </Container>

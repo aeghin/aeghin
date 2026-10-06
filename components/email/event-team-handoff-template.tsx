@@ -27,11 +27,11 @@ interface EventTeamHandoffEmailProps {
   logoUrl: string | null;
   /** "Band Handed Off", or "Heads-up: Team Change" for an owner. */
   heading: string;
-  /** Who made the change, for the line under the heading. */
-  changedByName: string;
-  /** The sentence after "Hi …,". */
+  /** The sentence after "Hi …,", naming who made the change. */
   message: string;
   eventName: string;
+  // Preformatted by `formatEventWhen`, which pins UTC. Null when the event
+  // carried no dates.
   eventDate: string | null;
   eventTime: string | null;
   handoffs: TeamHandoff[];
@@ -50,7 +50,6 @@ export default function EventTeamHandoffEmail({
   organizationName,
   logoUrl,
   heading,
-  changedByName,
   message,
   eventName,
   eventDate,
@@ -88,31 +87,34 @@ export default function EventTeamHandoffEmail({
               <Text className="text-2xl font-bold tracking-tight text-gray-900 m-0">
                 {heading}
               </Text>
-              <Text className="mt-2 text-sm text-gray-500 m-0">
-                For {eventName} · {changedByName} set this up
-              </Text>
             </Section>
 
             <Section className="px-8 py-6 text-center">
 
-              <Text className="text-sm text-gray-600 m-0 mb-6">
+              <Text className="m-0 mb-6 text-sm text-gray-600">
                 Hi {recipientName}, {message}
               </Text>
 
-              <Section className="rounded-xl border border-gray-200 p-4 mb-6">
-                <Text className="text-sm font-semibold text-gray-900 m-0">
+              <Section className="rounded-xl border border-gray-200 p-4 mb-4">
+                <Text className="m-0 text-base font-semibold text-gray-900">
                   {eventName}
                 </Text>
-                {eventDate && (
-                  <Text className="text-sm text-gray-600 m-0 mt-1">
-                    {eventDate}
-                    {eventTime ? ` · ${eventTime}` : ""}
-                  </Text>
-                )}
+                {eventDate ? (
+                  <>
+                    <Text className="m-0 mt-1 text-sm font-medium text-gray-900">
+                      {eventDate}
+                    </Text>
+                    {eventTime ? (
+                      <Text className="m-0 mt-1 text-sm text-gray-500">
+                        {eventTime}
+                      </Text>
+                    ) : null}
+                  </>
+                ) : null}
                 {handoffs.map((handoff) => (
                   <Text
                     key={handoff.teamLabel}
-                    className="text-sm text-gray-900 m-0 mt-3"
+                    className="m-0 mt-3 text-sm text-gray-900"
                   >
                     <span className="font-semibold">{handoff.teamLabel}</span>
                     <span className="text-gray-600"> — {handoff.handler}</span>
@@ -122,7 +124,7 @@ export default function EventTeamHandoffEmail({
 
               <Button
                 href={viewLink}
-                className="rounded-lg bg-black px-6 py-3 text-sm font-semibold text-white no-underline"
+                className="mt-2 rounded-lg bg-black px-6 py-3 text-sm font-semibold text-white no-underline"
               >
                 View Event
               </Button>

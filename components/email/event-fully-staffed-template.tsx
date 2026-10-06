@@ -66,53 +66,39 @@ export default function EventFullyStaffedEmail({
               <Text className="text-2xl font-bold tracking-tight text-gray-900 m-0">
                 Fully Staffed
               </Text>
-              <Text className="mt-2 text-sm text-gray-500 m-0">
-                Every role is confirmed and everyone has answered
-              </Text>
             </Section>
 
             <Section className="px-8 py-6 text-center">
 
-              <Text className="text-sm text-gray-600 m-0 mb-6">
-                Hi {recipientName}, every role on this event has someone
-                confirmed, and nobody is still waiting to reply.
+              <Text className="m-0 mb-6 text-sm text-gray-600">
+                Hi {recipientName}, every role on this event is confirmed and
+                nobody&apos;s waiting on an answer.
               </Text>
 
               <Section className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 mb-4">
-                <Text className="text-xs text-emerald-700 m-0 mb-1">
-                  Event
-                </Text>
-                <Text className="text-base font-semibold text-emerald-900 m-0">
+                <Text className="m-0 text-base font-semibold text-emerald-900">
                   {eventName}
                 </Text>
-              </Section>
-
-              {eventDate ? (
-                <Section className="rounded-xl border border-gray-200 p-4 mb-6">
-                  <Text className="text-xs text-gray-500 m-0 mb-1">
-                    Scheduled for
-                  </Text>
-                  <Text className="text-sm font-medium text-gray-900 m-0">
-                    {eventDate}
-                  </Text>
-                  {eventTime ? (
-                    <Text className="mt-1 text-sm text-gray-500 m-0">
-                      {eventTime}
+                {eventDate ? (
+                  <>
+                    <Text className="m-0 mt-1 text-sm font-medium text-emerald-900">
+                      {eventDate}
                     </Text>
-                  ) : null}
-                </Section>
-              ) : null}
+                    {eventTime ? (
+                      <Text className="m-0 mt-1 text-sm text-emerald-700">
+                        {eventTime}
+                      </Text>
+                    ) : null}
+                  </>
+                ) : null}
+              </Section>
 
               <Button
                 href={viewLink}
-                className="rounded-lg bg-black px-6 py-3 text-sm font-semibold text-white no-underline"
+                className="mt-2 rounded-lg bg-black px-6 py-3 text-sm font-semibold text-white no-underline"
               >
                 View the Team
               </Button>
-
-              <Text className="mt-6 text-xs text-gray-500 m-0">
-                The event&apos;s Team card always has the latest.
-              </Text>
 
             </Section>
 

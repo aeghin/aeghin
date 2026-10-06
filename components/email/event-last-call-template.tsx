@@ -77,36 +77,42 @@ export default function EventLastCallEmail({
               <Text className="text-2xl font-bold tracking-tight text-gray-900 m-0">
                 Not Fully Staffed Yet
               </Text>
-              <Text className="mt-2 text-sm text-gray-500 m-0">
-                This event is coming up and the team isn&apos;t confirmed
-              </Text>
             </Section>
 
             <Section className="px-8 py-6 text-center">
 
-              <Text className="text-sm text-gray-600 m-0 mb-6">
-                Hi {recipientName}, here&apos;s what&apos;s still missing, so
-                nothing is a surprise on the day.
+              <Text className="m-0 mb-6 text-sm text-gray-600">
+                Hi {recipientName}, this event is coming up and some spots
+                aren&apos;t confirmed yet.
               </Text>
 
               <Section className="rounded-xl border border-gray-200 p-4 mb-4">
-                <Text className="text-xs text-gray-500 m-0 mb-1">
-                  Event
-                </Text>
-                <Text className="text-base font-semibold text-gray-900 m-0">
+                <Text className="m-0 text-base font-semibold text-gray-900">
                   {eventName}
                 </Text>
+                {eventDate ? (
+                  <>
+                    <Text className="m-0 mt-1 text-sm font-medium text-gray-900">
+                      {eventDate}
+                    </Text>
+                    {eventTime ? (
+                      <Text className="m-0 mt-1 text-sm text-gray-500">
+                        {eventTime}
+                      </Text>
+                    ) : null}
+                  </>
+                ) : null}
               </Section>
 
               {unfilledRoles.length > 0 ? (
                 <Section className="rounded-xl border border-amber-200 bg-amber-50 p-4 mb-4 text-left">
-                  <Text className="text-xs text-amber-700 m-0 mb-2">
-                    Nobody on
+                  <Text className="m-0 mb-2 text-xs text-amber-700">
+                    No one yet
                   </Text>
                   {unfilledRoles.map((roleLabel) => (
                     <Text
                       key={roleLabel}
-                      className="text-sm font-semibold text-amber-900 m-0 mb-1"
+                      className="m-0 mb-1 text-sm font-semibold text-amber-900"
                     >
                       {roleLabel}
                     </Text>
@@ -116,13 +122,13 @@ export default function EventLastCallEmail({
 
               {waitingOn.length > 0 ? (
                 <Section className="rounded-xl border border-gray-200 bg-gray-50 p-4 mb-4 text-left">
-                  <Text className="text-xs text-gray-500 m-0 mb-2">
-                    Still waiting to hear from
+                  <Text className="m-0 mb-2 text-xs text-gray-500">
+                    Waiting on
                   </Text>
                   {waitingOn.map((invite) => (
                     <Text
                       key={`${invite.inviteeName}-${invite.roleLabel}`}
-                      className="text-sm font-semibold text-gray-900 m-0 mb-1"
+                      className="m-0 mb-1 text-sm font-semibold text-gray-900"
                     >
                       {invite.inviteeName} — {invite.roleLabel}
                     </Text>
@@ -130,33 +136,16 @@ export default function EventLastCallEmail({
                 </Section>
               ) : null}
 
-              {eventDate ? (
-                <Section className="rounded-xl border border-gray-200 p-4 mb-6">
-                  <Text className="text-xs text-gray-500 m-0 mb-1">
-                    Scheduled for
-                  </Text>
-                  <Text className="text-sm font-medium text-gray-900 m-0">
-                    {eventDate}
-                  </Text>
-                  {eventTime ? (
-                    <Text className="mt-1 text-sm text-gray-500 m-0">
-                      {eventTime}
-                    </Text>
-                  ) : null}
-                </Section>
-              ) : null}
-
               <Button
                 href={viewLink}
-                className="rounded-lg bg-black px-6 py-3 text-sm font-semibold text-white no-underline"
+                className="mt-2 rounded-lg bg-black px-6 py-3 text-sm font-semibold text-white no-underline"
               >
                 Staff This Event
               </Button>
 
-              <Text className="mt-6 text-xs text-gray-500 m-0">
-                You&apos;ll hear this at most twice per event: about three days
-                before and about one day before, and only if it isn&apos;t
-                fully staffed.
+              <Text className="m-0 mt-6 text-xs text-gray-500">
+                You&apos;ll get this at most twice: about 3 days and 1 day
+                before the event.
               </Text>
 
             </Section>

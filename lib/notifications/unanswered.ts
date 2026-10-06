@@ -40,7 +40,7 @@ import {
 /**
  * An event invitation nobody has answered, from both ends. The invitee is
  * reminded, the managers are told it's still open, and when it closes the
- * invitee hears that too. The managers' own "Needs a Pianist" when it closes is
+ * invitee hears that too. The managers' own "Pianist needed" when it closes is
  * the sweep's, in the cron route.
  *
  * An answer is needed by whichever comes first: the invitation's deadline, or
@@ -256,6 +256,10 @@ export async function sendAnswerReminders(now: Date): Promise<SendCount> {
         expiresAt: true,
         midwayNudgedAt: true,
         nudgedAt: true,
+        // Who invited them, for the reminder to name — unless Smart Scheduling
+        // did, which keeps the sender of the declined invitation it replaced.
+        autoAssigned: true,
+        assignedBy: { select: { firstName: true, lastName: true } },
         user: { select: { email: true, firstName: true } },
         event: {
           select: {
@@ -383,6 +387,10 @@ export async function sendAnswerReminders(now: Date): Promise<SendCount> {
           organizationName: row.event.organization.name,
           logoUrl: row.event.organization.logoUrl,
           roleLabel: volunteerRoleConfig[row.role].label,
+          invitedByName: row.assignedBy
+            ? `${row.assignedBy.firstName} ${row.assignedBy.lastName}`
+            : null,
+          autoFilled: row.autoAssigned,
           timing: eventFirst
             ? `${row.event.name} is ${untilEvent(firstStart, now, timeZone)}`
             : `Your invitation expires ${longDeadline(row.expiresAt, timeZone, now)}`,
@@ -450,8 +458,8 @@ function waitingTiming(bucket: WaitingBucket, now: Date, long: boolean): string 
  * to plan around it: "No answer from Vic Test: Sunday Service". Once per
  * invitation, at whichever comes first — a day before it closes, or three days
  * before the event — or, for one sent inside those three days, the day before
- * the event. Then, if it closes before the event, the sweep's "Needs a
- * Pianist" follows. Two at most, never one after the event.
+ * the event. Then, if it closes before the event, the sweep's "Pianist
+ * needed" follows. Two at most, never one after the event.
  *
  * The same people hear as when it closes (`lapseBuckets`): whoever covers its
  * team on the event, else the team's lead, else the creator, else the owners,
@@ -874,7 +882,9 @@ export async function sendClosedInviteNotices(now: Date): Promise<SendCount> {
           .filter(Boolean)
           .join(" · "),
         `It closed before you answered. If you can still make it, ask ${
-          row.assignedBy?.firstName ?? "an admin"
+          row.assignedBy
+            ? `${row.assignedBy.firstName} ${row.assignedBy.lastName}`
+            : "an admin"
         } to send it again.`,
       ].join("\n"),
       // The invitation has left the Pending list, so there's no page of its

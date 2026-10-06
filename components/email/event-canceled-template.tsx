@@ -19,6 +19,7 @@ interface EventCanceledEmailProps {
   organizationName: string;
   logoUrl: string | null;
   canceledByName: string;
+  roleLabel: string;
   // Preformatted by `formatEventWhen`, which pins UTC. Null when the event
   // carried no dates.
   eventDate: string | null;
@@ -26,12 +27,17 @@ interface EventCanceledEmailProps {
   viewLink: string;
 }
 
+/**
+ * Sent to everybody the event counted on: who accepted, and who was still
+ * deciding. Worded so it's true for both.
+ */
 export default function EventCanceledEmail({
   recipientName,
   eventName,
   organizationName,
   logoUrl,
   canceledByName,
+  roleLabel,
   eventDate,
   eventTime,
   viewLink,
@@ -65,55 +71,39 @@ export default function EventCanceledEmail({
               <Text className="text-2xl font-bold tracking-tight text-gray-900 m-0">
                 Event Canceled
               </Text>
-              <Text className="mt-2 text-sm text-gray-500 m-0">
-                An event you were on has been called off
-              </Text>
             </Section>
 
             <Section className="px-8 py-6 text-center">
 
-              <Text className="text-sm text-gray-600 m-0 mb-6">
-                Hi {recipientName}, {canceledByName} canceled an event you were
-                scheduled for. You don&apos;t need to do anything.
+              <Text className="m-0 mb-6 text-sm text-gray-600">
+                Hi {recipientName}, {canceledByName} canceled this event. You
+                don&apos;t need to do anything.
               </Text>
 
               <Section className="rounded-xl border border-gray-200 p-4 mb-4">
-                <Text className="text-xs text-gray-500 m-0 mb-1">
-                  Event
-                </Text>
-                <Text className="text-base font-semibold text-gray-900 m-0">
+                <Text className="m-0 text-base font-semibold text-gray-900">
                   {eventName}
                 </Text>
-              </Section>
-
-              {eventDate ? (
-                <Section className="rounded-xl border border-gray-200 p-4 mb-4">
-                  <Text className="text-xs text-gray-500 m-0 mb-1">
-                    Was scheduled for
-                  </Text>
-                  <Text className="text-sm font-medium text-gray-900 m-0">
-                    {eventDate}
-                  </Text>
-                  {eventTime ? (
-                    <Text className="mt-1 text-sm text-gray-500 m-0">
-                      {eventTime}
+                <Text className="m-0 mt-1 text-sm text-gray-600">
+                  {roleLabel}
+                </Text>
+                {eventDate ? (
+                  <>
+                    <Text className="m-0 mt-3 text-sm font-medium text-gray-900">
+                      {eventDate}
                     </Text>
-                  ) : null}
-                </Section>
-              ) : null}
-
-              <Section className="rounded-xl border border-gray-200 p-4 mb-6">
-                <Text className="text-xs text-gray-500 m-0 mb-1">
-                  Organization
-                </Text>
-                <Text className="text-sm font-medium text-gray-900 m-0">
-                  {organizationName}
-                </Text>
+                    {eventTime ? (
+                      <Text className="m-0 mt-1 text-sm text-gray-500">
+                        {eventTime}
+                      </Text>
+                    ) : null}
+                  </>
+                ) : null}
               </Section>
 
               <Button
                 href={viewLink}
-                className="rounded-lg bg-black px-6 py-3 text-sm font-semibold text-white no-underline"
+                className="mt-2 rounded-lg bg-black px-6 py-3 text-sm font-semibold text-white no-underline"
               >
                 View Schedule
               </Button>
@@ -122,8 +112,8 @@ export default function EventCanceledEmail({
 
             <Section className="border-t border-gray-200 px-8 py-6">
               <Text className="text-center text-xs text-gray-400 m-0">
-                You&apos;re receiving this because you were on the team for this
-                event at {organizationName}. If this looks wrong, contact your
+                You&apos;re receiving this because you were on this event at{" "}
+                {organizationName}. If this looks wrong, contact your
                 organization admin.
               </Text>
             </Section>

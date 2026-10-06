@@ -33,6 +33,11 @@ interface EventUpdatedEmailProps {
   logoUrl: string | null;
   updatedByName: string;
   changes: EventChange[];
+  /**
+   * Whether they had accepted. False for somebody still deciding, who is told
+   * the invitation stands and given the way to answer it.
+   */
+  accepted: boolean;
   viewLink: string;
 }
 
@@ -43,6 +48,7 @@ export default function EventUpdatedEmail({
   logoUrl,
   updatedByName,
   changes,
+  accepted,
   viewLink,
 }: EventUpdatedEmailProps) {
   return (
@@ -74,43 +80,35 @@ export default function EventUpdatedEmail({
               <Text className="text-2xl font-bold tracking-tight text-gray-900 m-0">
                 Event Updated
               </Text>
-              <Text className="mt-2 text-sm text-gray-500 m-0">
-                Something changed on an event you&apos;re on
-              </Text>
             </Section>
 
             <Section className="px-8 py-6 text-center">
 
-              <Text className="text-sm text-gray-600 m-0 mb-6">
-                Hi {recipientName}, {updatedByName} updated an event you&apos;re
-                scheduled for. Here&apos;s what changed.
+              <Text className="m-0 mb-6 text-sm text-gray-600">
+                Hi {recipientName}, {updatedByName} changed the details below.{" "}
+                {accepted ? "You're still on the team." : "Your invitation still stands."}
               </Text>
 
               <Section className="rounded-xl border border-gray-200 p-4 mb-4">
-                <Text className="text-xs text-gray-500 m-0 mb-1">
-                  Event
-                </Text>
-                <Text className="text-base font-semibold text-gray-900 m-0">
+                <Text className="m-0 text-base font-semibold text-gray-900">
                   {eventName}
                 </Text>
               </Section>
 
-              {changes.map((change, index) => (
+              {changes.map((change) => (
                 <Section
                   key={change.label}
-                  className={`rounded-xl border border-gray-200 p-4 text-left ${
-                    index === changes.length - 1 ? "mb-6" : "mb-4"
-                  }`}
+                  className="rounded-xl border border-gray-200 p-4 mb-4 text-left"
                 >
-                  <Text className="text-xs text-gray-500 m-0 mb-1">
+                  <Text className="m-0 mb-1 text-xs text-gray-500">
                     {change.label}
                   </Text>
                   {change.from ? (
-                    <Text className="text-sm text-gray-400 line-through m-0 mb-1">
+                    <Text className="m-0 mb-1 text-sm text-gray-400 line-through whitespace-pre-wrap">
                       {change.from}
                     </Text>
                   ) : null}
-                  <Text className="text-sm font-semibold text-gray-900 m-0 whitespace-pre-wrap">
+                  <Text className="m-0 text-sm font-semibold text-gray-900 whitespace-pre-wrap">
                     {change.to}
                   </Text>
                 </Section>
@@ -118,18 +116,18 @@ export default function EventUpdatedEmail({
 
               <Button
                 href={viewLink}
-                className="rounded-lg bg-black px-6 py-3 text-sm font-semibold text-white no-underline"
+                className="mt-2 rounded-lg bg-black px-6 py-3 text-sm font-semibold text-white no-underline"
               >
-                View Event
+                {accepted ? "View Event" : "Accept or Decline"}
               </Button>
 
             </Section>
 
             <Section className="border-t border-gray-200 px-8 py-6">
               <Text className="text-center text-xs text-gray-400 m-0">
-                You&apos;re receiving this because you&apos;re on the team for
-                this event at {organizationName}. Your spot hasn&apos;t changed
-                — only the details above.
+                You&apos;re receiving this because{" "}
+                {accepted ? "you're on the team for" : "you were invited to"} this
+                event at {organizationName}.
               </Text>
             </Section>
           </Container>

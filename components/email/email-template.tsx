@@ -7,7 +7,6 @@ import {
   Section,
   Text,
   Button,
-  Hr,
   Img,
   Tailwind,
 } from "@react-email/components";
@@ -20,6 +19,7 @@ import { VolunteerRole } from "@/generated/prisma/enums";
 interface InvitationEmailProps {
   organizationName: string;
   logoUrl: string | null;
+  /** Full name of whoever sent it: "James Lee". */
   invitedByName: string;
   volunteerRoles: VolunteerRole[];
   inviteLink: string;
@@ -43,7 +43,7 @@ export default function InvitationEmail({
         </Preview>
         <Body className="bg-gray-100 font-sans">
           <Container className="mx-auto my-10 max-w-120 rounded-2xl bg-white shadow-sm overflow-hidden">
-            
+
             <Section className="bg-linear-to-br from-gray-50 to-gray-100 px-8 pt-10 pb-8 text-center">
               {logoUrl ? (
                 <Img
@@ -63,44 +63,24 @@ export default function InvitationEmail({
               <Text className="text-2xl font-bold tracking-tight text-gray-900 m-0">
                 You&apos;re Invited
               </Text>
-              <Text className="mt-2 text-sm text-gray-500 m-0">
-                You&apos;ve been invited to join an organization
+              <Text className="m-0 mt-2 text-sm text-gray-500">
+                {invitedByName} invited you to join {organizationName}
               </Text>
             </Section>
 
-            
+
             <Section className="px-8 py-6 text-center">
-              
-              <Section className="rounded-xl border border-gray-200 p-4 mb-4">
-                <Text className="text-xs text-gray-500 m-0 mb-1">
-                  Organization
-                </Text>
-                <Text className="text-base font-semibold text-gray-900 m-0">
-                  {organizationName}
-                </Text>
-              </Section>
 
-              
               <Section className="rounded-xl border border-gray-200 p-4 mb-4">
-                <Text className="text-xs text-gray-500 m-0 mb-1">
-                  Invited by
-                </Text>
-                <Text className="text-sm font-medium text-gray-900 m-0">
-                  {invitedByName}
-                </Text>
-              </Section>
-
-              
-              <Section className="rounded-xl border border-gray-200 p-4 mb-6">
-                <Text className="text-xs text-gray-500 m-0 mb-2">
-                  Role{volunteerRoles.length > 1 ? "s" : ""}
+                <Text className="m-0 mb-2 text-xs text-gray-500">
+                  Your role{volunteerRoles.length > 1 ? "s" : ""}
                 </Text>
                 {volunteerRoles.map((role) => {
                   const { label, icon } = volunteerRoleConfig[role];
                   return (
                     <Text
                       key={label}
-                      className="text-sm font-medium text-gray-900 m-0 my-1"
+                      className="m-0 my-1 text-sm font-medium text-gray-900"
                     >
                       {icon} {label}
                     </Text>
@@ -110,12 +90,12 @@ export default function InvitationEmail({
 
               <Button
                 href={inviteLink}
-                className="rounded-lg bg-black px-6 py-3 text-sm font-semibold text-white no-underline"
+                className="mt-2 rounded-lg bg-black px-6 py-3 text-sm font-semibold text-white no-underline"
               >
                 View Invitation
               </Button>
 
-              <Text className="mt-8 text-xs text-gray-400 m-0">
+              <Text className="m-0 mt-6 text-xs text-gray-400">
                 This invitation expires in {expiresInDays} days.
               </Text>
             </Section>

@@ -302,7 +302,7 @@ export async function sendLapsePushes(now: Date): Promise<number> {
       // on an earlier tick. The email's heading makes the same call.
       title: lapsed.every((lapse) => lapse.headsUp) ? `Heads-up: ${subject}` : subject,
       subtitle: bucket.organizationName,
-      body: lapseBody(lapsed),
+      body: lapseBody(lapsed, formatEventShort(bucket.dates)),
       data: {
         type: "event",
         organizationId: bucket.organizationId,

@@ -21,14 +21,15 @@ interface TeamAlertsChangeEmailProps {
   heading: string;
   /** Which service it's for, e.g. "Sunday Worship". */
   serviceTypeName: string;
-  /** Who made the change, for the line under the heading. */
-  changedByName: string;
-  /** The sentence after "Hi …,". */
+  /** The sentence after "Hi …,", naming who made the change. */
   message: string;
   /** "Band". */
   teamLabel: string;
-  /** Every role in the team, e.g. "Pianist, Aux Keys, Bassist". */
-  roleLabels: string;
+  /**
+   * Every role in the team, e.g. "Pianist, Aux Keys, Bassist". Null for a
+   * lead who has been replaced: there's nothing left for them to cover.
+   */
+  roleLabels: string | null;
   /** The organization's events. */
   eventsLink: string;
   /** The footer's "why you got this". */
@@ -46,7 +47,6 @@ export default function TeamAlertsChangeEmail({
   logoUrl,
   heading,
   serviceTypeName,
-  changedByName,
   message,
   teamLabel,
   roleLabels,
@@ -82,30 +82,31 @@ export default function TeamAlertsChangeEmail({
               <Text className="text-2xl font-bold tracking-tight text-gray-900 m-0">
                 {heading}
               </Text>
-              <Text className="mt-2 text-sm text-gray-500 m-0">
-                For {serviceTypeName} · {changedByName} set this up at{" "}
-                {organizationName}
+              <Text className="m-0 mt-2 text-sm text-gray-500">
+                For {serviceTypeName}
               </Text>
             </Section>
 
             <Section className="px-8 py-6 text-center">
 
-              <Text className="text-sm text-gray-600 m-0 mb-6">
+              <Text className="m-0 mb-6 text-sm text-gray-600">
                 Hi {recipientName}, {message}
               </Text>
 
-              <Section className="rounded-xl border border-gray-200 p-4 mb-6">
-                <Text className="text-xs text-gray-500 m-0 mb-1">
-                  {teamLabel} covers
-                </Text>
-                <Text className="text-sm font-medium text-gray-900 m-0">
-                  {roleLabels}
-                </Text>
-              </Section>
+              {roleLabels ? (
+                <Section className="rounded-xl border border-gray-200 p-4 mb-4">
+                  <Text className="m-0 mb-1 text-xs text-gray-500">
+                    {teamLabel} roles
+                  </Text>
+                  <Text className="m-0 text-sm font-medium text-gray-900">
+                    {roleLabels}
+                  </Text>
+                </Section>
+              ) : null}
 
               <Button
                 href={eventsLink}
-                className="rounded-lg bg-black px-6 py-3 text-sm font-semibold text-white no-underline"
+                className="mt-2 rounded-lg bg-black px-6 py-3 text-sm font-semibold text-white no-underline"
               >
                 View Events
               </Button>
