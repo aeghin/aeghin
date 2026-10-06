@@ -86,7 +86,8 @@ export function CreateOrganizationModal({
             Create Organization
           </DialogTitle>
           <DialogDescription className="text-center">
-            Set up your organization to start managing volunteers and events.
+            Set up your organization to start managing volunteers and events. Use one organization
+            for your whole church.
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>

@@ -141,7 +141,7 @@ export function PricingSection() {
 
         <p className="mt-10 text-center text-sm text-muted-foreground">
           Sign up free, then upgrade from your organization&apos;s dashboard. Paid plans are per organization and can be
-          started by an owner. AI usage is subject to plan limits.
+          started by an owner. Use one organization for your whole church. AI usage is subject to plan limits.
         </p>
       </div>
     </section>

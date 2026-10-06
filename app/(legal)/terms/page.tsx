@@ -11,7 +11,7 @@ export default function TermsPage() {
   return (
     <>
       <h1 className="text-3xl font-bold tracking-tight">Terms &amp; Conditions</h1>
-      <p className="text-sm">Last updated: October 2, 2026</p>
+      <p className="text-sm">Last updated: October 6, 2026</p>
 
       <h2>1. Acceptance of These Terms</h2>
       <p>
@@ -103,6 +103,14 @@ export default function TermsPage() {
           subscription. Every plan has usage limits, such as the number of members, songs, storage,
           group emails, and AI requests an organization can use; current limits are listed on our{" "}
           <Link href="/#pricing">pricing page</Link>. Payments are processed securely by Stripe.
+        </li>
+        <li>
+          Each organization should be a whole church or group, not part of one. Don&apos;t split a
+          church into several organizations to stay within a plan&apos;s limits. Belonging to or
+          helping run more than one organization is fine: a band that serves several churches, or
+          someone who volunteers at two, can join each one. If we find organizations that were split
+          to stay within a plan&apos;s limits, we may ask you to combine them or upgrade, and may
+          limit the extra organizations until you do.
         </li>
         <li>Subscriptions renew automatically at the end of each billing period until canceled.</li>
         <li>
