@@ -363,8 +363,8 @@ model EventAssignment {
   invitedAt DateTime @default(now())
 
   // Claims for what the cron sends on its own schedule, so each goes out once
-  // however many ticks race for it. `chatPushedAt` is the last chat push, and
-  // throttles the next; `reminderSentAt` is the day-before reminder, cleared
+  // however many ticks race for it. `chatPushedAt` is the last chat push that
+  // rang, and silences the next for a minute; `reminderSentAt` is the day-before reminder, cleared
   // when the event moves; `midwayNudgedAt` and `nudgedAt` are the halfway and
   // day-before "still need your answer", both cleared on a re-invite.
   chatPushedAt   DateTime?

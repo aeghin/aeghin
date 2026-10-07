@@ -157,6 +157,25 @@ export function useEventChat(
     channel.presence
       .subscribe(["enter", "leave", "present"], syncPresence)
       .catch(() => {});
+
+    const enterPresence = () =>
+      channel.presence.enter({
+        firstName: me.firstName,
+        lastName: me.lastName,
+        userImageUrl: me.userImageUrl,
+      });
+
+    // Present means looking. The server skips phone pushes for anyone present,
+    // so a tab left open in the background mustn't count.
+    let away = document.hidden;
+    const onVisibility = () => {
+      if (!canPost || document.hidden === away) return;
+      away = document.hidden;
+      if (away) channel.presence.leave().catch(() => {});
+      else channel.attach().then(enterPresence).catch(() => {});
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+
     // Enter presence only after WE attach the channel. enter() on an unattached
     // channel makes Ably fire an internal, un-catchable channel.attach()
     // (_enterOrUpdateClient) whose promise is discarded and rejects with
@@ -170,13 +189,7 @@ export function useEventChat(
         // union in foldLatestPage absorbs the overlap. Not awaited: presence
         // shouldn't wait on it.
         if (returning) void catchUp();
-        if (canPost) {
-          await channel.presence.enter({
-            firstName: me.firstName,
-            lastName: me.lastName,
-            userImageUrl: me.userImageUrl,
-          });
-        }
+        if (canPost && !away) await enterPresence();
         // Viewers hold a subscribe-only token and never enter, so no presence
         // event of their own fires — seed the roster once on attach or their
         // "N online" sits at 0 until someone else joins or leaves.
@@ -186,6 +199,7 @@ export function useEventChat(
 
     return () => {
       active = false;
+      document.removeEventListener("visibilitychange", onVisibility);
       // Remove listeners synchronously so no state updates fire post-unmount.
       channel.unsubscribe();
       channel.presence.unsubscribe();

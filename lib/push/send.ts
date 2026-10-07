@@ -44,6 +44,11 @@ export type PushNotice = {
   subtitle?: string;
   body: string;
   data: PushData;
+  /**
+   * Delivered without a sound. Chat only: a follow-up inside a burst, on its
+   * own Android channel since a channel, not the message, decides the sound.
+   */
+  quiet?: boolean;
 };
 
 /**
@@ -53,8 +58,9 @@ export type PushNotice = {
 const TITLE_LIMIT = 120;
 const BODY_LIMIT = 400;
 
-/** The Android channel the app creates for chat, in `obtainPushToken` (`src/lib/push.ts`). */
+/** The Android channels the app creates for chat, in `obtainPushToken` (`src/lib/push.ts`). */
 const CHAT_CHANNEL = "chat";
+const QUIET_CHAT_CHANNEL = "chat-quiet";
 
 /** Cut on characters, not UTF-16 units, so an emoji is never split in half. */
 const clip = (text: string, limit: number) => {
@@ -110,13 +116,13 @@ export async function sendPushNotices(
           subtitle: notice.subtitle,
           body: clip(notice.body, BODY_LIMIT),
           data: notice.data,
-          sound: "default",
+          ...(!notice.quiet && { sound: "default" }),
           // Chat has its own Android channel, so it can be silenced without
           // everything else, and one iOS thread per event, so a conversation
           // stacks as one. A build too old to have created the channel shows
           // it in expo-notifications' fallback channel instead.
           ...(notice.data.type === "chat" && {
-            channelId: CHAT_CHANNEL,
+            channelId: notice.quiet ? QUIET_CHAT_CHANNEL : CHAT_CHANNEL,
             threadId: `chat-${notice.data.eventId}`,
           }),
         }),
