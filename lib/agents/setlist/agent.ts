@@ -34,7 +34,7 @@ export type ProposedSetlistSong = {
 export type SetlistTier = "premium" | "pro";
 
 const TIER_MODEL: Record<SetlistTier, string> = {
-  premium: "anthropic/claude-haiku-4.5",
+  premium: "anthropic/claude-haiku-5.5",
   pro: "anthropic/claude-sonnet-5.5",
 };
 
