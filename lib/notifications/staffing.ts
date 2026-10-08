@@ -22,8 +22,7 @@ import { directoriesFor } from "@/lib/notifications/directory";
 
 /**
  * Days before an event's first block that the staffing check runs, furthest
- * first. A check's stage is its position here plus one, which is the number
- * `Event.lastCallStage` records.
+ * first.
  */
 export const LAST_CALL_DAYS = [3, 1];
 

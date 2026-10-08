@@ -2,8 +2,11 @@ import "server-only";
 
 import prisma from "@/lib/prisma";
 import { SMART_SCHEDULING_ENTITLEMENTS } from "@/lib/billing/entitlements";
-import { formatEventShort } from "@/lib/email/event-when";
-import { eventAudience } from "@/lib/notifications/audience";
+import EventLastCallEmail from "@/components/email/event-last-call-template";
+import { formatEventShort, formatEventWhen } from "@/lib/email/event-when";
+import { organizationSender } from "@/lib/email/organization";
+import { sendEmailBatches } from "@/lib/email/send";
+import { eventAudience, reasonLine, type Addressee } from "@/lib/notifications/audience";
 import { directoriesFor } from "@/lib/notifications/directory";
 import {
   LAST_CALL_DAYS,
@@ -14,11 +17,13 @@ import {
   type Lapse,
   type LapseBucket,
 } from "@/lib/notifications/staffing";
+import type { SendCount } from "@/lib/notifications/unanswered";
 import { sendPushNotices, type PushNotice } from "@/lib/push/send";
 import {
   daysBefore,
   inZone,
   isDue,
+  isDueAt,
   wakingNext,
   wakingSameDay,
   wallClock,
@@ -72,26 +77,30 @@ export async function forgetOldPushClaims(now: Date): Promise<number> {
 }
 
 /**
- * The last-call push — "Not fully staffed yet", three days and one day out —
- * timed for each manager instead of riding along with the email.
+ * The last call — "Not fully staffed yet", three days and one day out — by
+ * email and push together, timed for each manager.
  *
- * The email goes when the cron reaches the mark on the event's floating clock,
- * which for a 9am service is 2am on the West Coast. Mail can wait for morning;
- * a phone ringing can't. So the push is planned on the manager's own clock:
- * the event's time of day, three days and one day before, kept inside 8am to
- * 8pm. Staffing is read when it goes, and each check is spent whatever it
- * finds, as the email's is: fully staffed then means no push for that check,
+ * Planned on the manager's own clock: the event's time of day, three days and
+ * one day before, kept inside 8am to 8pm in the zone their phone reports. The
+ * email used to go on the event's floating clock instead, which put a 9am
+ * service's at 4am in Chicago, hours ahead of its own push, and after the mark
+ * east of UTC. A manager whose phone hasn't reported a zone gets the email
+ * alone, at the floating mark, since there's no telling when their night is.
+ *
+ * Staffing is read when it goes, and each check is claimed per person and
+ * spent whatever it finds: fully staffed then means nothing for that check,
  * even if somebody drops out after — a dropout sends its own.
  *
- * Same gate and same people as the email: Smart Scheduling plans only,
- * nothing about a service made after the check's moment had passed, and the
- * event's owner — its creator, else the owners. A manager whose phone hasn't
- * reported a zone gets the email alone.
+ * Smart Scheduling plans only, and nothing about a service made after the
+ * check's moment had passed: whoever made a service for tomorrow knows it
+ * isn't staffed yet. It goes to the event's owner — its creator, else the
+ * owners. Team leads have already heard about each of their roles as it
+ * opened up, so this is the backstop for them, not another alert.
  *
- * Returns how many were sent.
+ * Returns how many of each were sent.
  */
-export async function sendLastCallPushes(now: Date): Promise<number> {
-  let sent = 0;
+export async function sendLastCalls(now: Date): Promise<SendCount> {
+  const count: SendCount = { pushes: 0, emails: 0 };
   let after: string | undefined;
 
   for (;;) {
@@ -117,7 +126,7 @@ export async function sendLastCallPushes(now: Date): Promise<number> {
         createdAt: true,
         rolesNeeded: true,
         dates: { select: { startTime: true, endTime: true } },
-        organization: { select: { name: true } },
+        organization: { select: { name: true, logoUrl: true } },
         assignments: {
           select: {
             role: true,
@@ -131,7 +140,7 @@ export async function sendLastCallPushes(now: Date): Promise<number> {
       take: LAST_CALL_PAGE,
     });
 
-    if (events.length === 0) return sent;
+    if (events.length === 0) return count;
 
     const directoryFor = directoriesFor();
 
@@ -141,19 +150,18 @@ export async function sendLastCallPushes(now: Date): Promise<number> {
 
         if (!directory) return [];
 
-        const audience = eventAudience(directory, {
-          createdById: event.createdById,
-        });
-
-        return audience.owners.map(({ person }) => person.email);
+        return eventAudience(directory, { createdById: event.createdById }).owners;
       }),
     );
 
-    const zones = await zonesByEmail(recipients.flat());
+    const zones = await zonesByEmail(
+      recipients.flat().map(({ person }) => person.email),
+    );
 
     const planned: {
       key: string;
-      email: string;
+      addressee: Addressee;
+      timeZone: string | undefined;
       event: (typeof events)[number];
     }[] = [];
 
@@ -162,53 +170,81 @@ export async function sendLastCallPushes(now: Date): Promise<number> {
 
       const firstStart = firstStartOf(event.dates);
 
-      for (const email of recipients[index]) {
+      for (const addressee of recipients[index]) {
+        const { email } = addressee.person;
         const timeZone = zones.get(email);
 
-        if (!timeZone) continue;
-
         try {
+          const start = timeZone ? inZone(firstStart, timeZone) : firstStart;
+
           // Already under way: the bell and the lapse notices carry on without it.
-          if (inZone(firstStart, timeZone).getTime() <= now.getTime()) continue;
+          if (start.getTime() <= now.getTime()) continue;
 
           for (const days of LAST_CALL_DAYS) {
-            const sendAt = inZone(wakingSameDay(daysBefore(firstStart, days)), timeZone);
+            const sendAt = timeZone
+              ? inZone(wakingSameDay(daysBefore(firstStart, days)), timeZone)
+              : daysBefore(firstStart, days);
 
-            if (
-              event.createdAt.getTime() <= sendAt.getTime() &&
-              isDue(sendAt, now, timeZone)
-            ) {
+            const due = timeZone ? isDue(sendAt, now, timeZone) : isDueAt(sendAt, now);
+
+            if (event.createdAt.getTime() <= sendAt.getTime() && due) {
               planned.push({
                 key: `last-call:${event.id}:${days}:${firstStart.getTime()}:${email}`,
-                email,
+                addressee,
+                timeZone,
                 event,
               });
             }
           }
         } catch {
-          // A zone this runtime can't resolve: no push, rather than no tick.
+          // A zone this runtime can't resolve: nothing, rather than no tick.
         }
       }
     });
 
     const won = await claimOnce(planned.map((item) => item.key));
 
-    const notices: PushNotice[] = planned.flatMap(({ key, email, event }) => {
-      if (!won.has(key)) return [];
+    const sending = planned.flatMap((item) => {
+      if (!won.has(item.key)) return [];
 
-      const { fullyStaffed, unfilledRoles, waitingOn } = rosterGaps(event, now);
+      const gaps = rosterGaps(item.event, now);
 
-      if (fullyStaffed) return [];
+      return gaps.fullyStaffed ? [] : [{ ...item, ...gaps }];
+    });
 
-      const missing = [
-        unfilledRoles.length > 0 && `Open: ${unfilledRoles.join(", ")}`,
-        waitingOn.length > 0 &&
-          `Waiting on ${waitingOn.length === 1 ? "1 reply" : `${waitingOn.length} replies`}`,
-      ].filter(Boolean);
+    const emails = sending.map(({ addressee, event, unfilledRoles, waitingOn }) => {
+      const when = formatEventWhen(event.dates);
 
-      return [
-        {
-          email,
+      return {
+        from: organizationSender(event.organization.name),
+        to: addressee.person.email,
+        subject: `Not fully staffed yet: ${event.name}`,
+        react: EventLastCallEmail({
+          recipientName: addressee.person.firstName,
+          eventName: event.name,
+          organizationName: event.organization.name,
+          logoUrl: event.organization.logoUrl,
+          unfilledRoles,
+          waitingOn,
+          eventDate: when?.date ?? null,
+          eventTime: when?.time ?? null,
+          viewLink: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/organizations/${event.organizationId}/events/${event.id}`,
+          footer: reasonLine(addressee.reason, event.organization.name),
+        }),
+      };
+    });
+
+    const notices: PushNotice[] = sending
+      .filter((item) => item.timeZone)
+      .map(({ addressee, event, unfilledRoles, waitingOn }) => {
+        const missing = [
+          unfilledRoles.length > 0 && `Open: ${unfilledRoles.join(", ")}`,
+          waitingOn.length > 0 &&
+            `Waiting on ${waitingOn.length === 1 ? "1 reply" : `${waitingOn.length} replies`}`,
+        ].filter(Boolean);
+
+        return {
+          email: addressee.person.email,
           title: `Not fully staffed yet: ${event.name}`,
           subtitle: event.organization.name,
           body: [formatEventShort(event.dates), missing.join(" · ")]
@@ -219,15 +255,16 @@ export async function sendLastCallPushes(now: Date): Promise<number> {
             organizationId: event.organizationId,
             eventId: event.id,
           },
-        },
-      ];
-    });
+        };
+      });
 
+    await sendEmailBatches("last call", emails);
     await sendPushNotices("last call", notices);
 
-    sent += notices.length;
+    count.emails += emails.length;
+    count.pushes += notices.length;
 
-    if (events.length < LAST_CALL_PAGE) return sent;
+    if (events.length < LAST_CALL_PAGE) return count;
 
     after = events[events.length - 1].id;
   }

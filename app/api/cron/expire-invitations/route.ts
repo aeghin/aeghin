@@ -5,20 +5,12 @@ import { NextResponse } from "next/server";
 
 import prisma from "@/lib/prisma";
 import { InvitationStatus } from "@/generated/prisma/enums";
-import { SMART_SCHEDULING_ENTITLEMENTS } from "@/lib/billing/entitlements";
 import EventInviteExpiredEmail from "@/components/email/event-invite-expired-template";
-import EventLastCallEmail from "@/components/email/event-last-call-template";
 import { formatEventWhen } from "@/lib/email/event-when";
 import { organizationSender } from "@/lib/email/organization";
 import { sendEmailBatches } from "@/lib/email/send";
-import { eventAudience, reasonLine } from "@/lib/notifications/audience";
-import { directoriesFor, type BellDirectories } from "@/lib/notifications/directory";
-import {
-    LAST_CALL_DAYS,
-    lapseBuckets,
-    lapseSubject,
-    rosterGaps,
-} from "@/lib/notifications/staffing";
+import type { BellDirectories } from "@/lib/notifications/directory";
+import { lapseBuckets, lapseSubject } from "@/lib/notifications/staffing";
 import { syncEventNotifications } from "@/lib/notifications/sync";
 import {
     sendAnswerReminders,
@@ -31,7 +23,7 @@ import { checkPushReceipts } from "@/lib/push/send";
 import {
     forgetOldPushClaims,
     sendLapsePushes,
-    sendLastCallPushes,
+    sendLastCalls,
 } from "@/lib/push/staffing";
 
 /**
@@ -83,12 +75,6 @@ export const maxDuration = 60;
  * whole cap is a few seconds.
  */
 const RECONCILE_LIMIT = 300;
-
-/**
- * Most events one tick will check. The window is three days wide and an event
- * is looked at twice in its life, so this only binds on a backlog.
- */
-const LAST_CALL_LIMIT = 200;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -191,157 +177,6 @@ const notifyLapsedAssignments = async (
     return {
         emails: messages.length,
         events: new Set(buckets.map((bucket) => bucket.eventId)).size,
-    };
-};
-
-/**
- * Tells whoever runs an event, about three days out and again about one day
- * out, that it isn't fully staffed — so nobody opens the roster the morning of
- * the service and finds the hole for the first time.
- *
- * "Fully staffed" is the bell's test: every role has somebody who accepted, and
- * nobody is still deciding. The email lists both halves of what is missing,
- * roles with nobody on them and invitations still unanswered, because an invite
- * sent the week of a service may not lapse until after it — and until then
- * nothing else would ever mention it.
- *
- * Each check is claimed on `lastCallStage` before anything is sent, so two
- * overlapping ticks cannot both mail it, and it runs once whatever it finds:
- * fully staffed at three days out means no three-day email at all, rather than
- * one the moment somebody drops out — a dropout sends its own.
- *
- * Event times are floating wall clock pinned to Z (see LIVE_GRACE_MS in
- * lib/notifications/sync.ts), so "three days before" is measured against a
- * start that reads several hours early for an organization west of UTC. The
- * email lands a few hours ahead of the mark rather than on it — fine for mail,
- * which waits to be read. The push can't wait like that, so it doesn't go from
- * here: `sendLastCallPushes` times it on each manager's own clock.
- */
-const sendLastCalls = async (now: Date): Promise<NotifyResult> => {
-
-    const events = await prisma.event.findMany({
-        where: {
-            // Part of Smart Scheduling, which Premium and Pro have and Free and
-            // Starter don't. Filtered here rather than skipped below, so those
-            // events never crowd the others out of the batch. Their stage is
-            // left unclaimed, so an upgrade before the event still gets its email.
-            organization: { entitlements: { hasSome: SMART_SCHEDULING_ENTITLEMENTS } },
-            lastCallStage: { lt: LAST_CALL_DAYS.length },
-            dates: {
-                some: {
-                    startTime: {
-                        gt: now,
-                        lte: new Date(now.getTime() + LAST_CALL_DAYS[0] * DAY_MS),
-                    },
-                },
-            },
-        },
-        select: {
-            id: true,
-            name: true,
-            organizationId: true,
-            createdById: true,
-            createdAt: true,
-            lastCallStage: true,
-            rolesNeeded: true,
-            dates: { select: { startTime: true, endTime: true } },
-            organization: { select: { name: true, logoUrl: true } },
-            assignments: {
-                select: {
-                    role: true,
-                    status: true,
-                    expiresAt: true,
-                    user: { select: { firstName: true, lastName: true } },
-                },
-            },
-        },
-        take: LAST_CALL_LIMIT,
-    });
-
-    const directoryFor = directoriesFor();
-
-    const perEvent = await Promise.all(
-        events.map(async (event) => {
-
-            if (event.rolesNeeded.length === 0 || event.dates.length === 0) return [];
-
-            const firstStart = Math.min(
-                ...event.dates.map((date) => date.startTime.getTime()),
-            );
-
-            // Already underway. The bell and the lapse mail are still running;
-            // a heads-up now would only be noise.
-            if (firstStart <= now.getTime()) return [];
-
-            // The furthest-along check whose moment has passed. An event first
-            // seen inside one day gets the one-day email only, not both at once.
-            let stage = 0;
-
-            LAST_CALL_DAYS.forEach((days, index) => {
-                if (now.getTime() >= firstStart - days * DAY_MS) stage = index + 1;
-            });
-
-            if (stage <= event.lastCallStage) return [];
-
-            const { count } = await prisma.event.updateMany({
-                where: { id: event.id, lastCallStage: { lt: stage } },
-                data: { lastCallStage: stage },
-            });
-
-            if (count === 0) return [];
-
-            // Created after this check's moment had already passed: whoever made
-            // a service for tomorrow knows it isn't staffed yet. The stage stays
-            // claimed, so the check is spent rather than retried every hour.
-            const dueAt = firstStart - LAST_CALL_DAYS[stage - 1] * DAY_MS;
-
-            if (event.createdAt.getTime() > dueAt) return [];
-
-            const { fullyStaffed, unfilledRoles, waitingOn } = rosterGaps(event, now);
-
-            if (fullyStaffed) return [];
-
-            // The event's owner — its creator, else the owners — is asked to
-            // act. Team leads have already heard about each of their roles as
-            // it opened up, so this is the backstop for them, not another
-            // alert.
-            const directory = await directoryFor(event.organizationId);
-
-            if (!directory) return [];
-
-            const audience = eventAudience(directory, {
-                createdById: event.createdById,
-            });
-
-            const when = formatEventWhen(event.dates);
-
-            return audience.owners.map(({ person, reason }) => ({
-                from: organizationSender(event.organization.name),
-                to: person.email,
-                subject: `Not fully staffed yet: ${event.name}`,
-                react: EventLastCallEmail({
-                    recipientName: person.firstName,
-                    eventName: event.name,
-                    organizationName: event.organization.name,
-                    logoUrl: event.organization.logoUrl,
-                    unfilledRoles,
-                    waitingOn,
-                    eventDate: when?.date ?? null,
-                    eventTime: when?.time ?? null,
-                    viewLink: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/organizations/${event.organizationId}/events/${event.id}`,
-                    footer: reasonLine(reason, event.organization.name),
-                }),
-            }));
-        }),
-    );
-
-    const messages = perEvent.flat();
-
-    await sendEmailBatches("expire-invitations last call", messages);
-
-    return {
-        emails: messages.length,
-        events: perEvent.filter((batch) => batch.length > 0).length,
     };
 };
 
@@ -467,8 +302,10 @@ export async function GET(req: Request) {
             );
         }
 
-        // The pre-event staffing check, in its own try/catch for the same reason.
-        let lastCall: NotifyResult = { emails: 0, events: 0 };
+        // The pre-event staffing check, in its own try/catch for the same
+        // reason. Email and push go together, timed on each manager's clock
+        // (lib/push/staffing.ts).
+        let lastCall: SendCount = { pushes: 0, emails: 0 };
         let lastCallFailed = false;
 
         try {
@@ -487,7 +324,6 @@ export async function GET(req: Request) {
         // it sends first, so a slow tick overlapping the next can't double it.
         // After the sweep, so a lapse it just found in waking hours goes now.
         const pushPasses = {
-            lastCall: sendLastCallPushes,
             lapsed: sendLapsePushes,
             reminders: sendDayBeforeReminders,
         };
@@ -630,8 +466,7 @@ export async function GET(req: Request) {
             notified: notified.emails,
             notifiedEvents: notified.events,
             notifyFailed,
-            lastCall: lastCall.emails,
-            lastCallEvents: lastCall.events,
+            lastCall,
             lastCallFailed,
             pushed,
             pushesFailed,

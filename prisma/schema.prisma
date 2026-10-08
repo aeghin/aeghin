@@ -304,9 +304,9 @@ model Event {
   // reconcile.
   fullyStaffedAt DateTime?
 
-  // How far the pre-event staffing check has got: 0 none yet, 1 the 3-day
-  // check, 2 the 1-day check. Claimed by the hourly cron so each check runs
-  // once, and reset to 0 when the event's dates change.
+  // Unused: the last call is claimed per person in PushClaim now
+  // (lib/push/staffing.ts). Dropped in a later deploy, because the build that
+  // migrates runs while the previous deploy, which still reads it, is serving.
   lastCallStage Int @default(0)
 
   createdAt DateTime @default(now())

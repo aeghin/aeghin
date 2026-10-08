@@ -2419,13 +2419,12 @@ export const editEventDetails = async (
             location,
             description: description ?? "",
             ...(nextRehearsal ?? {}),
-            // New dates, new countdown: any last-call email already sent was
-            // about the old ones.
-            ...(scheduleChanged ? { lastCallStage: 0 } : {}),
           },
         });
 
-        // The same for the day-before reminder, which was timed off them too.
+        // New dates, new countdown: any day-before reminder already sent was
+        // about the old ones. The last call needs nothing here — its claims
+        // are keyed on the first block's start, so a moved event is new to it.
         if (scheduleChanged) {
           await tx.eventAssignment.updateMany({
             where: { eventId, reminderSentAt: { not: null } },
