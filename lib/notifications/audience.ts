@@ -100,7 +100,7 @@ export type RoleAlert = {
   inviterId: string | null;
 };
 
-/** A staffing alert about a whole event: the last call, or it filling up. */
+/** A staffing alert about a whole event: the last call. */
 export type EventAlert = {
   createdById: string | null;
 };
@@ -242,6 +242,54 @@ export function eventAudience(
     team: null,
     task: "staff it",
   });
+}
+
+/** What decides who hears a whole event has filled up. */
+export type StaffedAlert = {
+  serviceTypeId: string;
+  createdById: string | null;
+  rolesNeeded: VolunteerRole[];
+  /** Who covers each team on this event only. */
+  covers: { category: Team; userId: string }[];
+};
+
+/**
+ * Everybody told an event is fully staffed: its creator, else the owners, and
+ * whoever owns each of its roles — the team's cover on this event, else its
+ * lead — so somebody who heard about every hole hears they're closed. Each
+ * person once, under the first reason found for them.
+ */
+export function staffedAudience(
+  directory: StaffingDirectory,
+  alert: StaffedAlert,
+): Addressee[] {
+  const seen = new Set<string>();
+  const addressees: Addressee[] = [];
+
+  const add = ({ people, reason }: { people: Person[]; reason: OwnerReason }) => {
+    for (const person of people) {
+      if (seen.has(person.userId)) continue;
+
+      seen.add(person.userId);
+      addressees.push({ person, reason });
+    }
+  };
+
+  add(eventOwners(directory, alert.createdById));
+
+  for (const role of alert.rolesNeeded) {
+    add(
+      roleOwners(directory, {
+        serviceTypeId: alert.serviceTypeId,
+        createdById: alert.createdById,
+        role,
+        coverId:
+          alert.covers.find((cover) => cover.category === teamOfRole(role))?.userId ?? null,
+      }),
+    );
+  }
+
+  return addressees;
 }
 
 /**

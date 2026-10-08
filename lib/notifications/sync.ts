@@ -6,6 +6,8 @@ import prisma from "@/lib/prisma";
 import {
   InvitationStatus,
   NotificationCategory,
+  type RoleCategory,
+  type VolunteerRole,
 } from "@/generated/prisma/enums";
 import EventFullyStaffedEmail from "@/components/email/event-fully-staffed-template";
 import { formatEventShort, formatEventWhen } from "@/lib/email/event-when";
@@ -13,10 +15,9 @@ import { organizationSender } from "@/lib/email/organization";
 import { sendEmailBatches } from "@/lib/email/send";
 import { teamOfRole } from "@/lib/config/roles";
 import {
-  eventAudience,
-  eventOwners,
   reasonLine,
   roleOwners,
+  staffedAudience,
 } from "@/lib/notifications/audience";
 import {
   bellDirectory,
@@ -73,14 +74,17 @@ type StaffedEvent = {
   name: string;
   organizationId: string;
   createdById: string | null;
+  serviceTypeId: string;
+  rolesNeeded: VolunteerRole[];
+  teamLeads: { category: RoleCategory; userId: string }[];
   dates: { startTime: Date; endTime: Date }[];
   organization: { name: string; logoUrl: string | null };
 };
 
 /**
  * The one email and push a fill-up sends: to whoever owns the event — its
- * creator, else the owners. Team leads aren't told; their bell rows simply
- * clear as their roles fill.
+ * creator, else the owners — and whoever owns each of its roles, the team's
+ * cover on this event or else its lead (`staffedAudience`). Each person once.
  *
  * Best effort, like the rest of this file: the claim on `fullyStaffedAt` has
  * already committed, so a send that fails is logged and not retried. Retrying
@@ -94,9 +98,12 @@ const announceFullyStaffed = async (eventId: string, event: StaffedEvent) => {
 
   if (!directory) return;
 
-  const audience = eventAudience(directory, { createdById: event.createdById });
-
-  const recipients = audience.owners;
+  const recipients = staffedAudience(directory, {
+    serviceTypeId: event.serviceTypeId,
+    createdById: event.createdById,
+    rolesNeeded: event.rolesNeeded,
+    covers: event.teamLeads,
+  });
 
   if (recipients.length === 0) return;
 
@@ -266,7 +273,7 @@ export const syncEventNotifications = async (
     // count — each owner's count is the open roles that are theirs, so a band
     // lead (or whoever covers the band on this event) sees the band's holes
     // and the creator sees the rest. Fully staffed
-    // carries nothing and goes to the event's owner. In between — every role
+    // carries nothing and goes to everybody its email does. In between — every role
     // taken but somebody still deciding — is no row at all: a pending invite
     // is not an admin's problem yet, and the lapse sweep and the cron's
     // last-call check are what catch one that never gets answered.
@@ -274,7 +281,14 @@ export const syncEventNotifications = async (
       const directory = await bellDirectory(event.organizationId, directories);
 
       if (directory && fullyStaffed) {
-        for (const { userId } of eventOwners(directory, event.createdById).people) {
+        const staffed = staffedAudience(directory, {
+          serviceTypeId: event.serviceTypeId,
+          createdById: event.createdById,
+          rolesNeeded: event.rolesNeeded,
+          covers: event.teamLeads,
+        });
+
+        for (const { person: { userId } } of staffed) {
           desired.set(`${userId}:${NotificationCategory.FULLY_STAFFED}`, {
             userId,
             category: NotificationCategory.FULLY_STAFFED,
