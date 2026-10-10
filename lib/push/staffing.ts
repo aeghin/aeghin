@@ -125,6 +125,7 @@ export async function sendLastCalls(now: Date): Promise<SendCount> {
         createdById: true,
         createdAt: true,
         rolesNeeded: true,
+        roleSpots: true,
         dates: { select: { startTime: true, endTime: true } },
         organization: { select: { name: true, logoUrl: true } },
         assignments: {

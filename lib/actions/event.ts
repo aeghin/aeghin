@@ -31,8 +31,16 @@ import {
   EditEventDetailsInput,
   type EventTeamLeadsInput,
   RemoveEventRoleInput,
-  removeEventRoleSchema
+  removeEventRoleSchema,
 } from "@/lib/validations/event";
+
+import type { Prisma } from "@/generated/prisma/client";
+import {
+  parseRoleSpots,
+  roleStanding,
+  spotsFor,
+  storedRoleSpots,
+} from "@/lib/role-spots";
 
 import {
   EventEmailInput,
@@ -115,6 +123,54 @@ export type MemberAvailability = {
 };
 
 type ActionResponse = { success: true } | { success: false; error: string };
+
+/**
+ * Holds one event's spot counts for the rest of a transaction, so two writes
+ * landing together — two admins inviting at once — can't both read the old
+ * count and each raise it by one. Released when the transaction ends.
+ */
+const lockEventSpots = (tx: Prisma.TransactionClient, eventId: string) =>
+  tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${eventId}))`;
+
+/**
+ * Every invite is somebody wanted there, never a backup, so an invite past a
+ * role's open spots adds a spot. Run inside the invite's own transaction, after
+ * its writes and under `lockEventSpots`.
+ */
+const raiseSpotsToFit = async (
+  tx: Prisma.TransactionClient,
+  eventId: string,
+  role: VolunteerRole,
+  now: Date,
+) => {
+  const [event, filling] = await Promise.all([
+    tx.event.findUnique({
+      where: { id: eventId },
+      select: { rolesNeeded: true, roleSpots: true },
+    }),
+    tx.eventAssignment.count({
+      where: {
+        eventId,
+        role,
+        OR: [
+          { status: InvitationStatus.ACCEPTED },
+          { status: InvitationStatus.PENDING, expiresAt: { gt: now } },
+        ],
+      },
+    }),
+  ]);
+
+  if (!event) return;
+
+  const spots = parseRoleSpots(event.roleSpots);
+
+  if (filling <= spotsFor(spots, role)) return;
+
+  await tx.event.update({
+    where: { id: eventId },
+    data: { roleSpots: storedRoleSpots({ ...spots, [role]: filling }, event.rolesNeeded) },
+  });
+};
 
 /**
  * The event's team picks worth keeping. Each has to be an admin or owner —
@@ -252,11 +308,24 @@ export async function createEvent(
       description,
       roleAssignments,
       rolesNeeded,
+      roleSpots: requestedSpots,
       expiresAt,
       smartSchedulingEnabled: smartSchedulingRequested,
       rehearsal,
       teamLeads,
     } = parsed.data;
+
+    // As many as asked for, and never fewer than the people invited into the
+    // role: every one of them is wanted there.
+    const roleSpots = storedRoleSpots(
+      Object.fromEntries(
+        rolesNeeded.map((role) => [
+          role,
+          Math.max(requestedSpots?.[role] ?? 1, new Set(roleAssignments[role] ?? []).size),
+        ]),
+      ),
+      rolesNeeded,
+    );
 
     // The form sends all three blank when there is no rehearsal. The times
     // arrive already composed as floating-UTC instants, like dayTimes.
@@ -414,6 +483,7 @@ export async function createEvent(
           description: description || "",
           location,
           rolesNeeded,
+          roleSpots,
           smartSchedulingEnabled,
           ...rehearsalColumns,
           createdById: id,
@@ -833,6 +903,31 @@ export const declineEventInvitation = async (
     const declinerName = `${user.firstName} ${user.lastName}`;
     const roleLabel = volunteerRoleConfig[assignment.role].label;
     const eventName = assignment.event.name;
+
+    // Every invite is somebody wanted there, so a decline leaves its spot open
+    // even when somebody else on the role accepted. Only a spot already covered
+    // — an invite sent past the role's count — has nothing to fill and nobody
+    // to tell.
+    const roster = await prisma.event.findUnique({
+      where: { id: eventId },
+      select: {
+        roleSpots: true,
+        assignments: {
+          where: { role: assignment.role },
+          select: { role: true, status: true, expiresAt: true },
+        },
+      },
+    });
+
+    if (
+      roster &&
+      roleStanding(assignment.role, parseRoleSpots(roster.roleSpots), roster.assignments, new Date())
+        .open === 0
+    ) {
+      await syncEventNotifications(eventId, touch);
+
+      return { success: true };
+    }
 
     /**
      * Tells whoever owns this role that it is still open — whoever covers its
@@ -1274,21 +1369,31 @@ export const resendEventInvitation = async (
 
     const resentExpiry = new Date(Date.now() + RESEND_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
 
-    await prisma.eventAssignment.update({
-      where: {
-        eventId_userId: { eventId, userId },
-        organizationId,
-      },
-      data: {
-        status: InvitationStatus.PENDING,
-        invitedAt: new Date(),
-        expiresAt: resentExpiry,
-        assignedById: user.id,
-        autoAssigned: false,
-        // A new window earns its own "still need your answer".
-        midwayNudgedAt: null,
-        nudgedAt: null,
-      },
+    // Their spot is usually still open, and this fills it. When somebody else
+    // was invited into it meanwhile, they're both wanted, and the role grows.
+    await prisma.$transaction(async (tx) => {
+      await lockEventSpots(tx, eventId);
+
+      const now = new Date();
+
+      await tx.eventAssignment.update({
+        where: {
+          eventId_userId: { eventId, userId },
+          organizationId,
+        },
+        data: {
+          status: InvitationStatus.PENDING,
+          invitedAt: now,
+          expiresAt: resentExpiry,
+          assignedById: user.id,
+          autoAssigned: false,
+          // A new window earns its own "still need your answer".
+          midwayNudgedAt: null,
+          nudgedAt: null,
+        },
+      });
+
+      await raiseSpotsToFit(tx, eventId, assignment.role, now);
     });
 
     touch(`user-${userId}-events-${organizationId}`);
@@ -1359,9 +1464,16 @@ export const resendEventInvitation = async (
 };
 
 
-// Lapsed rows only. A volunteer who accepted is removed through
-// cancelUserEventAssignment, which tells them they've been removed.
-export const deleteExpiredEventAssignment = async (
+/**
+ * Takes a lapsed, declined or removed invitation off the roster, and closes the
+ * spot it left open — how an admin says that spot isn't needed anymore. A
+ * spot somebody else has since been invited into stays, and a role never drops
+ * below one: taking the whole role off is removeEventRole.
+ *
+ * Never anybody live. A volunteer who accepted, or is still deciding, comes off
+ * through cancelUserEventAssignment, which tells them they've been removed.
+ */
+export const deleteEventInvite = async (
   organizationId: string,
   eventId: string,
   userId: string,
@@ -1385,27 +1497,67 @@ export const deleteExpiredEventAssignment = async (
 
     if (membership.role === OrgRole.MEMBER) return { success: false, error: "Unauthorized" };
 
-    const assignment = await prisma.eventAssignment.findFirst({
-      where: { eventId, userId, organizationId },
-      select: { id: true, status: true, expiresAt: true },
-    });
+    const outcome = await prisma.$transaction(
+      async (tx): Promise<{ error: string } | { declined: boolean }> => {
+        await lockEventSpots(tx, eventId);
 
-    if (!assignment) return { success: false, error: "Unable to find this assignment" };
+        const event = await tx.event.findFirst({
+          where: { id: eventId, organizationId },
+          select: {
+            rolesNeeded: true,
+            roleSpots: true,
+            assignments: {
+              select: { id: true, userId: true, role: true, status: true, expiresAt: true },
+            },
+          },
+        });
 
-    const hasLapsed =
-      assignment.status === InvitationStatus.EXPIRED ||
-      (assignment.status === InvitationStatus.PENDING &&
-        assignment.expiresAt <= new Date());
+        if (!event) return { error: "Unable to locate event" };
 
-    if (!hasLapsed) return { success: false, error: "That invitation hasn't expired" };
+        const assignment = event.assignments.find((a) => a.userId === userId);
 
-    await prisma.eventAssignment.delete({
-      where: { id: assignment.id, organizationId },
-    });
+        if (!assignment) return { error: "Unable to find this assignment" };
+
+        const now = new Date();
+
+        // PENDING past its deadline has lapsed, even before the sweep writes EXPIRED.
+        const live =
+          assignment.status === InvitationStatus.ACCEPTED ||
+          (assignment.status === InvitationStatus.PENDING && assignment.expiresAt > now);
+
+        if (live) return { error: "Only a declined, removed or expired invite can be deleted" };
+
+        const spots = parseRoleSpots(event.roleSpots);
+        const { needed, open } = roleStanding(assignment.role, spots, event.assignments, now);
+
+        await tx.eventAssignment.delete({
+          where: { id: assignment.id, organizationId },
+        });
+
+        if (open > 0 && needed > 1) {
+          await tx.event.update({
+            where: { id: eventId },
+            data: {
+              roleSpots: storedRoleSpots(
+                { ...spots, [assignment.role]: needed - 1 },
+                event.rolesNeeded,
+              ),
+            },
+          });
+        }
+
+        return { declined: assignment.status === InvitationStatus.DECLINED };
+      },
+    );
+
+    if ("error" in outcome) return { success: false, error: outcome.error };
 
     touch(`user-${userId}-events-${organizationId}`);
     touch(`event-${eventId}-org-${organizationId}-details`);
     touch(`org-${organizationId}-events`);
+
+    // A decline is part of the acceptance rate auto-fill ranks people by.
+    if (outcome.declined) touch(`org-${organizationId}-acceptance-stats`);
 
     await syncEventNotifications(eventId, touch);
 
@@ -1594,6 +1746,7 @@ export const removeEventRole = async (
         where: { id: eventId, organizationId },
         select: {
           rolesNeeded: true,
+          roleSpots: true,
           assignments: {
             where: { role },
             select: {
@@ -1639,13 +1792,18 @@ export const removeEventRole = async (
       };
     }
 
+    const remaining = event.rolesNeeded.filter((r) => r !== role);
+
     await prisma.$transaction([
       prisma.eventAssignment.deleteMany({
         where: { eventId, organizationId, role },
       }),
       prisma.event.update({
         where: { id: eventId },
-        data: { rolesNeeded: event.rolesNeeded.filter((r) => r !== role) },
+        data: {
+          rolesNeeded: remaining,
+          roleSpots: storedRoleSpots(parseRoleSpots(event.roleSpots), remaining),
+        },
       }),
     ]);
 
@@ -1855,6 +2013,8 @@ export const inviteMembersToEvent = async (
     const expiry = new Date(Date.now() + expiresAt * 24 * 60 * 60 * 1000);
 
     await prisma.$transaction(async (tx) => {
+      await lockEventSpots(tx, eventId);
+
       if (toCreate.length > 0) {
         await tx.eventAssignment.createMany({
           data: toCreate.map((uid) => ({
@@ -1893,6 +2053,9 @@ export const inviteMembersToEvent = async (
           data: { rolesNeeded: [...event.rolesNeeded, role] },
         });
       }
+
+      // Into the role's open spots first; anybody past them is another spot.
+      await raiseSpotsToFit(tx, eventId, role, now);
     });
 
     const invitedUsers = await prisma.user.findMany({

@@ -1,5 +1,6 @@
 import { z } from "zod/v4";
 import { VolunteerRole } from "@/generated/prisma/enums";
+import { roleSpotsSchema } from "@/lib/validations/event";
 
 const TIME_HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 
@@ -32,6 +33,8 @@ export const eventTemplateSchema = z.object({
         endTime: z.string().regex(TIME_HHMM, "End time is required"),
     })).min(1, "Add at least one day").max(7, "A template can span at most 7 days"),
     rolesNeeded: z.array(z.enum(VolunteerRole)).min(1, "Select at least one role"),
+    // Undefined leaves a template's counts as they are, like rehearsal.
+    roleSpots: roleSpotsSchema.optional(),
     expiresInDays: z.number().refine((v) => [3, 5, 7].includes(v)),
     smartSchedulingEnabled: z.boolean(),
     // null is "this template has no rehearsal". undefined is "don't touch it",

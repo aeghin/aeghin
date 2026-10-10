@@ -9,7 +9,8 @@ import {
     VolunteerRole,
 } from "@/generated/prisma/enums";
 import { createEvent } from "@/lib/actions/event";
-import { staffingOf, staffingTallies } from "@/lib/staffing";
+import { roleStaffingOf, staffingOf, staffingTallies } from "@/lib/staffing";
+import { parseRoleSpots, type RoleSpots } from "@/lib/role-spots";
 import type { CreateEventInput } from "@/lib/validations/event";
 import {
     clerkIdOf,
@@ -24,7 +25,7 @@ import {
  * Wire contract for the events screen's All tab. Mirrors `OrganizationEvent`
  * and friends in the Expo app (`src/types/event.ts`) — keep the two in sync,
  * and with the user-events route beside this one, which returns the same shape
- * without `filledRoleCount`, `awaitingRoleCount` and `declinedRoleCount`.
+ * without `staffing`, `filledRoleCount`, `awaitingRoleCount` and `declinedRoleCount`.
  */
 type EventDate = {
     id: string;
@@ -53,10 +54,18 @@ type OrganizationEvent = {
     rehearsalEnd: string | null;
     assignments: EventAssignment[];
     rolesNeeded: VolunteerRole[];
+    /** How many each role needs, for the roles needing more than one. */
+    roleSpots: RoleSpots;
     smartSchedulingEnabled: boolean;
     /**
-     * Roles in `rolesNeeded` that are settled: somebody accepted and nobody on
-     * the role is still deciding. The bell's "fully staffed" test, per role —
+     * The meter, counted in spots: three BGVs are three. What builds that know
+     * about spot counts read; the three role counts below are for the ones
+     * from before, which draw one segment per role.
+     */
+    staffing: { needed: number; filled: number; awaiting: number; declined: number };
+    /**
+     * Roles in `rolesNeeded` that are settled: every spot accepted and nobody
+     * on the role still deciding. The bell's "fully staffed" test, per role —
      * three BGVs invited and one accepted is not filled until the other two
      * answer.
      */
@@ -157,6 +166,7 @@ export async function GET(
                     location: true,
                     serviceTypeId: true,
                     rolesNeeded: true,
+                    roleSpots: true,
                     smartSchedulingEnabled: true,
                     rehearsalStart: true,
                     rehearsalEnd: true,
@@ -200,10 +210,14 @@ export async function GET(
         ]);
 
         const orgEvents: OrganizationEvent[] = events.map((event) => {
-            const staffing = staffingOf(event.rolesNeeded, tallies.get(event.id));
+            const roleSpots = parseRoleSpots(event.roleSpots);
+            const tally = tallies.get(event.id);
+            const roleStaffing = roleStaffingOf(event.rolesNeeded, roleSpots, tally);
 
             return {
                 ...event,
+                roleSpots,
+                staffing: staffingOf(event.rolesNeeded, roleSpots, tally),
                 dates: event.dates.map((date) => ({
                     id: date.id,
                     startTime: date.startTime.toISOString(),
@@ -215,9 +229,9 @@ export async function GET(
                     ...assignment,
                     expiresAt: assignment.expiresAt.toISOString(),
                 })),
-                filledRoleCount: staffing.filled,
-                awaitingRoleCount: staffing.awaiting,
-                declinedRoleCount: staffing.declined,
+                filledRoleCount: roleStaffing.filled,
+                awaitingRoleCount: roleStaffing.awaiting,
+                declinedRoleCount: roleStaffing.declined,
             };
         });
 
@@ -259,6 +273,8 @@ type NewEvent = {
     location: string;
     days: NewEventDay[];
     rolesNeeded: VolunteerRole[];
+    /** How many each role needs, for the roles needing more than one. Absent from older builds. */
+    roleSpots?: Record<string, number>;
     /** Days an invitee has to answer. */
     expiresAt: number;
     smartSchedulingEnabled: boolean;
@@ -297,6 +313,7 @@ const isNewEvent = (value: unknown): value is NewEvent =>
     Array.isArray(value.days) && value.days.length > 0 && value.days.every(isNewEventDay) &&
     Array.isArray(value.rolesNeeded) &&
     value.rolesNeeded.every((role) => typeof role === "string" && role in VolunteerRole) &&
+    (value.roleSpots === undefined || isObject(value.roleSpots)) &&
     typeof value.expiresAt === "number" &&
     typeof value.smartSchedulingEnabled === "boolean" &&
     (value.rehearsal === undefined || value.rehearsal === null || isNewEventDay(value.rehearsal)) &&
@@ -378,6 +395,7 @@ export async function POST(
                     ]),
                 ),
                 rolesNeeded: body.rolesNeeded,
+                roleSpots: body.roleSpots,
                 expiresAt: body.expiresAt,
                 smartSchedulingEnabled: body.smartSchedulingEnabled,
                 // Composed here like dayTimes; absent or null is "no rehearsal".

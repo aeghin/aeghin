@@ -80,12 +80,15 @@ interface InviteToEventDialogProps {
   /** Renders the trigger as a full row instead of a compact button */
   variant?: "row" | "compact";
   serviceColor: string;
-  /**
-   * Anybody already live on this role. A second invite is sometimes right —
-   * three BGVs — and sometimes two admins filling one hole, so the dialog
-   * says who is there and asks before sending another.
-   */
+  /** Anybody already live on this role, so the dialog can say who is there. */
   holders?: RoleHolder[];
+  /**
+   * How many the role needs and how many of those are open. Every invite is
+   * somebody wanted there, so one past the open spots simply adds a spot.
+   */
+  spots: { needed: number; open: number };
+  /** The row trigger's line, for a role that's partly filled. */
+  rowLabel?: string;
   /**
    * Who handles the team on this event, named in that warning: its lead, or
    * whoever covers it for this event only. Null when there's none, or it's you.
@@ -122,6 +125,8 @@ export function InviteToEventDialog({
   serviceColor,
   holders = [],
   teamLead = null,
+  spots,
+  rowLabel = "No one assigned yet",
 }: InviteToEventDialogProps) {
   const serviceColors = colorClasses[serviceColor];
   const [open, setOpen] = useState(false);
@@ -139,8 +144,6 @@ export function InviteToEventDialog({
     conflict: MemberConflict;
   } | null>(null);
 
-  const [confirmingSecond, setConfirmingSecond] = useState(false);
-
   const [isSending, startSending] = useTransition();
 
   const roleInfo = volunteerRoleConfig[role];
@@ -154,7 +157,6 @@ export function InviteToEventDialog({
       setSearch("");
       setSelected([]);
       setConflictWarning(null);
-      setConfirmingSecond(false);
       return;
     }
 
@@ -204,19 +206,7 @@ export function InviteToEventDialog({
     setConflictWarning(null);
   };
 
-  // Somebody is already on the role: say so before a second invite goes out.
-  const handleInvite = () => {
-    if (holders.length > 0) {
-      setConfirmingSecond(true);
-      return;
-    }
-
-    sendInvites();
-  };
-
   const sendInvites = () => {
-    setConfirmingSecond(false);
-
     startSending(async () => {
       const result = await inviteMembersToEvent(organizationId, eventId, {
         role,
@@ -254,46 +244,8 @@ export function InviteToEventDialog({
 
   const invitableCount = members.filter((m) => !unavailable.has(m.userId)).length;
 
-  const holderNames = holders.map((holder) => holder.name);
-  const anyWaiting = holders.some((holder) => !holder.confirmed);
-
   return (
     <>
-      {/* A second invite into a role — warn, don't block: some roles need several */}
-      <Dialog open={confirmingSecond} onOpenChange={setConfirmingSecond}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <TriangleAlert className="h-5 w-5 text-amber-500" />
-              Invite another {roleInfo.label}?
-            </DialogTitle>
-            <DialogDescription>
-              <span className="font-medium text-foreground">
-                {new Intl.ListFormat("en", { type: "conjunction" }).format(holderNames)}
-              </span>{" "}
-              {holders.length === 1 ? "is" : "are"} already on this role
-              {anyWaiting ? ", and not everyone has answered yet" : ""}. Send
-              this only if the role needs more than one person.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="gap-2 sm:gap-0">
-            <Button
-              className="mr-2"
-              variant="outline"
-              onClick={() => setConfirmingSecond(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              className={cn(serviceColors.solid, serviceColors.solidHover)}
-              onClick={sendInvites}
-            >
-              Invite Anyway
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       {/* Conflict warning — mirrors the create-event flow: warn, don't block */}
       <Dialog
         open={!!conflictWarning}
@@ -354,7 +306,7 @@ export function InviteToEventDialog({
               <UserPlus className="h-4 w-4" />
             </span>
             <span className="min-w-0 flex-1 text-sm text-muted-foreground">
-              No one assigned yet
+              {rowLabel}
             </span>
             <span className="shrink-0 text-sm font-medium text-foreground">
               Invite
@@ -380,7 +332,8 @@ export function InviteToEventDialog({
               Invite {roleInfo.label}
             </DialogTitle>
             <DialogDescription>
-              {selected.length} selected · {invitableCount} available
+              {selected.length} selected · {invitableCount} available ·{" "}
+              {spots.open === 1 ? "1 open spot" : `${spots.open} open spots`}
             </DialogDescription>
           </DialogHeader>
 
@@ -552,7 +505,7 @@ export function InviteToEventDialog({
             <Button
               type="button"
               className={cn(serviceColors.solid, serviceColors.solidHover)}
-              onClick={handleInvite}
+              onClick={sendInvites}
               disabled={selected.length === 0 || isSending}
             >
               {isSending ? (

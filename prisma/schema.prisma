@@ -236,6 +236,8 @@ model EventTemplate {
   days EventTemplateDay[]
 
   rolesNeeded   VolunteerRole[]
+  // Prefills the event's roleSpots: {"BGVS": 3}, roles needing more than one.
+  roleSpots     Json            @default("{}")
   expiresInDays Int             @default(3)
 
   // Prefills the create-event form's smart scheduling switch.
@@ -292,6 +294,12 @@ model Event {
   rehearsalEnd   DateTime?
 
   rolesNeeded VolunteerRole[]
+
+  // How many people each role needs, for the roles needing more than one:
+  // {"BGVS": 3}. A role missing from it needs one. Every invite is somebody
+  // wanted there, so inviting past a role's open spots raises its count; a
+  // decline, lapse or removal leaves the spot open. lib/role-spots.ts reads it.
+  roleSpots Json @default("{}")
 
   // Smart scheduling — when enabled, declining this event's invite auto-invites
   // the next best available member for that role.

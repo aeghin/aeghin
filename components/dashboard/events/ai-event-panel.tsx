@@ -337,6 +337,8 @@ function DraftCard({
   const byRole = draft.rolesNeeded.map((role) => ({
     role,
     people: kept.filter((a) => a.role === role),
+    // Drafts from before counts carry none, which is one each.
+    spots: draft.roleSpots?.[role] ?? 1,
   }));
 
   function toggleRemoved(userId: string) {
@@ -385,6 +387,7 @@ function DraftCard({
             dayTimes,
             location: draft.location,
             rolesNeeded: draft.rolesNeeded,
+            roleSpots: draft.roleSpots,
             expiresAt: draft.expiresInDays,
             smartSchedulingEnabled: draft.smartSchedulingEnabled,
             rehearsal: draft.rehearsal
@@ -451,7 +454,7 @@ function DraftCard({
       </div>
 
       <ul className="space-y-2">
-        {byRole.map(({ role, people }) => (
+        {byRole.map(({ role, people, spots }) => (
           <li key={role} className="flex items-start gap-2 text-xs">
             <span className="w-4 shrink-0 text-center">
               {volunteerRoleConfig[role].icon}
@@ -459,11 +462,18 @@ function DraftCard({
             <div className="min-w-0 flex-1">
               <p className="font-medium">
                 {volunteerRoleConfig[role].label}
-                {people.length === 0 && (
+                {spots > 1 && (
+                  <span className="font-normal text-muted-foreground"> ×{spots}</span>
+                )}
+                {people.length === 0 ? (
                   <span className="ml-1.5 font-normal text-muted-foreground">
                     — left open
                   </span>
-                )}
+                ) : people.length < spots ? (
+                  <span className="ml-1.5 font-normal text-muted-foreground">
+                    — {spots - people.length} more open
+                  </span>
+                ) : null}
               </p>
               {people.map((p) => (
                 <div key={p.userId} className="flex items-start gap-1.5">

@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 
 import prisma from "@/lib/prisma";
 import { InvitationStatus, type VolunteerRole } from "@/generated/prisma/enums";
+import { parseRoleSpots, type RoleSpots } from "@/lib/role-spots";
 
 
 type EventDate = {
@@ -32,6 +33,8 @@ type OrganizationEvent = {
     rehearsalEnd: string | null;
     assignments: EventAssignment[];
     rolesNeeded: VolunteerRole[];
+    /** How many each role needs, for the roles needing more than one. */
+    roleSpots: RoleSpots;
     smartSchedulingEnabled: boolean;
 };
 
@@ -104,6 +107,7 @@ export async function GET(
                 location: true,
                 serviceTypeId: true,
                 rolesNeeded: true,
+                roleSpots: true,
                 smartSchedulingEnabled: true,
                 rehearsalStart: true,
                 rehearsalEnd: true,
@@ -148,6 +152,7 @@ export async function GET(
 
         const userEvents: OrganizationEvent[] = events.map((event) => ({
             ...event,
+            roleSpots: parseRoleSpots(event.roleSpots),
             dates: event.dates.map((date) => ({
                 id: date.id,
                 startTime: date.startTime.toISOString(),

@@ -7,6 +7,7 @@ import type {
   VolunteerRole,
 } from "@/generated/prisma/enums";
 import type { PaidPlan } from "@/lib/config/plans";
+import type { RoleSpots } from "@/lib/role-spots";
 
 export type EventDetailsAssignment = {
   id: string
@@ -81,6 +82,8 @@ export type EventDetails = {
   description: string
   location: string
   rolesNeeded: VolunteerRole[]
+  /** How many each role needs, for the roles needing more than one. */
+  roleSpots: RoleSpots
   smartSchedulingEnabled: boolean
   createdAt: Date
   updatedAt: Date
@@ -161,6 +164,7 @@ export type EventTemplateWithServiceType = {
   dayOfWeek: number
   days: EventTemplateDay[]
   rolesNeeded: VolunteerRole[]
+  roleSpots: RoleSpots
   expiresInDays: number
   smartSchedulingEnabled: boolean
   /** Offset from the first day: 0 same day, negative before. Null = no rehearsal. */

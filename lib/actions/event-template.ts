@@ -6,6 +6,7 @@ import { type EventTemplateInput, eventTemplateSchema } from "@/lib/validations/
 import { OrgRole } from "@/generated/prisma/enums";
 import { revalidatePath, updateTag } from "next/cache";
 import { Prisma } from "@/generated/prisma/client";
+import { parseRoleSpots, storedRoleSpots } from "@/lib/role-spots";
 
 type ActionResponse = { success: true } | { success: false; error: string };
 
@@ -33,7 +34,7 @@ export const createEventTemplate = async (
 
         if (!parsed.success) return { success: false, error: parsed.error.issues[0].message };
 
-        const { organizationId, serviceTypeId, name, description, location, dayOfWeek, days, rolesNeeded, expiresInDays, smartSchedulingEnabled, rehearsal } = parsed.data;
+        const { organizationId, serviceTypeId, name, description, location, dayOfWeek, days, rolesNeeded, roleSpots, expiresInDays, smartSchedulingEnabled, rehearsal } = parsed.data;
 
         const membership = await prisma.membership.findUnique({
             where: {
@@ -65,6 +66,7 @@ export const createEventTemplate = async (
                 location,
                 dayOfWeek,
                 rolesNeeded,
+                roleSpots: storedRoleSpots(roleSpots ?? {}, rolesNeeded),
                 expiresInDays,
                 smartSchedulingEnabled,
                 rehearsalDayOffset: rehearsal?.dayOffset ?? null,
@@ -113,7 +115,7 @@ export const updateEventTemplate = async (
 
         if (!parsed.success) return { success: false, error: parsed.error.issues[0].message };
 
-        const { organizationId, serviceTypeId, name, description, location, dayOfWeek, days, rolesNeeded, expiresInDays, smartSchedulingEnabled, rehearsal } = parsed.data;
+        const { organizationId, serviceTypeId, name, description, location, dayOfWeek, days, rolesNeeded, roleSpots, expiresInDays, smartSchedulingEnabled, rehearsal } = parsed.data;
 
         const membership = await prisma.membership.findUnique({
             where: {
@@ -156,6 +158,8 @@ export const updateEventTemplate = async (
                 location,
                 dayOfWeek,
                 rolesNeeded,
+                // Left out keeps the counts it had, minus any role just taken off.
+                roleSpots: storedRoleSpots(roleSpots ?? parseRoleSpots(template.roleSpots), rolesNeeded),
                 expiresInDays,
                 smartSchedulingEnabled,
                 ...(rehearsal !== undefined

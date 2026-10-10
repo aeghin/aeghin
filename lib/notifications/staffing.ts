@@ -12,6 +12,13 @@ import {
   type Person,
 } from "@/lib/notifications/audience";
 import { directoriesFor } from "@/lib/notifications/directory";
+import {
+  isFullyStaffed,
+  parseRoleSpots,
+  roleStanding,
+  rosterStandings,
+  spotLabel,
+} from "@/lib/role-spots";
 
 /**
  * What the cron tells an event's managers about its roster. Shared by the
@@ -51,33 +58,35 @@ type RosterAssignment = {
 };
 
 /**
- * What an event's roster still lacks: roles with nobody on them, and
- * invitations still waiting on an answer. "Fully staffed" is the bell's test —
- * every role has somebody who accepted, and nobody is still deciding.
+ * What an event's roster still lacks: open spots — "BGVs ×2" when a role is
+ * two short — and invitations still waiting on an answer. "Fully staffed" is
+ * the bell's test: every spot has somebody who accepted, and nobody is still
+ * deciding.
  */
 export function rosterGaps(
-  event: { rolesNeeded: VolunteerRole[]; assignments: RosterAssignment[] },
+  event: {
+    rolesNeeded: VolunteerRole[];
+    roleSpots: unknown;
+    assignments: RosterAssignment[];
+  },
   now: Date,
 ) {
-  const confirmed = new Set(
-    event.assignments
-      .filter((row) => row.status === InvitationStatus.ACCEPTED)
-      .map((row) => row.role),
+  const standings = rosterStandings(
+    event.rolesNeeded,
+    parseRoleSpots(event.roleSpots),
+    event.assignments,
+    now,
   );
 
   const waiting = event.assignments.filter(
     (row) => row.status === InvitationStatus.PENDING && row.expiresAt > now,
   );
 
-  const deciding = new Set(waiting.map((row) => row.role));
-
   return {
-    fullyStaffed:
-      event.rolesNeeded.every((role) => confirmed.has(role)) &&
-      waiting.length === 0,
-    unfilledRoles: event.rolesNeeded
-      .filter((role) => !confirmed.has(role) && !deciding.has(role))
-      .map((role) => volunteerRoleConfig[role].label),
+    fullyStaffed: isFullyStaffed(standings) && waiting.length === 0,
+    unfilledRoles: standings
+      .filter((standing) => standing.open > 0)
+      .map((standing) => spotLabel(standing.role, standing.open)),
     waitingOn: waiting.map((row) => ({
       inviteeName: `${row.user.firstName} ${row.user.lastName}`,
       roleLabel: volunteerRoleConfig[row.role].label,
@@ -200,8 +209,10 @@ export async function lapseBuckets(
           name: true,
           createdById: true,
           serviceTypeId: true,
+          roleSpots: true,
           dates: { select: { startTime: true, endTime: true } },
           teamLeads: { select: { category: true, userId: true } },
+          assignments: { select: { role: true, status: true, expiresAt: true } },
         },
       },
       organization: { select: { name: true, logoUrl: true } },
@@ -216,22 +227,15 @@ export async function lapseBuckets(
 
   if (lapsed.length === 0) return [];
 
-  // A role somebody has since accepted is not a gap. Two admins inviting two
-  // pianists, or a smart-fill replacement that stuck, both end here — and
-  // "needs a Pianist" about an event with a confirmed pianist is the kind of
-  // wrong that stops people reading the mail.
-  const staffed = await prisma.eventAssignment.groupBy({
-    by: ["eventId", "role"],
-    where: {
-      eventId: { in: [...new Set(lapsed.map((row) => row.event.id))] },
-      status: InvitationStatus.ACCEPTED,
-    },
-    _count: { _all: true },
-  });
-
-  const filled = new Set(staffed.map((row) => `${row.eventId}:${row.role}`));
-
-  const open = lapsed.filter((row) => !filled.has(`${row.event.id}:${row.role}`));
+  // Every invite is somebody wanted there, so a lapse leaves its spot open even
+  // when somebody else on the role accepted — the second of two pianists still
+  // has to be found. Only a spot already covered again, by a replacement who
+  // accepted or is deciding, goes untold.
+  const open = lapsed.filter(
+    (row) =>
+      roleStanding(row.role, parseRoleSpots(row.event.roleSpots), row.event.assignments, now)
+        .open > 0,
+  );
 
   if (open.length === 0) return [];
 

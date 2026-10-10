@@ -2,6 +2,7 @@ import "server-only";
 
 import prisma from "@/lib/prisma";
 import { cacheLife, cacheTag } from "next/cache";
+import { parseRoleSpots } from "@/lib/role-spots";
 
 export const getOrgEventTemplates = async (organizationId: string) => {
     "use cache"
@@ -33,6 +34,7 @@ export const getOrgEventTemplates = async (organizationId: string) => {
                 }
             },
             rolesNeeded: true,
+            roleSpots: true,
             expiresInDays: true,
             smartSchedulingEnabled: true,
             rehearsalDayOffset: true,
@@ -49,5 +51,8 @@ export const getOrgEventTemplates = async (organizationId: string) => {
         }
     });
 
-    return templates;
+    return templates.map((template) => ({
+        ...template,
+        roleSpots: parseRoleSpots(template.roleSpots),
+    }));
 };

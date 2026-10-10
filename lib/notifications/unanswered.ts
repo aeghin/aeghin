@@ -26,6 +26,7 @@ import {
 } from "@/lib/notifications/staffing";
 import { sendPushNotices, type PushNotice } from "@/lib/push/send";
 import { claimOnce } from "@/lib/push/staffing";
+import { parseRoleSpots, spotsFor } from "@/lib/role-spots";
 import {
   daysBefore,
   inZone,
@@ -464,8 +465,9 @@ function waitingTiming(bucket: WaitingBucket, now: Date, long: boolean): string 
  * The same people hear as when it closes (`lapseBuckets`): whoever covers its
  * team on the event, else the team's lead, else the creator, else the owners,
  * with "Also notify" and whoever sent it copied in. One email and one push per
- * person per event, however many are waiting. A role somebody else has already
- * accepted isn't mentioned: there's nothing to chase. And on a plan with the
+ * person per event, however many are waiting. Somebody else accepting the same
+ * role changes nothing — every invite is somebody wanted there — unless the
+ * role already has as many yeses as it needs. And on a plan with the
  * last call, whoever that check already reaches on the same day — the event's
  * creator, else its owners — is left to it, since it lists who hasn't answered.
  */
@@ -510,6 +512,7 @@ export async function sendNoAnswerAlerts(now: Date): Promise<SendCount> {
           createdAt: true,
           createdById: true,
           serviceTypeId: true,
+          roleSpots: true,
           dates: { select: { startTime: true, endTime: true } },
           teamLeads: { select: { category: true, userId: true } },
         },
@@ -533,7 +536,9 @@ export async function sendNoAnswerAlerts(now: Date): Promise<SendCount> {
     _count: { _all: true },
   });
 
-  const filled = new Set(staffed.map((row) => `${row.eventId}:${row.role}`));
+  const acceptedOn = new Map(
+    staffed.map((row) => [`${row.eventId}:${row.role}`, row._count._all]),
+  );
 
   const directoryFor = directoriesFor();
 
@@ -547,7 +552,9 @@ export async function sendNoAnswerAlerts(now: Date): Promise<SendCount> {
   }[] = [];
 
   for (const row of upcoming) {
-    if (filled.has(`${row.event.id}:${row.role}`)) continue;
+    const accepted = acceptedOn.get(`${row.event.id}:${row.role}`) ?? 0;
+
+    if (accepted >= spotsFor(parseRoleSpots(row.event.roleSpots), row.role)) continue;
 
     const directory = await directoryFor(row.organizationId);
 

@@ -20,6 +20,7 @@ import {
     type Pitch,
     type VolunteerRole,
 } from "@/generated/prisma/enums";
+import { parseRoleSpots, type RoleSpots } from "@/lib/role-spots";
 
 
 /**
@@ -118,6 +119,8 @@ type EventDetails = {
     description: string;
     location: string;
     rolesNeeded: VolunteerRole[];
+    /** How many each role needs, for the roles needing more than one. */
+    roleSpots: RoleSpots;
     smartSchedulingEnabled: boolean;
     organizationName: string;
     serviceType: {
@@ -265,6 +268,7 @@ export async function GET(
                 description: true,
                 location: true,
                 rolesNeeded: true,
+                roleSpots: true,
                 smartSchedulingEnabled: true,
                 rehearsalStart: true,
                 rehearsalEnd: true,
@@ -474,6 +478,7 @@ export async function GET(
             description: event.description,
             location: event.location,
             rolesNeeded: event.rolesNeeded,
+            roleSpots: parseRoleSpots(event.roleSpots),
             smartSchedulingEnabled: event.smartSchedulingEnabled,
             organizationName: event.organization.name,
             serviceType: event.serviceType,

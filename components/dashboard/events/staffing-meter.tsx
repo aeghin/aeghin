@@ -1,13 +1,13 @@
 import { statusStyles } from "@/lib/config/status";
 import type { Staffing } from "@/lib/staffing";
 
-/** Eight roles' worth of bar. A longer roster gets thinner segments instead. */
+/** Eight spots' worth of bar. A longer roster gets thinner segments instead. */
 export const METER_MAX_WIDTH = 109;
 
 /** The meter read aloud and on hover, since it carries no words of its own. */
-function describeStaffing({ filled, awaiting, declined }: Staffing, needed: number) {
+function describeStaffing({ needed, filled, awaiting, declined }: Staffing) {
   return [
-    `${filled} of ${needed} roles filled`,
+    `${filled} of ${needed} ${needed === 1 ? "spot" : "spots"} filled`,
     awaiting > 0 ? `${awaiting} pending` : null,
     declined > 0 ? `${declined} declined` : null,
   ]
@@ -19,19 +19,14 @@ function describeStaffing({ filled, awaiting, declined }: Staffing, needed: numb
  * How close an event is to being fully staffed — the All Events tab only,
  * matching the phone's meter.
  *
- * One segment per role, in the roster's own status colours: green filled,
- * amber invited, red declined with nobody in their place, grey nobody asked.
- * Always in that order, so position still reads where red and green look alike.
+ * One segment per spot — three BGVs are three — in the roster's own status
+ * colours: green filled, amber invited, red declined with nobody in their
+ * place, grey nobody asked. Always in that order, so position still reads where
+ * red and green look alike.
  */
-export function StaffingMeter({
-  staffing,
-  needed,
-}: {
-  staffing: Staffing;
-  needed: number;
-}) {
-  const { filled, awaiting, declined } = staffing;
-  const label = describeStaffing(staffing, needed);
+export function StaffingMeter({ staffing }: { staffing: Staffing }) {
+  const { needed, filled, awaiting, declined } = staffing;
+  const label = describeStaffing(staffing);
 
   return (
     <div

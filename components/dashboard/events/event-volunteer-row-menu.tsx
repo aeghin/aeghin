@@ -5,7 +5,7 @@ import { useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import {
   cancelUserEventAssignment,
-  deleteExpiredEventAssignment,
+  deleteEventInvite,
   resendEventInvitation,
 } from "@/lib/actions/event";
 import { cn } from "@/lib/utils";
@@ -25,9 +25,11 @@ interface EventAssignmentsCardProps {
   eventId: string
   organizationId: string
   isExpired?: boolean
+  /** Declined or removed: all that's left is taking the invite off, which closes its spot. */
+  isEnded?: boolean
 };
 
-export const EventVolunteerRowMenu = ({ assignedUserId, eventId, organizationId, isExpired = false }: EventAssignmentsCardProps) => {
+export const EventVolunteerRowMenu = ({ assignedUserId, eventId, organizationId, isExpired = false, isEnded = false }: EventAssignmentsCardProps) => {
 
   const [isPending, startTransition] = useTransition();
 
@@ -55,12 +57,12 @@ export const EventVolunteerRowMenu = ({ assignedUserId, eventId, organizationId,
     });
   };
 
-  const deleteExpiredInvite = () => {
+  const deleteInvite = () => {
     startTransition(async () => {
-      const result = await deleteExpiredEventAssignment(organizationId, eventId, assignedUserId);
+      const result = await deleteEventInvite(organizationId, eventId, assignedUserId);
 
       if (result.success) {
-        toast.success("Expired Invite Removed", { position: "top-center" });
+        toast.success(isExpired ? "Expired Invite Removed" : "Invite Removed", { position: "top-center" });
       } else {
         toast.error(result.error, { position: "top-center" });
       };
@@ -75,9 +77,9 @@ export const EventVolunteerRowMenu = ({ assignedUserId, eventId, organizationId,
         size="icon"
         className={cn(
           "h-8 w-8 cursor-pointer transition-opacity hover:bg-transparent focus-visible:ring-0 focus-visible:border-transparent",
-          // An expired row's menu is the only way to act on it, and hover
-          // doesn't exist on a phone.
-          isExpired
+          // An expired or ended row's menu is the only way to act on it, and
+          // hover doesn't exist on a phone.
+          isExpired || isEnded
             ? "opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
             : "opacity-0 group-hover:opacity-100",
         )}
@@ -95,11 +97,16 @@ export const EventVolunteerRowMenu = ({ assignedUserId, eventId, organizationId,
               <RefreshCw className="mr-2 h-4 w-4" />
               Resend Invitation
             </DropdownMenuItem>
-            <DropdownMenuItem disabled={isPending} onClick={deleteExpiredInvite} className="cursor-pointer text-destructive focus:text-destructive">
+            <DropdownMenuItem disabled={isPending} onClick={deleteInvite} className="cursor-pointer text-destructive focus:text-destructive">
               <Trash2 className="mr-2 h-4 w-4" />
               Delete Expired Invite
             </DropdownMenuItem>
           </>
+        ) : isEnded ? (
+          <DropdownMenuItem disabled={isPending} onClick={deleteInvite} className="cursor-pointer text-destructive focus:text-destructive">
+            <Trash2 className="mr-2 h-4 w-4" />
+            Delete Invite
+          </DropdownMenuItem>
         ) : (
           <DropdownMenuItem disabled={isPending} onClick={removeUserAssignment} className="cursor-pointer text-destructive focus:text-destructive">
             <Trash2 className="mr-2 h-4 w-4" />

@@ -4,6 +4,7 @@ import prisma from "@/lib/prisma";
 import { InvitationStatus } from "@/generated/prisma/enums";
 import { cacheLife, cacheTag } from "next/cache";
 import { staffingOf, staffingTallies } from "@/lib/staffing";
+import { parseRoleSpots } from "@/lib/role-spots";
 
 
 const DASHBOARD_ASSIGNMENT_STATUSES: InvitationStatus[] = [
@@ -141,7 +142,8 @@ export const getOrgEvents = async (organizationId: string, userId: string) => {
 
     return events.map((event) => ({
       ...event,
-      staffing: staffingOf(event.rolesNeeded, tallies.get(event.id)),
+      roleSpots: parseRoleSpots(event.roleSpots),
+      staffing: staffingOf(event.rolesNeeded, parseRoleSpots(event.roleSpots), tallies.get(event.id)),
     }));
 };
 
@@ -287,7 +289,7 @@ export const getEventDetailsById = async (eventId: string, organizationId: strin
       }
     });
 
-    return details;
+    return details && { ...details, roleSpots: parseRoleSpots(details.roleSpots) };
 
 }
 

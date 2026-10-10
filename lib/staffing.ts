@@ -2,35 +2,39 @@ import "server-only";
 
 import prisma from "@/lib/prisma";
 import { InvitationStatus, type VolunteerRole } from "@/generated/prisma/enums";
+import { spotsFor, type RoleSpots } from "@/lib/role-spots";
 
 /**
- * Where an event's roster stands, role by role — the staffing meter on the
- * All Events list, on the dashboard and the phone alike. The three counts
- * never overlap, so each role is exactly one colour.
+ * Where an event's roster stands — the staffing meter on the All Events list,
+ * on the dashboard and the phone alike. Counted in spots, so a role needing
+ * three BGVs is three segments and "2 of 3" shows. The counts never overlap,
+ * so each spot is exactly one colour.
  */
 export type Staffing = {
-  /**
-   * Somebody accepted and nobody on the role is still deciding. The bell's
-   * "fully staffed" test, per role: three BGVs invited and one accepted is not
-   * filled until the other two answer.
-   */
+  /** Every spot the event needs. */
+  needed: number;
+  /** Spots somebody accepted. */
   filled: number;
-  /** Somebody on the role is still deciding, inside their deadline. */
+  /** Spots somebody is still deciding on, inside their deadline. */
   awaiting: number;
-  /** Somebody declined, and nobody has accepted or is deciding in their place. */
+  /** Open spots on a role somebody turned down. */
   declined: number;
 };
 
-type Tally = {
-  confirmed: Set<VolunteerRole>;
-  deciding: Set<VolunteerRole>;
-  declined: Set<VolunteerRole>;
-};
+/**
+ * The same, one per role — what app builds from before spot counts read off
+ * `filledRoleCount` and friends. A role is filled once every spot on it has
+ * somebody who accepted and nobody on it is still deciding.
+ */
+export type RoleStaffing = Omit<Staffing, "needed">;
+
+type RoleCounts = { accepted: number; deciding: number; declined: number };
+
+type Tally = Map<VolunteerRole, RoleCounts>;
 
 /**
- * Every event in the organization, mapped to which of its roles somebody has
- * said yes, is deciding, or said no to. Grouping by role rather than counting
- * rows keeps two guitarists from reading as a filled drum stool.
+ * Every event in the organization, mapped to how many people on each role have
+ * said yes, are deciding, or said no.
  */
 export async function staffingTallies(
   organizationId: string,
@@ -54,40 +58,68 @@ export async function staffingTallies(
   const tallies = new Map<string, Tally>();
 
   for (const row of rows) {
-    const tally = tallies.get(row.eventId) ?? {
-      confirmed: new Set<VolunteerRole>(),
-      deciding: new Set<VolunteerRole>(),
-      declined: new Set<VolunteerRole>(),
-    };
+    const tally = tallies.get(row.eventId) ?? new Map<VolunteerRole, RoleCounts>();
+    const counts = tally.get(row.role) ?? { accepted: 0, deciding: 0, declined: 0 };
 
     if (row.status === InvitationStatus.ACCEPTED) {
-      tally.confirmed.add(row.role);
+      counts.accepted += row._count._all;
     } else if (row.status === InvitationStatus.DECLINED) {
-      tally.declined.add(row.role);
+      counts.declined += row._count._all;
     } else {
-      tally.deciding.add(row.role);
+      counts.deciding += row._count._all;
     }
 
+    tally.set(row.role, counts);
     tallies.set(row.eventId, tally);
   }
 
   return tallies;
 }
 
-/** One event's counts, from its roles and its entry in {@link staffingTallies}. */
+const NOBODY: RoleCounts = { accepted: 0, deciding: 0, declined: 0 };
+
+/** One event's spots, from its roles, their counts and its entry in {@link staffingTallies}. */
 export function staffingOf(
   rolesNeeded: VolunteerRole[],
+  spots: RoleSpots,
   tally: Tally | undefined,
 ): Staffing {
-  const confirmed = (role: VolunteerRole) => tally?.confirmed.has(role) ?? false;
-  const deciding = (role: VolunteerRole) => tally?.deciding.has(role) ?? false;
-  const declined = (role: VolunteerRole) => tally?.declined.has(role) ?? false;
+  const staffing: Staffing = { needed: 0, filled: 0, awaiting: 0, declined: 0 };
 
-  return {
-    filled: rolesNeeded.filter((role) => confirmed(role) && !deciding(role)).length,
-    awaiting: rolesNeeded.filter(deciding).length,
-    declined: rolesNeeded.filter(
-      (role) => declined(role) && !confirmed(role) && !deciding(role),
-    ).length,
-  };
+  for (const role of new Set(rolesNeeded)) {
+    const counts = tally?.get(role) ?? NOBODY;
+    const needed = spotsFor(spots, role);
+    const filled = Math.min(counts.accepted, needed);
+    const awaiting = Math.min(counts.deciding, needed - filled);
+
+    staffing.needed += needed;
+    staffing.filled += filled;
+    staffing.awaiting += awaiting;
+    staffing.declined += Math.min(counts.declined, needed - filled - awaiting);
+  }
+
+  return staffing;
+}
+
+/** The same event one segment per role, for app builds from before spot counts. */
+export function roleStaffingOf(
+  rolesNeeded: VolunteerRole[],
+  spots: RoleSpots,
+  tally: Tally | undefined,
+): RoleStaffing {
+  const staffing: RoleStaffing = { filled: 0, awaiting: 0, declined: 0 };
+
+  for (const role of new Set(rolesNeeded)) {
+    const counts = tally?.get(role) ?? NOBODY;
+
+    if (counts.deciding > 0) {
+      staffing.awaiting += 1;
+    } else if (counts.accepted >= spotsFor(spots, role)) {
+      staffing.filled += 1;
+    } else if (counts.declined > 0) {
+      staffing.declined += 1;
+    }
+  }
+
+  return staffing;
 }

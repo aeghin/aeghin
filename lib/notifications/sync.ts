@@ -25,26 +25,10 @@ import {
   type BellDirectories,
 } from "@/lib/notifications/directory";
 import { sendPushNotices } from "@/lib/push/send";
+import { isFullyStaffed, parseRoleSpots, rosterStandings } from "@/lib/role-spots";
 
 /** Same shape the actions already pass around, so `touch` threads straight through. */
 export type TagInvalidator = (tag: string) => void;
-
-/**
- * A role is covered when somebody has accepted it, or is still inside the
- * window to answer.
- *
- * The expiry guard matters: the hourly sweep is what turns a lapsed PENDING row
- * into EXPIRED, so for up to an hour a dead invitation still reads PENDING.
- * Counting it as covered would hide a hole in exactly the window an admin most
- * needs to see it. `declineEventInvitation` applies the same `expiresAt > now`
- * test for the same reason.
- */
-const coversRole = (
-  assignment: { status: InvitationStatus; expiresAt: Date },
-  now: Date,
-) =>
-  assignment.status === InvitationStatus.ACCEPTED ||
-  (assignment.status === InvitationStatus.PENDING && assignment.expiresAt > now);
 
 /**
  * How long after its last block an event still counts as live.
@@ -185,6 +169,7 @@ export const syncEventNotifications = async (
         rolesNeeded: true,
         createdById: true,
         serviceTypeId: true,
+        roleSpots: true,
         fullyStaffedAt: true,
         dates: { select: { startTime: true, endTime: true } },
         organization: { select: { name: true, logoUrl: true } },
@@ -216,33 +201,29 @@ export const syncEventNotifications = async (
         (date) => date.endTime.getTime() + LIVE_GRACE_MS < now.getTime(),
       );
 
-    const covered = new Set(
-      event.assignments
-        .filter((assignment) => coversRole(assignment, now))
-        .map((assignment) => assignment.role),
+    // Each role against how many it needs. A spot is open when nobody has said
+    // yes to it and nobody is deciding on it — a lapsed invitation counts as
+    // nobody even before the hourly sweep writes EXPIRED, the window an admin
+    // most needs to see the hole.
+    const standings = rosterStandings(
+      event.rolesNeeded,
+      parseRoleSpots(event.roleSpots),
+      event.assignments,
+      now,
     );
 
-    const openRoles = event.rolesNeeded.filter((role) => !covered.has(role));
+    const openRoles = standings.filter((standing) => standing.open > 0);
 
-    // Every role has somebody who said yes, and nobody is still deciding. The
+    // Every spot has somebody who said yes, and nobody is still deciding. The
     // second half is the organization's rule: three BGVs invited and one
     // accepted is not fully staffed until the other two answer, either way.
-    const confirmed = new Set(
-      event.assignments
-        .filter((assignment) => assignment.status === InvitationStatus.ACCEPTED)
-        .map((assignment) => assignment.role),
-    );
-
     const stillDeciding = event.assignments.some(
       (assignment) =>
         assignment.status === InvitationStatus.PENDING &&
         assignment.expiresAt > now,
     );
 
-    const fullyStaffed =
-      event.rolesNeeded.length > 0 &&
-      event.rolesNeeded.every((role) => confirmed.has(role)) &&
-      !stillDeciding;
+    const fullyStaffed = isFullyStaffed(standings) && !stillDeciding;
 
     // The fill-up itself, claimed before any row is written so the row knows
     // whether it is news. The claim is atomic, so of any number of reconciles
@@ -270,7 +251,7 @@ export const syncEventNotifications = async (
     // Admin side: the rows go to whoever owns each alert, the same people the
     // emails do (lib/notifications/audience.ts), so the bell and the inbox
     // can't disagree about whose problem a hole is. Missing people carries a
-    // count — each owner's count is the open roles that are theirs, so a band
+    // count — each owner's count is the open spots that are theirs, so a band
     // lead (or whoever covers the band on this event) sees the band's holes
     // and the creator sees the rest. Fully staffed
     // carries nothing and goes to everybody its email does. In between — every role
@@ -305,7 +286,7 @@ export const syncEventNotifications = async (
 
         const counts = new Map<string, number>();
 
-        for (const role of openRoles) {
+        for (const { role, open } of openRoles) {
           const { people } = roleOwners(directory, {
             serviceTypeId: event.serviceTypeId,
             createdById: event.createdById,
@@ -314,7 +295,7 @@ export const syncEventNotifications = async (
           });
 
           for (const { userId } of people) {
-            counts.set(userId, (counts.get(userId) ?? 0) + 1);
+            counts.set(userId, (counts.get(userId) ?? 0) + open);
           }
         }
 

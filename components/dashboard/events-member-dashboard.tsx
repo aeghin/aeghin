@@ -924,10 +924,9 @@ export function MemberEventsDashboard({
                             const meter =
                               activeTab === "all" &&
                               event.staffing &&
-                              event.rolesNeeded.length > 0 ? (
+                              event.staffing.needed > 0 ? (
                                 <StaffingMeter
                                   staffing={event.staffing}
-                                  needed={event.rolesNeeded.length}
                                 />
                               ) : null;
 

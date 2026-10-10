@@ -39,6 +39,7 @@ import { EmailTeamDialog } from "./email-team-dialog";
 import { AddEventRolesDialog } from "./add-event-roles-dialog";
 import { InviteToEventDialog, type RoleHolder } from "./invite-to-event-dialog";
 import { EventRoleRemoveButton } from "./event-role-remove-button";
+import { roleStanding } from "@/lib/role-spots";
 import { EventSmartSchedulingToggle } from "./event-smart-scheduling-toggle";
 
 export type TeamMember = {
@@ -118,7 +119,6 @@ export function EventAssignmentsCard({
   // pickers can't disagree about which invitations are still live.
   const now = new Date();
 
-  const total = event.assignments.length;
   const acceptedCount = event.assignments.filter(
     (e) => e.status === InvitationStatus.ACCEPTED,
   ).length;
@@ -174,6 +174,16 @@ export function EventAssignmentsCard({
       : null;
   };
 
+  // Each role against how many it needs. Every invite is somebody wanted
+  // there, so the counts are spots: two pianists needed and one confirmed is
+  // 1/2, whoever else declined or let it lapse.
+  const standingOf = (role: VolunteerRole) =>
+    roleStanding(role, event.roleSpots, event.assignments, now);
+
+  const standings = [...rosterRoles].map(standingOf);
+  const neededSpots = standings.reduce((sum, s) => sum + s.needed, 0);
+  const filledSpots = standings.reduce((sum, s) => sum + Math.min(s.accepted, s.needed), 0);
+
   const membersByRole: Record<string, TeamMember[]> = {};
   const memberCountByRole: Record<string, number> = {};
 
@@ -197,19 +207,18 @@ export function EventAssignmentsCard({
         .map((role) => ({
           role,
           items: event.assignments.filter((a) => a.role === role),
+          standing: standingOf(role),
         }));
-
-      const items = roleGroups.flatMap((g) => g.items);
-      const acceptedCount = items.filter(
-        (a) => a.status === InvitationStatus.ACCEPTED,
-      ).length;
 
       return {
         key,
         label: teamLabel(key),
         roleGroups,
-        total: items.length,
-        acceptedCount,
+        needed: roleGroups.reduce((sum, g) => sum + g.standing.needed, 0),
+        filled: roleGroups.reduce(
+          (sum, g) => sum + Math.min(g.standing.accepted, g.standing.needed),
+          0,
+        ),
       };
     })
     .filter((cat) => cat.roleGroups.length > 0);
@@ -254,7 +263,7 @@ export function EventAssignmentsCard({
               Team
             </CardTitle>
             <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-              {acceptedCount}/{total} confirmed
+              {filledSpots}/{neededSpots} confirmed
             </span>
           </div>
           {canManage && (
@@ -307,7 +316,7 @@ export function EventAssignmentsCard({
                 <div className="flex w-full items-center justify-between pr-2">
                   <span className="text-sm font-semibold">{category.label}</span>
                   <span className="text-xs text-muted-foreground tabular-nums">
-                    {category.acceptedCount}/{category.total}
+                    {category.filled}/{category.needed}
                   </span>
                 </div>
               </AccordionTrigger>
@@ -315,6 +324,8 @@ export function EventAssignmentsCard({
                 {category.roleGroups.map((group) => {
                   const roleInfo = volunteerRoleConfig[group.role];
                   const isUnfilled = group.items.length === 0;
+                  const { needed, accepted, open } = group.standing;
+                  const openLabel = `${open} more needed`;
 
                   return (
                     <div key={group.role} className="group/role space-y-2">
@@ -329,11 +340,13 @@ export function EventAssignmentsCard({
                           ·
                         </span>
                         <span className="text-muted-foreground tabular-nums">
-                          {group.items.length}
+                          {Math.min(accepted, needed)}/{needed}
                         </span>
                         {canManage && (
                           <span className="ml-auto flex items-center gap-1">
-                            {!isUnfilled && (
+                            {/* Open spots invite from their own row; a full
+                                role still can, which adds a spot. */}
+                            {!isUnfilled && open === 0 && (
                               <InviteToEventDialog
                                 organizationId={event.organizationId}
                                 eventId={event.id}
@@ -344,6 +357,7 @@ export function EventAssignmentsCard({
                                 serviceColor={event.serviceType.color}
                                 holders={holdersFor(group.role)}
                                 teamLead={leadFor(group.role)}
+                                spots={{ needed, open }}
                               />
                             )}
                             <EventRoleRemoveButton
@@ -368,6 +382,7 @@ export function EventAssignmentsCard({
                             serviceColor={event.serviceType.color}
                             holders={holdersFor(group.role)}
                             teamLead={leadFor(group.role)}
+                            spots={{ needed, open }}
                           />
                         ) : (
                           <p className="px-3 py-2.5 text-sm text-muted-foreground">
@@ -460,11 +475,36 @@ export function EventAssignmentsCard({
                                   </p>
                                 )}
                               </div>
-                              {!isDeclined && canManage && <EventVolunteerRowMenu assignedUserId={assignment.userId} eventId={assignment.eventId} organizationId={assignment.organizationId} isExpired={isExpired} />}
+                              {canManage && <EventVolunteerRowMenu assignedUserId={assignment.userId} eventId={assignment.eventId} organizationId={assignment.organizationId} isExpired={isExpired} isEnded={isDeclined} />}
                             </div>
                           );
                         })}
                       </div>
+
+                      {/* Somebody declined, let it lapse, was removed, or the
+                          role needs more than are on it: the spot is still open. */}
+                      {!isUnfilled &&
+                        open > 0 &&
+                        (canManage ? (
+                          <InviteToEventDialog
+                            organizationId={event.organizationId}
+                            eventId={event.id}
+                            role={group.role}
+                            members={membersByRole[group.role] || []}
+                            unavailableUserIds={unavailableUserIds}
+                            eventDates={eventDates}
+                            variant="row"
+                            rowLabel={openLabel}
+                            serviceColor={event.serviceType.color}
+                            holders={holdersFor(group.role)}
+                            teamLead={leadFor(group.role)}
+                            spots={{ needed, open }}
+                          />
+                        ) : (
+                          <p className="px-3 py-2.5 text-sm text-muted-foreground">
+                            {openLabel}
+                          </p>
+                        ))}
                     </div>
                   );
                 })}

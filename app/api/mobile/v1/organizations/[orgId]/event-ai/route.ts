@@ -137,6 +137,7 @@ export const POST = route<Params>("POST .../event-ai", async (req, { params }) =
             description: t.description,
             days: t.days,
             rolesNeeded: t.rolesNeeded,
+            roleSpots: t.roleSpots,
             expiresInDays: t.expiresInDays,
             smartSchedulingEnabled: t.smartSchedulingEnabled,
             rehearsalDayOffset: t.rehearsalDayOffset,

@@ -2,6 +2,7 @@ import { ToolLoopAgent, tool, stepCountIs, InferAgentUIMessage } from "ai";
 import { VolunteerRole } from "@/generated/prisma/enums";
 import { ROLE_ORDER, teamLabel, teamOfRole, volunteerRoleConfig } from "@/lib/config/roles";
 import type { RoleEligibility } from "@/lib/types";
+import { spotsFor, storedRoleSpots, type RoleSpots } from "@/lib/role-spots";
 import {
   checkAvailabilityInputSchema,
   proposeEventInputSchema,
@@ -20,6 +21,7 @@ export type AgentTemplate = {
   description: string;
   days: { dayOffset: number; startTime: string; endTime: string }[];
   rolesNeeded: VolunteerRole[];
+  roleSpots?: RoleSpots;
   expiresInDays: number;
   smartSchedulingEnabled: boolean;
   /** Offset from the template's first day: 0 same day, negative before it. */
@@ -68,6 +70,8 @@ export type EventDraft = {
   location: string;
   days: DraftDay[];
   rolesNeeded: VolunteerRole[];
+  /** How many each role needs, for the roles needing more than one. */
+  roleSpots: RoleSpots;
   assignments: DraftAssignment[];
   expiresInDays: 3 | 5 | 7;
   smartSchedulingEnabled: boolean;
@@ -136,7 +140,12 @@ function buildInstructions(opts: {
           (t) =>
             `- "${t.name}" | every ${WEEKDAYS[t.dayOfWeek]} | ${t.location} | serviceTypeId ${t.serviceTypeId} | ${t.days
               .map((d) => `day+${d.dayOffset} ${d.startTime}-${d.endTime}`)
-              .join(", ")} | roles: ${t.rolesNeeded.join(", ")} | expires ${t.expiresInDays}d | smartScheduling ${t.smartSchedulingEnabled}${
+              .join(", ")} | roles: ${t.rolesNeeded
+              .map((role) => {
+                const count = spotsFor(t.roleSpots ?? {}, role);
+                return count > 1 ? `${role} x${count}` : role;
+              })
+              .join(", ")} | expires ${t.expiresInDays}d | smartScheduling ${t.smartSchedulingEnabled}${
               t.rehearsalDayOffset !== null &&
               t.rehearsalStartTime &&
               t.rehearsalEndTime
@@ -188,6 +197,7 @@ PICKING PEOPLE
 - Never pick anyone in the excluded list. They have a real conflict or a blockout, and the server will reject them.
 - Honour explicit requests ("put Marcus on drums") whenever that person is eligible. If they aren't, say who and why, and offer the best alternative.
 - Leaving a slot empty is fine and often correct. Say which roles you left open and why.
+- Some roles need more than one person — three BGVs, two guitarists, a template's "BGVS x3". Set roleSpots for those and assign up to that many. Every assignment is somebody wanted there, never a backup, so never assign more people to a role than it needs.
 
 HARD RULES — the server enforces these and will reject the draft
 - Event name: 25 characters maximum. Location: 20 characters maximum.
@@ -405,7 +415,19 @@ export function createEventDraftAgent(opts: {
         });
       }
 
-      const filled = new Set(assignments.map((a) => a.role));
+      // As many as asked for, and never fewer than the people picked for it.
+      const roleSpots = storedRoleSpots(
+        Object.fromEntries(
+          rolesNeeded.map((role) => [
+            role,
+            Math.max(
+              input.roleSpots?.[role] ?? 1,
+              assignments.filter((a) => a.role === role).length,
+            ),
+          ]),
+        ),
+        rolesNeeded,
+      );
 
       return {
         ok: true,
@@ -418,13 +440,16 @@ export function createEventDraftAgent(opts: {
           location: input.location,
           days,
           rolesNeeded,
+          roleSpots,
           assignments,
           expiresInDays: input.expiresInDays,
           smartSchedulingEnabled: input.smartSchedulingEnabled,
           rehearsal,
           summary: input.summary,
           warnings,
-          unfilledRoles: rolesNeeded.filter((r) => !filled.has(r)),
+          unfilledRoles: rolesNeeded.filter(
+            (r) => assignments.filter((a) => a.role === r).length < spotsFor(roleSpots, r),
+          ),
         },
       };
     },

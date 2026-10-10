@@ -135,6 +135,7 @@ const EMPTY_EVENT_DEFAULTS = {
   dayTimes: {},
   location: "",
   rolesNeeded: [],
+  roleSpots: {},
   expiresAt: 3,
   smartSchedulingEnabled: false,
   rehearsal: EMPTY_REHEARSAL,
@@ -188,6 +189,7 @@ const templateToFormValues = (
     dayTimes,
     location: template.location,
     rolesNeeded: template.rolesNeeded,
+    roleSpots: template.roleSpots,
     expiresAt: template.expiresInDays,
     smartSchedulingEnabled: template.smartSchedulingEnabled,
     rehearsal,
@@ -370,6 +372,7 @@ export function CreateEventPageContent({
   const watchedDayTimes = watch("dayTimes");
   const watchedLocation = watch("location");
   const watchedRolesNeeded = watch("rolesNeeded");
+  const watchedRoleSpots = watch("roleSpots");
   const watchedExpiresAt = watch("expiresAt");
   const watchedSmartScheduling = watch("smartSchedulingEnabled");
   const watchedRehearsal = watch("rehearsal");
@@ -488,6 +491,7 @@ export function CreateEventPageContent({
         dayTimes,
         location: draft.location,
         rolesNeeded: draft.rolesNeeded,
+        roleSpots: draft.roleSpots,
         expiresAt: draft.expiresInDays,
         smartSchedulingEnabled: draft.smartSchedulingEnabled,
         // Already a resolved date and wall-clock times, which is the shape the
@@ -622,8 +626,16 @@ export function CreateEventPageContent({
     // into a role this event no longer has.
     if (dropping) {
       setRoleAssignments((prev) => ({ ...prev, [role]: [] }));
+
+      const { [role]: _dropped, ...rest } = form.getValues("roleSpots") ?? {};
+      setValue("roleSpots", rest);
     }
   };
+
+  // How many one role needs: everybody assigned to it, since every one of them
+  // is wanted there — or more, when an AI draft asked for more than it found.
+  const spotsOf = (role: VolunteerRole) =>
+    Math.max(watchedRoleSpots?.[role] ?? 1, roleAssignments[role]?.length ?? 0);
 
   const handleAssignMember = (
     role: VolunteerRole,
@@ -1768,6 +1780,8 @@ export function CreateEventPageContent({
                         assignedToRoleSet.has(m.userId),
                       );
 
+                      const spots = spotsOf(role);
+
                       return (
                         <button
                           key={role}
@@ -1785,8 +1799,8 @@ export function CreateEventPageContent({
                             <p className="text-xs text-muted-foreground">
                               {availableMembers.length === 0
                                 ? "No members available for this role"
-                                : assignedToRole.length > 0
-                                  ? `${assignedToRole.length} assigned · ${availableMembers.length} available`
+                                : assignedToRole.length > 0 || spots > 1
+                                  ? `${assignedToRole.length} of ${spots} assigned · ${availableMembers.length} available`
                                   : `${availableMembers.length} available`}
                             </p>
                           </div>

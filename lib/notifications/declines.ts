@@ -1,7 +1,7 @@
 import "server-only";
 
 import prisma from "@/lib/prisma";
-import { InvitationStatus, type VolunteerRole } from "@/generated/prisma/enums";
+import { type VolunteerRole } from "@/generated/prisma/enums";
 import EventShortageEmail from "@/components/email/event-shortage-template";
 import { formatEventWhen } from "@/lib/email/event-when";
 import { organizationSender } from "@/lib/email/organization";
@@ -10,6 +10,7 @@ import { teamOfRole, volunteerRoleConfig } from "@/lib/config/roles";
 import { reasonLine, roleAudience } from "@/lib/notifications/audience";
 import { loadStaffingDirectory } from "@/lib/notifications/directory";
 import { sendPushNotices } from "@/lib/push/send";
+import { parseRoleSpots, roleStanding } from "@/lib/role-spots";
 
 /**
  * Tells whoever owns a declined role that it is still open, and copies in
@@ -49,29 +50,34 @@ export async function notifyDeclineShortage({
   reason: string;
 }): Promise<void> {
   try {
-    // A role somebody else has already confirmed isn't short — the rule the
-    // expired-invite email follows too. Without it, the last extra invite on
-    // a role declining would mail "BGVs needed" in the same moment the
-    // roster reports itself fully staffed.
-    const [stillConfirmed, event] = await Promise.all([
-      prisma.eventAssignment.count({
-        where: { eventId, role, status: InvitationStatus.ACCEPTED },
-      }),
-      // Which service's lead has it, and whether somebody covers the team on
-      // this event only.
-      prisma.event.findUnique({
-        where: { id: eventId },
-        select: {
-          serviceTypeId: true,
-          teamLeads: {
-            where: { category: teamOfRole(role) },
-            select: { userId: true },
-          },
+    // Which service's lead has it, whether somebody covers the team on this
+    // event only, and whether the decline left a spot open. Every invite is
+    // somebody wanted there, so it nearly always does — somebody else on the
+    // role accepting doesn't fill this one. The rule the expired-invite email
+    // follows too.
+    const event = await prisma.event.findUnique({
+      where: { id: eventId },
+      select: {
+        serviceTypeId: true,
+        roleSpots: true,
+        teamLeads: {
+          where: { category: teamOfRole(role) },
+          select: { userId: true },
         },
-      }),
-    ]);
+        assignments: {
+          where: { role },
+          select: { role: true, status: true, expiresAt: true },
+        },
+      },
+    });
 
-    if (stillConfirmed > 0 || !event) return;
+    if (
+      !event ||
+      roleStanding(role, parseRoleSpots(event.roleSpots), event.assignments, new Date())
+        .open === 0
+    ) {
+      return;
+    }
 
     const directory = await loadStaffingDirectory(organizationId);
 

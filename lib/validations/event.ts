@@ -1,5 +1,16 @@
 import { z } from "zod/v4";
 import { RoleCategory, VolunteerRole } from "@/generated/prisma/enums";
+import { MAX_SPOTS } from "@/lib/role-spots";
+
+/**
+ * How many people a role needs, keyed by role. Partial: a role left out needs
+ * one, which is how every form and older phone build that predates counts
+ * sends it.
+ */
+export const roleSpotsSchema = z.partialRecord(
+  z.enum(VolunteerRole),
+  z.number().int().min(1).max(MAX_SPOTS),
+);
 
 /**
  * Who handles a team on this event only, in place of the service type's lead
@@ -102,6 +113,7 @@ const createEventBaseSchema = z.object({
   ),
   location: z.string().trim().min(1, "Location is required").max(20, "Location must be 20 characters or less"),
   rolesNeeded: z.array(z.enum(VolunteerRole)).min(1, "Select at least one role"),
+  roleSpots: roleSpotsSchema.optional(),
   expiresAt: z.number().refine((v) => [3, 5, 7].includes(v)),
   smartSchedulingEnabled: z.boolean(),
   rehearsal: rehearsalSchema.optional(),
@@ -137,6 +149,7 @@ export const removeEventRoleSchema = z.object({
 });
 
 export type RemoveEventRoleInput = z.infer<typeof removeEventRoleSchema>;
+
 
 
 export const inviteToEventSchema = z.object({

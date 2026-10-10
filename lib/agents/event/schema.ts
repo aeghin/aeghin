@@ -66,6 +66,12 @@ export const proposeEventInputSchema = z.object({
     .array(z.enum(VolunteerRole))
     .min(1)
     .describe("Every role this event calls for, filled or not."),
+  roleSpots: z
+    .partialRecord(z.enum(VolunteerRole), z.number().int().min(2).max(20))
+    .optional()
+    .describe(
+      'How many people a role needs, only for roles needing more than one: {"BGVS": 3}. A role left out needs one.',
+    ),
   assignments: z
     .array(
       z.object({

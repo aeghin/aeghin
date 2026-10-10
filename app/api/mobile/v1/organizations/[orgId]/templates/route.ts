@@ -14,6 +14,7 @@ import {
     readJson,
     route,
 } from "@/lib/mobile/route";
+import { parseRoleSpots, type RoleSpots } from "@/lib/role-spots";
 
 /**
  * Wire contract for the templates screen. Mirrors `EventTemplate` in the Expo
@@ -50,6 +51,8 @@ type EventTemplate = {
     dayOfWeek: number;
     days: EventTemplateDay[];
     rolesNeeded: VolunteerRole[];
+    /** How many each role needs, for the roles needing more than one. */
+    roleSpots: RoleSpots;
     /** Days an invitee gets to answer on events built from this: 3, 5 or 7. */
     expiresInDays: number;
     smartSchedulingEnabled: boolean;
@@ -108,6 +111,7 @@ export const GET = route<Params>("GET .../templates", async (_req, { params }) =
                 select: { startTime: true, endTime: true },
             },
             rolesNeeded: true,
+            roleSpots: true,
             expiresInDays: true,
             smartSchedulingEnabled: true,
             rehearsalDayOffset: true,
@@ -120,6 +124,7 @@ export const GET = route<Params>("GET .../templates", async (_req, { params }) =
 
     const templates: EventTemplate[] = rows.map((row) => ({
         ...row,
+        roleSpots: parseRoleSpots(row.roleSpots),
         serviceType: {
             ...row.serviceType,
             color: isServiceTypeColor(row.serviceType.color)

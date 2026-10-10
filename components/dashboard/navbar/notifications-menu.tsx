@@ -63,8 +63,8 @@ const describe = (item: NotificationItem) => {
   if (item.category === "FULLY_STAFFED") return "Fully staffed";
 
   return item.count === 1
-    ? "1 role still open"
-    : `${item.count} roles still open`;
+    ? "1 spot still open"
+    : `${item.count} spots still open`;
 };
 
 /**
