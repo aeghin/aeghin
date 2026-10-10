@@ -116,3 +116,39 @@ export async function getEventMessages(
 
   return { messages: page.map(toChatMessage), nextCursor };
 }
+
+/**
+ * Messages from somebody else since the user last had the chat on screen, or
+ * every one of them if they never have. The badge on the phone's event screen.
+ */
+export async function getUnreadCount(userId: string, eventId: string) {
+  const read = await prisma.chatRead.findUnique({
+    where: { userId_eventId: { userId, eventId } },
+    select: { readAt: true },
+  });
+
+  return prisma.message.count({
+    where: {
+      eventId,
+      authorId: { not: userId },
+      ...(read ? { createdAt: { gt: read.readAt } } : {}),
+    },
+  });
+}
+
+/**
+ * Marks the chat read up to its newest message. One statement, so the phone
+ * and a dashboard tab marking at once can't race, and `GREATEST` keeps a
+ * slower write from un-reading what a faster one saw. A chat with no messages
+ * has nothing to mark.
+ */
+export async function recordChatRead(userId: string, eventId: string) {
+  await prisma.$executeRaw`
+    INSERT INTO "ChatRead" ("userId", "eventId", "readAt")
+    SELECT ${userId}::text, ${eventId}::text, MAX("createdAt")
+    FROM "Message"
+    WHERE "eventId" = ${eventId}
+    HAVING MAX("createdAt") IS NOT NULL
+    ON CONFLICT ("userId", "eventId")
+    DO UPDATE SET "readAt" = GREATEST("ChatRead"."readAt", EXCLUDED."readAt")`;
+}

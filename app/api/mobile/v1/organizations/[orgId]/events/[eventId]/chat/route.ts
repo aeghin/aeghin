@@ -1,6 +1,10 @@
 import prisma from "@/lib/prisma";
 import { sendMessage } from "@/lib/actions/chat";
-import { getChatAccessForUser, getEventMessages } from "@/lib/services/chat";
+import {
+    getChatAccessForUser,
+    getEventMessages,
+    getUnreadCount,
+} from "@/lib/services/chat";
 import type { ChatMessage } from "@/lib/realtime/types";
 import {
     actionFailure,
@@ -20,6 +24,9 @@ import {
  * trip, whether it may post and what to enter presence as. The same gate the
  * dashboard's page applies: a manager may read, only an accepted assignee
  * writes.
+ *
+ * `unreadCount` is on the first page only: the messages from somebody else
+ * since the caller last had the chat on screen, for the event screen's badge.
  */
 type ChatPage = {
     messages: ChatMessage[];
@@ -31,6 +38,7 @@ type ChatPage = {
         lastName: string;
         userImageUrl: string | null;
     };
+    unreadCount?: number;
 };
 
 type Params = { orgId: string; eventId: string };
@@ -70,7 +78,10 @@ export const GET = route<Params>("GET .../chat", async (req, { params }) => {
 
     const cursor = new URL(req.url).searchParams.get("cursor") ?? undefined;
 
-    const { messages, nextCursor } = await getEventMessages(eventId, { cursor });
+    const [{ messages, nextCursor }, unreadCount] = await Promise.all([
+        getEventMessages(eventId, { cursor }),
+        cursor ? undefined : getUnreadCount(user.id, eventId),
+    ]);
 
     const page: ChatPage = {
         messages,
@@ -82,6 +93,7 @@ export const GET = route<Params>("GET .../chat", async (req, { params }) => {
             lastName: user.lastName,
             userImageUrl: user.userImageUrl,
         },
+        unreadCount,
     };
 
     return json(page);

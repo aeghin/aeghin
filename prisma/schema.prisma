@@ -102,6 +102,7 @@ model User {
   createdAssignments EventAssignment[] @relation("assignedBy")
 
   authoredMessages Message[] @relation("authoredMessages")
+  chatReads ChatRead[]
 
   setlistSongAssignment SetlistSongAssignment[]
 
@@ -325,6 +326,7 @@ model Event {
 
   setlistSongs SetlistSong[]
   messages Message[]
+  chatReads ChatRead[]
   activityLogs ActivityLog[]
   teamLeads EventTeamLead[]
 
@@ -443,6 +445,26 @@ model Message {
   @@index([eventId, createdAt])
   @@index([organizationId])
   @@index([authorId])
+}
+
+/// How far into one event's chat one person has read: every message after
+/// `readAt` from somebody else is unread to them, and no row means they have
+/// never opened it. Moved forward while the chat is on their screen, on the
+/// phone or the dashboard, and never back. Feeds the unread count on the
+/// phone's event screen.
+model ChatRead {
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  eventId String
+  event   Event  @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  /// The newest message's `createdAt` when they last looked, not the clock,
+  /// so it compares against messages with no skew between servers.
+  readAt DateTime
+
+  @@id([userId, eventId])
+  @@index([eventId])
 }
 
 model ActivityLog {

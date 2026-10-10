@@ -10,6 +10,7 @@ import {
 import {
   getChatAccess,
   getEventMessages,
+  recordChatRead,
   toChatMessage,
 } from "@/lib/services/chat";
 import { publishMessage } from "@/lib/realtime";
@@ -100,4 +101,16 @@ export async function fetchLatestMessages(
 
   const { messages, nextCursor } = await getEventMessages(eventId);
   return { success: true, messages, nextCursor };
+}
+
+/**
+ * The chat panel is on screen, so everything in it so far is read. The same
+ * mark the phone's chat screen makes, which is what lets reading here clear
+ * the badge on the phone.
+ */
+export async function markChatRead(eventId: string): Promise<void> {
+  const ctx = await getChatAccess(eventId);
+  if (!ctx) return;
+
+  await recordChatRead(ctx.user.id, eventId);
 }

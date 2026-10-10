@@ -10,6 +10,7 @@ import { MessagesSquare, SendHorizontal } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { colorClasses } from "@/lib/config/service-types-config";
+import { markChatRead } from "@/lib/actions/chat";
 import { useEventChat } from "@/lib/realtime/use-event-chat";
 import type { ChatMessage } from "@/lib/realtime/types";
 
@@ -145,8 +146,42 @@ export function EventChatPanel({
       me: { id: currentUserId, ...me },
     });
 
+  const cardRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const draftRef = useRef<HTMLTextAreaElement>(null);
+
+  // The newest message the server has. An optimistic send isn't one yet.
+  const newestId = messages.findLast((m) => !m.id.startsWith("temp-"))?.id;
+
+  useEffect(() => {
+    // Read means seen: half the panel on screen in a tab that's showing. Marked
+    // once per newest message, and it's what clears the badge on the phone.
+    const card = cardRef.current;
+    if (!card || !newestId) return;
+
+    let onScreen = false;
+    let marked = false;
+    const mark = () => {
+      if (marked || !onScreen || document.hidden) return;
+      marked = true;
+      markChatRead(eventId).catch(() => {});
+    };
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        onScreen = entry.intersectionRatio >= 0.5;
+        mark();
+      },
+      { threshold: 0.5 },
+    );
+    observer.observe(card);
+    document.addEventListener("visibilitychange", mark);
+
+    return () => {
+      observer.disconnect();
+      document.removeEventListener("visibilitychange", mark);
+    };
+  }, [eventId, newestId]);
 
   useEffect(() => {
     // Scroll the chat's own box to the newest message. scrollIntoView also
@@ -170,7 +205,7 @@ export function EventChatPanel({
   }
 
   return (
-    <Card className="flex h-112 flex-col overflow-hidden">
+    <Card ref={cardRef} className="flex h-112 flex-col overflow-hidden">
       <CardHeader className="flex-row items-center justify-between space-y-0 pb-3">
         <CardTitle className="flex items-center gap-2 text-sm font-semibold">
           <MessagesSquare className="h-4 w-4 text-muted-foreground" />
