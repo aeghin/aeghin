@@ -43,6 +43,21 @@ export type TagInvalidator = (tag: string) => void;
  */
 const LIVE_GRACE_MS = 24 * 60 * 60 * 1000;
 
+/**
+ * How close an event's first block has to be before a spot nobody was ever
+ * invited to counts as open on the bell.
+ *
+ * Events go on the calendar months ahead with their roles picked and nobody
+ * asked yet. That is a plan, not a hole, and flagging every one the moment it
+ * is saved buries the spots that actually fell through. The last week is when
+ * an empty spot becomes the bell's business: it is the only warning a plan
+ * without last call gets, and the only way the bell sees a spot whose volunteer
+ * left the organization, since leaving deletes the assignment and the spot
+ * then reads as never invited. Floating-UTC times open it a few hours early for
+ * organizations west of UTC, which is noise next to a week.
+ */
+const UNSTARTED_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+
 type Desired = {
   userId: string;
   category: NotificationCategory;
@@ -212,7 +227,33 @@ export const syncEventNotifications = async (
       now,
     );
 
-    const openRoles = standings.filter((standing) => standing.open > 0);
+    // Inside the last week before the first block. No dates means no block to
+    // be near — `Math.min()` of nothing is Infinity — so it never is.
+    const closeIn =
+      Math.min(...event.dates.map((date) => date.startTime.getTime())) -
+        UNSTARTED_WINDOW_MS <=
+      now.getTime();
+
+    // The bell's open spots. One that somebody was asked to fill and isn't
+    // going to — declined, lapsed, taken off — counts as soon as it happens;
+    // one nobody has been asked to fill waits for the last week.
+    const openRoles = standings
+      .map((standing) => {
+        if (closeIn) return standing;
+
+        const asked = event.assignments.filter(
+          (assignment) => assignment.role === standing.role,
+        ).length;
+
+        return {
+          ...standing,
+          open: Math.min(
+            standing.open,
+            asked - standing.accepted - standing.deciding,
+          ),
+        };
+      })
+      .filter((standing) => standing.open > 0);
 
     // Every spot has somebody who said yes, and nobody is still deciding. The
     // second half is the organization's rule: three BGVs invited and one
