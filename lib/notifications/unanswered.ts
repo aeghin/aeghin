@@ -31,12 +31,12 @@ import {
   daysBefore,
   inZone,
   isDue,
-  isDueAt,
   wakingNext,
   wakingSameDay,
   wallClock,
   zonesByEmail,
 } from "@/lib/push/timing";
+import { MAX_BEHIND_UTC_MS, hasDateAhead, zoneOrFallback } from "@/lib/time-zone";
 
 /**
  * An event invitation nobody has answered, from both ends. The invitee is
@@ -53,8 +53,11 @@ import {
  *
  * Each goes by email and push together, at a moment planned on the
  * recipient's own clock: the zone their phone reports keeps the push inside
- * 8am to 9pm, and the email goes with it. Somebody whose phone has never
- * reported a zone — usually somebody without the app — gets the email alone.
+ * 6am to 11pm, and the email goes with it. Somebody whose phone has never
+ * reported a zone — usually somebody without the app — gets the email alone,
+ * planned the same way on the organization's clock, which is where they most
+ * likely are. The event's own start is always on the organization's clock:
+ * its times are the church's wall clock.
  */
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -73,8 +76,8 @@ const [EVENT_LEAD_DAYS, EVENT_LAST_DAYS] = LAST_CALL_DAYS;
 
 /**
  * The rows worth reading on a tick: invitations closing soon, and invitations
- * to events starting soon. A send planned N days out can move from 4 hours
- * earlier (into the evening) to 8 later (into the morning), may go up to 3
+ * to events starting soon. A send planned N days out can move from 2 hours
+ * earlier (into the evening) to 6 later (into the morning), may go up to 3
  * hours late, and an event's floating start can sit up to 14 hours either side
  * of the instant it names; the furthest out anything is planned is three days.
  */
@@ -111,12 +114,8 @@ export type SendCount = { pushes: number; emails: number };
 const firstStartOf = (dates: { startTime: Date }[]) =>
   new Date(Math.min(...dates.map((date) => date.startTime.getTime())));
 
-/**
- * The event's floating first start as an instant: on the reader's clock, or
- * read as UTC when there's no zone — hours out at worst, which mail can bear.
- */
-const startInstant = (firstStart: Date, timeZone: string | undefined) =>
-  timeZone ? inZone(firstStart, timeZone) : firstStart;
+/** The event's floating first start as an instant, on the organization's clock. */
+const startInstant = (firstStart: Date, orgZone: string) => inZone(firstStart, orgZone);
 
 /**
  * How many days before the answer is due the halfway reminder goes: half the
@@ -132,37 +131,30 @@ function midwayDaysLeft(invitedAt: Date, answerBy: Date): number | null {
 
 /**
  * `daysLeft` days before an invitation closes: that time on the reader's
- * clock, kept inside waking hours on its own day, or the bare instant when
- * there's no zone to read.
+ * clock, kept inside waking hours on its own day.
  */
-function beforeDeadline(deadline: Date, daysLeft: number, timeZone: string | undefined): Date {
+function beforeDeadline(deadline: Date, daysLeft: number, clock: string): Date {
   const planned = new Date(deadline.getTime() - daysLeft * DAY_MS);
 
-  return timeZone
-    ? inZone(wakingSameDay(wallClock(planned, timeZone)), timeZone)
-    : planned;
+  return inZone(wakingSameDay(wallClock(planned, clock)), clock);
 }
 
 /**
  * `days` before the event, at its own time of day on the reader's clock and
- * inside waking hours, as the last call is timed.
+ * inside waking hours — exactly as the last call is timed, which is what lets
+ * the two tell whether they'd land on the same person the same day.
  */
-function beforeEvent(firstStart: Date, days: number, timeZone: string | undefined): Date {
-  return timeZone
-    ? inZone(wakingSameDay(daysBefore(firstStart, days)), timeZone)
-    : daysBefore(firstStart, days);
+function beforeEvent(firstStart: Date, days: number, clock: string): Date {
+  return inZone(wakingSameDay(daysBefore(firstStart, days)), clock);
 }
 
-const due = (sendAt: Date, now: Date, timeZone: string | undefined) =>
-  timeZone ? isDue(sendAt, now, timeZone) : isDueAt(sendAt, now);
+const due = (sendAt: Date, now: Date, clock: string) => isDue(sendAt, now, clock);
 
 const dayIndex = (floating: Date) => Math.floor(floating.getTime() / DAY_MS);
 
 /** "today", "tomorrow", "in 3 days" — counted on the reader's calendar. */
-function untilEvent(firstStart: Date, now: Date, timeZone: string | undefined): string {
-  const days = timeZone
-    ? dayIndex(firstStart) - dayIndex(wallClock(now, timeZone))
-    : Math.round((firstStart.getTime() - now.getTime()) / DAY_MS);
+function untilEvent(firstStart: Date, now: Date, clock: string): string {
+  const days = dayIndex(firstStart) - dayIndex(wallClock(now, clock));
 
   if (days <= 0) return "today";
   if (days === 1) return "tomorrow";
@@ -180,26 +172,20 @@ const shortDeadline = (deadline: Date, timeZone: string) =>
   });
 
 /**
- * "Sat, Oct 11, 10:30 PM CDT" in the reader's zone, for an email. Without one
- * there's no honest clock time to give, so it's "in about 3 days".
+ * "Sat, Oct 11, 10:30 PM CDT" on the reader's clock, for an email. The zone is
+ * named because it is the phone's, or else the organization's — somebody
+ * reading it elsewhere can still tell when it is.
  */
-const longDeadline = (deadline: Date, timeZone: string | undefined, now: Date) => {
-  if (timeZone) {
-    return deadline.toLocaleString("en-US", {
-      timeZone,
-      weekday: "short",
-      month: "short",
-      day: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-      timeZoneName: "short",
-    });
-  }
-
-  const days = Math.round((deadline.getTime() - now.getTime()) / DAY_MS);
-
-  return days > 1 ? `in about ${days} days` : "in about a day";
-};
+const longDeadline = (deadline: Date, clock: string) =>
+  deadline.toLocaleString("en-US", {
+    timeZone: clock,
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZoneName: "short",
+  });
 
 /**
  * Reminds whoever is still sitting on an event invitation: "Still need your
@@ -268,7 +254,7 @@ export async function sendAnswerReminders(now: Date): Promise<SendCount> {
             name: true,
             organizationId: true,
             dates: { select: { startTime: true, endTime: true } },
-            organization: { select: { name: true, logoUrl: true } },
+            organization: { select: { name: true, logoUrl: true, timeZone: true } },
           },
         },
       },
@@ -283,19 +269,22 @@ export async function sendAnswerReminders(now: Date): Promise<SendCount> {
     const planned = rows.flatMap((row) => {
       if (row.event.dates.length === 0) return [];
 
-      const timeZone = zones.get(row.user.email);
+      const orgZone = zoneOrFallback(row.event.organization.timeZone);
+      const phoneZone = zones.get(row.user.email);
+      // The clock it's planned on: their phone's, else the organization's.
+      const clock = phoneZone ?? orgZone;
       const firstStart = firstStartOf(row.event.dates);
 
       try {
-        const start = startInstant(firstStart, timeZone);
+        const start = startInstant(firstStart, orgZone);
 
         if (start.getTime() <= now.getTime()) return [];
 
         const eventFirst = row.expiresAt.getTime() >= start.getTime();
         const sendAt = (daysLeft: number) =>
           eventFirst
-            ? beforeEvent(firstStart, daysLeft, timeZone)
-            : beforeDeadline(row.expiresAt, daysLeft, timeZone);
+            ? beforeEvent(firstStart, daysLeft, clock)
+            : beforeDeadline(row.expiresAt, daysLeft, clock);
 
         const stages = [
           { final: true, daysLeft: FINAL_DAYS_LEFT, sent: row.nudgedAt },
@@ -313,13 +302,13 @@ export async function sendAnswerReminders(now: Date): Promise<SendCount> {
           const at = sendAt(daysLeft);
 
           return (
-            due(at, now, timeZone) &&
+            due(at, now, clock) &&
             at.getTime() - row.invitedAt.getTime() >= MIN_AGE_MS
           );
         });
 
         return stage
-          ? [{ row, timeZone, final: stage.final, eventFirst, firstStart }]
+          ? [{ row, phoneZone, clock, final: stage.final, eventFirst, firstStart }]
           : [];
       } catch {
         // A zone this runtime can't resolve: no reminder, rather than no tick.
@@ -350,8 +339,10 @@ export async function sendAnswerReminders(now: Date): Promise<SendCount> {
 
     const sending = planned.filter((item) => claimed.has(item.row.id));
 
-    const pushes: PushNotice[] = sending.flatMap(({ row, timeZone, eventFirst, firstStart }) =>
-      timeZone
+    // Pushed only to a phone that has reported its zone, whose clock it was
+    // planned on.
+    const pushes: PushNotice[] = sending.flatMap(({ row, phoneZone, eventFirst, firstStart }) =>
+      phoneZone
         ? [
             {
               email: row.user.email,
@@ -362,8 +353,8 @@ export async function sendAnswerReminders(now: Date): Promise<SendCount> {
                   .filter(Boolean)
                   .join(" · "),
                 eventFirst
-                  ? `It's ${untilEvent(firstStart, now, timeZone)}. Tap to accept or decline.`
-                  : `Expires ${shortDeadline(row.expiresAt, timeZone)}. Tap to accept or decline.`,
+                  ? `It's ${untilEvent(firstStart, now, phoneZone)}. Tap to accept or decline.`
+                  : `Expires ${shortDeadline(row.expiresAt, phoneZone)}. Tap to accept or decline.`,
               ].join("\n"),
               data: {
                 type: "invitation",
@@ -375,7 +366,7 @@ export async function sendAnswerReminders(now: Date): Promise<SendCount> {
         : [],
     );
 
-    const emails = sending.map(({ row, timeZone, eventFirst, firstStart }) => {
+    const emails = sending.map(({ row, clock, eventFirst, firstStart }) => {
       const when = formatEventWhen(row.event.dates);
 
       return {
@@ -393,8 +384,8 @@ export async function sendAnswerReminders(now: Date): Promise<SendCount> {
             : null,
           autoFilled: row.autoAssigned,
           timing: eventFirst
-            ? `${row.event.name} is ${untilEvent(firstStart, now, timeZone)}`
-            : `Your invitation expires ${longDeadline(row.expiresAt, timeZone, now)}`,
+            ? `${row.event.name} is ${untilEvent(firstStart, now, clock)}`
+            : `Your invitation expires ${longDeadline(row.expiresAt, clock)}`,
           eventFirst,
           eventDate: when?.date ?? null,
           eventTime: when?.time ?? null,
@@ -418,7 +409,10 @@ export async function sendAnswerReminders(now: Date): Promise<SendCount> {
 /** Everything one manager is told about one event's unanswered invitations. */
 type WaitingBucket = {
   recipient: Person;
-  timeZone: string | undefined;
+  /** The zone their phone reports. Only somebody with one is pushed. */
+  phoneZone: string | undefined;
+  /** What it was planned on and is worded in: their phone's zone, else the organization's. */
+  clock: string;
   footer: string;
   /** Whether any of these is theirs to act on, rather than a heads-up. */
   owns: boolean;
@@ -440,14 +434,12 @@ type WaitingBucket = {
 /** "Expires Sat 10:30 PM", or "Sunday Service is in 3 days" when the event comes first. */
 function waitingTiming(bucket: WaitingBucket, now: Date, long: boolean): string {
   if (!bucket.closesFirst) {
-    return `${bucket.eventName} is ${untilEvent(bucket.firstStart, now, bucket.timeZone)}`;
+    return `${bucket.eventName} is ${untilEvent(bucket.firstStart, now, bucket.clock)}`;
   }
 
   const deadline = long
-    ? longDeadline(bucket.closesFirst, bucket.timeZone, now)
-    : bucket.timeZone
-      ? shortDeadline(bucket.closesFirst, bucket.timeZone)
-      : longDeadline(bucket.closesFirst, undefined, now);
+    ? longDeadline(bucket.closesFirst, bucket.clock)
+    : shortDeadline(bucket.closesFirst, bucket.clock);
 
   return bucket.waiting.length === 1
     ? `The invitation expires ${deadline}`
@@ -517,7 +509,9 @@ export async function sendNoAnswerAlerts(now: Date): Promise<SendCount> {
           teamLeads: { select: { category: true, userId: true } },
         },
       },
-      organization: { select: { name: true, logoUrl: true, entitlements: true } },
+      organization: {
+        select: { name: true, logoUrl: true, entitlements: true, timeZone: true },
+      },
     },
     orderBy: { expiresAt: "asc" },
     take: LIMIT,
@@ -608,11 +602,15 @@ export async function sendNoAnswerAlerts(now: Date): Promise<SendCount> {
 
   const planned = candidates.flatMap((candidate) => {
     const { row, addressee, lastCalled } = candidate;
-    const timeZone = zones.get(addressee.person.email);
+    const orgZone = zoneOrFallback(row.organization.timeZone);
+    const phoneZone = zones.get(addressee.person.email);
+    // The clock it's planned on: their phone's, else the organization's —
+    // the same one the last call uses for the same person.
+    const clock = phoneZone ?? orgZone;
     const firstStart = firstStartOf(row.event.dates);
 
     try {
-      const start = startInstant(firstStart, timeZone);
+      const start = startInstant(firstStart, orgZone);
       const earliest = row.invitedAt.getTime() + MIN_AGE_MS;
       const closesFirst = row.expiresAt.getTime() < start.getTime();
 
@@ -623,13 +621,13 @@ export async function sendNoAnswerAlerts(now: Date): Promise<SendCount> {
       // event, or three days before the event; else the day before the event.
       const options = [
         ...(closesFirst
-          ? [{ at: beforeDeadline(row.expiresAt, FINAL_DAYS_LEFT, timeZone), lastCallDays: null }]
+          ? [{ at: beforeDeadline(row.expiresAt, FINAL_DAYS_LEFT, clock), lastCallDays: null }]
           : []),
-        { at: beforeEvent(firstStart, EVENT_LEAD_DAYS, timeZone), lastCallDays: EVENT_LEAD_DAYS },
+        { at: beforeEvent(firstStart, EVENT_LEAD_DAYS, clock), lastCallDays: EVENT_LEAD_DAYS },
       ].filter(({ at }) => fits(at));
 
       const fallback = {
-        at: beforeEvent(firstStart, EVENT_LAST_DAYS, timeZone),
+        at: beforeEvent(firstStart, EVENT_LAST_DAYS, clock),
         lastCallDays: EVENT_LAST_DAYS,
       };
 
@@ -637,15 +635,16 @@ export async function sendNoAnswerAlerts(now: Date): Promise<SendCount> {
         options.sort((a, b) => a.at.getTime() - b.at.getTime())[0] ??
         (fits(fallback.at) ? fallback : null);
 
-      if (!chosen || !due(chosen.at, now, timeZone)) return [];
+      if (!chosen || !due(chosen.at, now, clock)) return [];
 
-      // The last call goes the same day and already lists who hasn't
-      // answered — unless the event was made after its mark had passed.
+      // The last call goes at this same moment and already lists who hasn't
+      // answered — unless the event was made after its mark had passed, which
+      // is the last call's own test (`sendLastCalls`): it plans on the same
+      // clock, so `chosen.at` is its moment exactly.
       if (
         chosen.lastCallDays !== null &&
         lastCalled &&
-        row.event.createdAt.getTime() <=
-          firstStart.getTime() - chosen.lastCallDays * DAY_MS
+        row.event.createdAt.getTime() <= chosen.at.getTime()
       ) {
         return [];
       }
@@ -653,7 +652,8 @@ export async function sendNoAnswerAlerts(now: Date): Promise<SendCount> {
       return [
         {
           ...candidate,
-          timeZone,
+          phoneZone,
+          clock,
           firstStart,
           closesFirst,
           key: `no-answer:${row.id}:${row.expiresAt.getTime()}:${addressee.person.email}`,
@@ -672,7 +672,8 @@ export async function sendNoAnswerAlerts(now: Date): Promise<SendCount> {
   for (const item of planned) {
     if (!won.has(item.key)) continue;
 
-    const { row, addressee, headsUp, serviceTypeName, timeZone, firstStart, closesFirst } = item;
+    const { row, addressee, headsUp, serviceTypeName, phoneZone, clock, firstStart, closesFirst } =
+      item;
     const { person, reason } = addressee;
     const footer = reasonLine(reason, row.organization.name, row.role, serviceTypeName);
     const invite: WaitingInvite = {
@@ -687,7 +688,8 @@ export async function sendNoAnswerAlerts(now: Date): Promise<SendCount> {
     if (!existing) {
       buckets.set(bucketKey, {
         recipient: person,
-        timeZone,
+        phoneZone,
+        clock,
         footer,
         owns: headsUp === null,
         organizationId: row.organizationId,
@@ -749,7 +751,7 @@ export async function sendNoAnswerAlerts(now: Date): Promise<SendCount> {
   });
 
   const pushes: PushNotice[] = sending
-    .filter((bucket) => bucket.timeZone)
+    .filter((bucket) => bucket.phoneZone)
     .map((bucket) => {
       const headsUps = [...new Set(bucket.waiting.map((invite) => invite.headsUp))];
 
@@ -789,9 +791,9 @@ export async function sendNoAnswerAlerts(now: Date): Promise<SendCount> {
  * their Pending list and nobody said why.
  *
  * Read back from `lapsedAt` like the managers' push, so a lapse in the night
- * waits for the invitee's morning; somebody with no zone gets the email as
- * soon as the sweep finds it. Not for a lapse the sweep found long after the
- * fact, nor for an event that has already happened, nor once they've been
+ * waits for the invitee's morning — on their phone's clock, or else the
+ * organization's. Not for a lapse the sweep found long after the fact, nor for
+ * an event that has already happened at the church, nor once they've been
  * invited again.
  */
 export async function sendClosedInviteNotices(now: Date): Promise<SendCount> {
@@ -799,7 +801,13 @@ export async function sendClosedInviteNotices(now: Date): Promise<SendCount> {
     where: {
       status: InvitationStatus.EXPIRED,
       lapsedAt: { gt: new Date(now.getTime() - CLOSED_HOLD_MS), lte: now },
-      event: { dates: { some: { endTime: { gte: now } } } },
+      // Wide enough for any zone; the exact test, on each organization's own
+      // clock, is below.
+      event: {
+        dates: {
+          some: { endTime: { gte: new Date(now.getTime() - MAX_BEHIND_UTC_MS) } },
+        },
+      },
     },
     select: {
       id: true,
@@ -814,7 +822,7 @@ export async function sendClosedInviteNotices(now: Date): Promise<SendCount> {
           name: true,
           organizationId: true,
           dates: { select: { startTime: true, endTime: true } },
-          organization: { select: { name: true, logoUrl: true } },
+          organization: { select: { name: true, logoUrl: true, timeZone: true } },
         },
       },
     },
@@ -825,7 +833,8 @@ export async function sendClosedInviteNotices(now: Date): Promise<SendCount> {
 
   const recent = rows.flatMap(({ lapsedAt, ...row }) =>
     lapsedAt &&
-    row.expiresAt.getTime() >= lapsedAt.getTime() - NOTIFY_WINDOW_HOURS * HOUR_MS
+    row.expiresAt.getTime() >= lapsedAt.getTime() - NOTIFY_WINDOW_HOURS * HOUR_MS &&
+    hasDateAhead(row.event.dates, row.event.organization.timeZone, now)
       ? [{ ...row, lapsedAt }]
       : [],
   );
@@ -835,15 +844,15 @@ export async function sendClosedInviteNotices(now: Date): Promise<SendCount> {
   const zones = await zonesByEmail(recent.map((row) => row.user.email));
 
   const planned = recent.flatMap((row) => {
-    const timeZone = zones.get(row.user.email);
+    const phoneZone = zones.get(row.user.email);
+    // Held for morning on their phone's clock, else the organization's.
+    const clock = phoneZone ?? zoneOrFallback(row.event.organization.timeZone);
 
     try {
-      const sendAt = timeZone
-        ? inZone(wakingNext(wallClock(row.lapsedAt, timeZone)), timeZone)
-        : row.lapsedAt;
+      const sendAt = inZone(wakingNext(wallClock(row.lapsedAt, clock)), clock);
 
-      return due(sendAt, now, timeZone)
-        ? [{ row, timeZone, key: `invite-closed:${row.id}:${row.lapsedAt.getTime()}` }]
+      return due(sendAt, now, clock)
+        ? [{ row, phoneZone, key: `invite-closed:${row.id}:${row.lapsedAt.getTime()}` }]
         : [];
     } catch {
       // A zone this runtime can't resolve: no notice, rather than no tick.
@@ -879,7 +888,7 @@ export async function sendClosedInviteNotices(now: Date): Promise<SendCount> {
   });
 
   const pushes: PushNotice[] = sending
-    .filter((item) => item.timeZone)
+    .filter((item) => item.phoneZone)
     .map(({ row }) => ({
       email: row.user.email,
       title: `Invitation expired: ${row.event.name}`,

@@ -34,7 +34,7 @@ interface EventAssignmentEmailProps {
   // carried no dates.
   eventDate: string | null;
   eventTime: string | null;
-  /** The event's first start, from `eventStart`. Null when it has no dates. */
+  /** The event's first start as a real instant, from `eventStartAt`. Null when it has no dates. */
   startsAt: Date | null;
   expiresAt: Date;
   viewLink: string;
@@ -43,8 +43,8 @@ interface EventAssignmentEmailProps {
 /**
  * When the answer is due, in words. A deadline is counted from when the
  * invitation was sent and never cut short for the event, so an event inside
- * the window comes first. Its start is wall-clock time written as UTC — hours
- * out at most, which a count of days can bear.
+ * the window comes first. `startsAt` is the real instant, on the organization's
+ * clock (`eventStartAt`), so it compares with the deadline exactly.
  */
 function answerBy(expiresAt: Date, startsAt: Date | null): string {
   const now = Date.now();

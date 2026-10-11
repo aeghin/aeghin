@@ -5,6 +5,8 @@ import { InvitationStatus } from "@/generated/prisma/enums";
 import { cacheLife, cacheTag } from "next/cache";
 import { staffingOf, staffingTallies } from "@/lib/staffing";
 import { parseRoleSpots } from "@/lib/role-spots";
+import { floatingNow } from "@/lib/time-zone";
+import { getOrganizationTimeZone } from "@/lib/services/organization";
 
 
 const DASHBOARD_ASSIGNMENT_STATUSES: InvitationStatus[] = [
@@ -18,6 +20,11 @@ export const userEventsTotalCount = async (userId: string, organizationId: strin
 
     cacheLife("minutes");
 
+    // Still to come on the organization's clock: event times are its wall
+    // clock, and the real one would drop this morning's service before it began.
+    cacheTag(`org-${organizationId}-details`);
+    const ahead = floatingNow(await getOrganizationTimeZone(organizationId));
+
     if (canManage) {
       cacheTag(`org-${organizationId}-events`);
 
@@ -27,7 +34,7 @@ export const userEventsTotalCount = async (userId: string, organizationId: strin
           dates: {
             some: {
               endTime: {
-                gte: new Date(),
+                gte: ahead,
               }
             }
           }
@@ -46,7 +53,7 @@ export const userEventsTotalCount = async (userId: string, organizationId: strin
             dates: {
               some: {
                 endTime: {
-                  gte: new Date(),
+                  gte: ahead,
                 }
               }
             }
@@ -310,11 +317,13 @@ export const getAssignmentCountsByOrg = async (userId: string) => {
 
   const memberships = await prisma.membership.findMany({
     where: { userId },
-    select: { organizationId: true },
+    select: { organizationId: true, organization: { select: { timeZone: true } } },
   });
 
   for (const m of memberships) {
     cacheTag(`user-${userId}-events-${m.organizationId}`);
+    // A new time zone moves what counts as still to come.
+    cacheTag(`org-${m.organizationId}-details`);
   }
 
   const now = new Date();
@@ -323,16 +332,28 @@ export const getAssignmentCountsByOrg = async (userId: string) => {
     by: ["organizationId", "status"],
     where: {
       userId,
-      event: {
-        dates: {
-          some: {
-            endTime: { gte: now },
-          },
+      AND: [
+        // Not over yet on each organization's own clock: event times are its
+        // wall clock, and the real one would call this morning's service over
+        // before it began anywhere west of UTC.
+        {
+          OR: memberships.map((m) => ({
+            organizationId: m.organizationId,
+            event: {
+              dates: {
+                some: {
+                  endTime: { gte: floatingNow(m.organization.timeZone, now) },
+                },
+              },
+            },
+          })),
         },
-      },
-      OR: [
-        { status: InvitationStatus.ACCEPTED },
-        { status: InvitationStatus.PENDING, expiresAt: { gt: now } },
+        {
+          OR: [
+            { status: InvitationStatus.ACCEPTED },
+            { status: InvitationStatus.PENDING, expiresAt: { gt: now } },
+          ],
+        },
       ],
     },
     _count: { _all: true },

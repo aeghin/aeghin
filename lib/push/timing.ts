@@ -1,6 +1,7 @@
 import "server-only";
 
 import prisma from "@/lib/prisma";
+import { inZone, wallClock } from "@/lib/time-zone";
 
 /**
  * When a push the cron schedules may ring, and the zone arithmetic behind it.
@@ -9,7 +10,9 @@ import prisma from "@/lib/prisma";
  * `09:00Z` means 9am wherever the organization is. So each time is worked out
  * on the wall clock first — "the day before, at the same time" is a calendar
  * move, not 24 hours — and only then turned into an instant in the zone of the
- * phone being pushed, which is where its owner is.
+ * phone being pushed, which is where its owner is. Somebody whose phone has
+ * never reported a zone (usually somebody without the app, who is only
+ * emailed) is planned on the organization's zone instead.
  *
  * Pushes somebody causes by doing something — a chat message, an answer, an
  * edit — don't come through here: they go out when it happens.
@@ -25,71 +28,25 @@ const HOUR_MS = 60 * 60 * 1000;
 const GRACE_MS = 3 * HOUR_MS;
 
 /**
- * The phone's own 8am to 9pm — the same window US rules set for calls and
- * texts. Nothing scheduled rings outside it. In minutes after midnight.
+ * 6am to 11pm on the recipient's own clock. Nothing scheduled goes out outside
+ * it. Widened from 8am–9pm on 2026-10-11 at the user's request, so a morning
+ * service's reminders and an evening's still land the same day rather than
+ * waiting. In minutes after midnight.
  */
-const WAKING_FROM = 8 * 60;
-const WAKING_UNTIL = 21 * 60;
+const WAKING_FROM = 6 * 60;
+const WAKING_UNTIL = 23 * 60;
 
 /**
  * The latest a push is planned for: an hour inside the window, because the
- * cron runs on the hour and one planned for 8pm has to be out before 9.
+ * cron runs on the hour and one planned for 10pm has to be out before 11.
+ * Anything planned later would come due after the window shut and be stale by
+ * the morning.
  */
 const PLAN_UNTIL = WAKING_UNTIL - 60;
 
-const partsFormatters = new Map<string, Intl.DateTimeFormat>();
-
-/** How far `timeZone` runs ahead of UTC at `instant`, in ms. */
-const offsetAt = (instant: number, timeZone: string) => {
-  let format = partsFormatters.get(timeZone);
-
-  if (!format) {
-    format = new Intl.DateTimeFormat("en-US", {
-      timeZone,
-      hourCycle: "h23",
-      year: "numeric",
-      month: "numeric",
-      day: "numeric",
-      hour: "numeric",
-      minute: "numeric",
-      second: "numeric",
-    });
-    partsFormatters.set(timeZone, format);
-  }
-
-  const parts: Record<string, number> = {};
-
-  for (const { type, value } of format.formatToParts(instant)) {
-    parts[type] = Number(value);
-  }
-
-  const wall = Date.UTC(
-    parts.year,
-    parts.month - 1,
-    parts.day,
-    parts.hour,
-    parts.minute,
-    parts.second,
-  );
-
-  return wall - Math.floor(instant / 1000) * 1000;
-};
-
-/**
- * The real instant a floating wall-clock time names in `timeZone`. Two passes,
- * so a time on either side of a daylight-saving change gets its own offset.
- */
-export function inZone(floating: Date, timeZone: string): Date {
-  const wall = floating.getTime();
-  const guess = wall - offsetAt(wall, timeZone);
-
-  return new Date(wall - offsetAt(guess, timeZone));
-}
-
-/** What the clock in `timeZone` reads at `instant`, as a floating time. */
-export function wallClock(instant: Date, timeZone: string): Date {
-  return new Date(instant.getTime() + offsetAt(instant.getTime(), timeZone));
-}
+// The zone arithmetic lives in lib/time-zone, shared with the dashboard, which
+// compares event times to the organization's clock the same way.
+export { inZone, wallClock };
 
 const minuteOf = (floating: Date) =>
   floating.getUTCHours() * 60 + floating.getUTCMinutes();
@@ -119,7 +76,7 @@ export const daysBefore = (floating: Date, days: number) =>
 
 /**
  * A wall-clock time kept on its own day but moved inside waking hours: before
- * 8am becomes 8am, after 8pm becomes 8pm. For pushes planned ahead, which can
+ * 6am becomes 6am, after 10pm becomes 10pm. For pushes planned ahead, which can
  * move within the day but mustn't land on another — "Tomorrow" has to stay true.
  */
 export function wakingSameDay(floating: Date): Date {
@@ -132,7 +89,7 @@ export function wakingSameDay(floating: Date): Date {
 }
 
 /**
- * A wall-clock time, or the next 8am when it falls overnight. For news that
+ * A wall-clock time, or the next 6am when it falls overnight. For news that
  * can't go out before it happens: a lapse at 11pm waits for the morning.
  */
 export function wakingNext(floating: Date): Date {
@@ -152,25 +109,18 @@ export function wakingNext(floating: Date): Date {
 export function isDue(sendAt: Date, now: Date, timeZone: string): boolean {
   const minute = minuteOf(wallClock(now, timeZone));
 
-  return isDueAt(sendAt, now) && minute >= WAKING_FROM && minute < WAKING_UNTIL;
-}
-
-/**
- * Whether something timed to an instant rather than to somebody's clock goes
- * out on this tick: an email for a person whose phone has never reported a
- * zone, so there's no telling when their night is.
- */
-export function isDueAt(sendAt: Date, now: Date): boolean {
   return (
     sendAt.getTime() <= now.getTime() &&
-    sendAt.getTime() > now.getTime() - GRACE_MS
+    sendAt.getTime() > now.getTime() - GRACE_MS &&
+    minute >= WAKING_FROM &&
+    minute < WAKING_UNTIL
   );
 }
 
 /**
  * Each person's zone, from whichever of their phones reported one most
- * recently. Somebody missing from the map gets no scheduled pushes: without a
- * zone there's no knowing whether it's night where they are.
+ * recently. Somebody missing from the map gets no scheduled pushes, and their
+ * scheduled emails are planned on the organization's clock instead.
  */
 export async function zonesByEmail(emails: string[]): Promise<Map<string, string>> {
   const zones = new Map<string, string>();

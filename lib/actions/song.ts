@@ -8,6 +8,8 @@ import { OrgRole } from "@/generated/prisma/enums";
 import { revalidatePath, updateTag } from "next/cache";
 import { Prisma } from "@/generated/prisma/client";
 import { songLimitError } from "@/lib/billing/limits";
+import { getOrganizationTimeZone } from "@/lib/services/organization";
+import { floatingNow } from "@/lib/time-zone";
 
 
 type ActionResponse = { success: true } | { success: false; error: string; code?: "SONG_LIMIT" };
@@ -331,10 +333,13 @@ export const deleteSongFromLibrary = async (
         if (!song) return { success: false, error: "Song not found." };
 
        
+        // Not over yet at the church, whose wall clock event times are.
+        const ahead = floatingNow(await getOrganizationTimeZone(organizationId));
+
         const upcoming = await prisma.setlistSong.findMany({
             where: {
                 songId,
-                event: { dates: { some: { endTime: { gte: new Date() } } } }
+                event: { dates: { some: { endTime: { gte: ahead } } } }
             },
             select: { event: { select: { name: true } } }
         });

@@ -1,5 +1,7 @@
 import prisma from "@/lib/prisma";
 import { getMemberAcceptance, getMemberTopSongs } from "@/lib/services/member";
+import { getOrganizationTimeZone } from "@/lib/services/organization";
+import { floatingNow } from "@/lib/time-zone";
 import {
     clerkIdOf,
     fail,
@@ -71,9 +73,12 @@ export const GET = route<Params>("GET .../members/[id]/stats", async (_req, { pa
 
     if (!subject) return fail(404, "Not Found");
 
+    // This year at the church: on New Year's Eve evening, UTC is already next year.
+    const currentYear = floatingNow(await getOrganizationTimeZone(orgId)).getUTCFullYear();
+
     const [all, year, songs] = await Promise.all([
         getMemberAcceptance(userId, orgId),
-        getMemberAcceptance(userId, orgId, new Date().getUTCFullYear()),
+        getMemberAcceptance(userId, orgId, currentYear),
         getMemberTopSongs(userId, orgId),
     ]);
 

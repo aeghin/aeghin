@@ -8,6 +8,7 @@ import { UTApi } from "uploadthing/server";
 import { notifyDeparture } from "@/lib/email/departures";
 import { syncOrganizationNotifications } from "@/lib/notifications/sync";
 import { capitalizeName } from "@/lib/names";
+import { MAX_BEHIND_UTC_MS, hasDateAhead } from "@/lib/time-zone";
 
 export async function POST(req: NextRequest) {
   const event = await verifyWebhook(req, {
@@ -165,11 +166,17 @@ export async function POST(req: NextRequest) {
       eventOrgById.set(s.setlistSong.eventId, s.setlistSong.event.organizationId);
 
     // Their spots on upcoming events, read before the cascade takes them: each
-    // one they still held is a role somebody now has to fill.
-    const departingSpots = await prisma.eventAssignment.findMany({
+    // one they still held is a role somebody now has to fill. "Upcoming" is on
+    // each organization's own clock, since event times are its wall clock; the
+    // query is wide enough for any zone and the exact test follows.
+    const departingRows = await prisma.eventAssignment.findMany({
       where: {
         userId: user.id,
-        event: { dates: { some: { endTime: { gte: new Date() } } } },
+        event: {
+          dates: {
+            some: { endTime: { gte: new Date(Date.now() - MAX_BEHIND_UTC_MS) } },
+          },
+        },
       },
       select: {
         eventId: true,
@@ -178,8 +185,18 @@ export async function POST(req: NextRequest) {
         status: true,
         expiresAt: true,
         assignedById: true,
+        event: {
+          select: {
+            dates: { select: { endTime: true } },
+            organization: { select: { timeZone: true } },
+          },
+        },
       },
     });
+
+    const departingSpots = departingRows.flatMap(({ event, ...spot }) =>
+      hasDateAhead(event.dates, event.organization.timeZone) ? [spot] : [],
+    );
 
     // Invites addressed to this email can sit in orgs they never joined.
     const invitedOrgs = await prisma.invitation.findMany({

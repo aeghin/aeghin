@@ -12,6 +12,7 @@ import { currentUser } from "../services/user";
 import { Resend } from "resend";
 import OrganizationMessageEmail from "@/components/email/organization-message-template";
 import { organizationSender } from "@/lib/email/organization";
+import { FALLBACK_TIME_ZONE, isTimeZone } from "@/lib/time-zone";
 
 /**
  * How a caller expires cache tags. `updateTag` throws inside a Route Handler,
@@ -44,7 +45,7 @@ export async function createOrganization(data: OrganizationInput, touch: TagInva
 
         if (!user) return { success: false, error: "Unauthorized" };
 
-        const { name, description } = organizationSchema.parse(data);
+        const { name, description, timeZone } = organizationSchema.parse(data);
 
         const orgExists = await prisma.organization.findFirst({
             where: {
@@ -62,11 +63,24 @@ export async function createOrganization(data: OrganizationInput, touch: TagInva
             return { success: false, error: 'Organization exists' }
         };
 
+        // Where the church is. The web form and the phone app both send the
+        // device's own zone; a phone app from before that, or a zone this server
+        // can't resolve, falls back to the zone the creator's phone last
+        // reported, and only then to UTC.
+        const reported = (isTimeZone(timeZone) ? timeZone : undefined) ?? (
+            await prisma.pushToken.findFirst({
+                where: { userId: user.id, timeZone: { not: null } },
+                orderBy: { updatedAt: "desc" },
+                select: { timeZone: true },
+            })
+        )?.timeZone;
+
         const organization = await prisma.$transaction(async (trx) => {
             const org = await trx.organization.create({
                 data: {
                     name,
-                    description
+                    description,
+                    timeZone: reported ?? FALLBACK_TIME_ZONE,
                 }
             });
 
@@ -104,7 +118,11 @@ export const updateOrganizationDetails = async (organizationId: string, values: 
 
         if (!userId) return { success: false, error: "Unauthorized" };
 
-        const { name, description } = organizationSchema.parse(values);
+        const { name, description, timeZone } = organizationSchema.parse(values);
+
+        if (timeZone !== undefined && !isTimeZone(timeZone)) {
+            return { success: false, error: "That time zone isn't supported. Choose another one." };
+        }
 
         const user = await prisma.user.findUnique({
             where: {
@@ -131,7 +149,10 @@ export const updateOrganizationDetails = async (organizationId: string, values: 
             },
             data: {
                 name,
-                description
+                description,
+                // Left alone when it isn't sent: a phone app from before zones
+                // edits only the name and description.
+                ...(timeZone ? { timeZone } : {}),
             }
         });
 

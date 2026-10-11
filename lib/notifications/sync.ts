@@ -26,20 +26,20 @@ import {
 } from "@/lib/notifications/directory";
 import { sendPushNotices } from "@/lib/push/send";
 import { isFullyStaffed, parseRoleSpots, rosterStandings } from "@/lib/role-spots";
+import { hasDateAhead, inZone, zoneOrFallback } from "@/lib/time-zone";
 
 /** Same shape the actions already pass around, so `touch` threads straight through. */
 export type TagInvalidator = (tag: string) => void;
 
 /**
- * How long after its last block an event still counts as live.
+ * How far past its last block the org-wide reconcile still picks an event up.
  *
- * Event times are stored as floating wall clock pinned to Z and displayed in
- * UTC, so `endTime` is not a real instant — for an organization west of UTC it
- * reads as much as half a day earlier than the service actually finishes.
- * Comparing it to a true `now` would therefore retire an event while it is
- * still going on. A day's grace is wider than any offset, and the cost of being
- * late is one extra day of a row nobody needs, against the cost of being early,
- * which is the roster going quiet during the service it was about.
+ * Event times are stored as floating wall clock pinned to Z, so `endTime` is
+ * not a real instant and a query can't ask whether an event is over: it can sit
+ * up to 14 hours either side of the moment the service actually finishes. A day
+ * reaches past any zone, and `syncEventNotifications` then decides on the
+ * organization's own clock. One that has just finished comes along too, which
+ * is what clears its rows.
  */
 const LIVE_GRACE_MS = 24 * 60 * 60 * 1000;
 
@@ -53,8 +53,8 @@ const LIVE_GRACE_MS = 24 * 60 * 60 * 1000;
  * an empty spot becomes the bell's business: it is the only warning a plan
  * without last call gets, and the only way the bell sees a spot whose volunteer
  * left the organization, since leaving deletes the assignment and the spot
- * then reads as never invited. Floating-UTC times open it a few hours early for
- * organizations west of UTC, which is noise next to a week.
+ * then reads as never invited. Measured on the organization's clock, which
+ * event times are written in.
  */
 const UNSTARTED_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -187,7 +187,7 @@ export const syncEventNotifications = async (
         roleSpots: true,
         fullyStaffedAt: true,
         dates: { select: { startTime: true, endTime: true } },
-        organization: { select: { name: true, logoUrl: true } },
+        organization: { select: { name: true, logoUrl: true, timeZone: true } },
         // Who covers a team on this event only, in place of its lead.
         teamLeads: { select: { category: true, userId: true } },
         assignments: {
@@ -208,13 +208,14 @@ export const syncEventNotifications = async (
     // An event that has happened produces nothing, and anything it already
     // produced is deleted below by the ordinary reconcile — the desired set is
     // simply empty. Nobody can staff last Sunday, and "waiting on your answer"
-    // about a service that has been and gone is worse than silence. Events with
-    // no dates at all stay live: there is no date to have passed.
+    // about a service that has been and gone is worse than silence. Over on the
+    // organization's clock, which event times are written in, so a service's
+    // rows go at the first reconcile after it ends — the hourly cron, if
+    // nothing sooner. Events with no dates at all stay live: there is no date
+    // to have passed.
     const over =
       event.dates.length > 0 &&
-      event.dates.every(
-        (date) => date.endTime.getTime() + LIVE_GRACE_MS < now.getTime(),
-      );
+      !hasDateAhead(event.dates, event.organization.timeZone, now);
 
     // Each role against how many it needs. A spot is open when nobody has said
     // yes to it and nobody is deciding on it — a lapsed invitation counts as
@@ -227,12 +228,16 @@ export const syncEventNotifications = async (
       now,
     );
 
-    // Inside the last week before the first block. No dates means no block to
-    // be near — `Math.min()` of nothing is Infinity — so it never is.
+    // Inside the last week before the first block, at the church. No dates
+    // means no block to be near, so it never is.
     const closeIn =
-      Math.min(...event.dates.map((date) => date.startTime.getTime())) -
+      event.dates.length > 0 &&
+      inZone(
+        new Date(Math.min(...event.dates.map((date) => date.startTime.getTime()))),
+        zoneOrFallback(event.organization.timeZone),
+      ).getTime() -
         UNSTARTED_WINDOW_MS <=
-      now.getTime();
+        now.getTime();
 
     // The bell's open spots. One that somebody was asked to fill and isn't
     // going to — declined, lapsed, taken off — counts as soon as it happens;

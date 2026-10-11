@@ -3,6 +3,8 @@ import "server-only";
 import prisma from "@/lib/prisma";
 import { InvitationStatus, VolunteerRole } from "@/generated/prisma/enums";
 import { getBlockedUserIds, getBlockoutsForDates } from "@/lib/services/blockouts";
+import { getOrganizationTimeZone } from "@/lib/services/organization";
+import { floatingNow } from "@/lib/time-zone";
 import type {
   RoleCandidate,
   RoleEligibility,
@@ -228,7 +230,9 @@ export async function getRecentServeCounts(
   organizationId: string,
   sinceDays: number,
 ): Promise<Map<string, { count: number; lastServedOn: Date | null }>> {
-  const now = new Date();
+  // "Already started" on the organization's clock, which event times are
+  // written in — a floating time, compared with floating times.
+  const now = floatingNow(await getOrganizationTimeZone(organizationId));
   const since = new Date(now.getTime() - sinceDays * DAY_MS);
 
   const rows = await prisma.eventAssignment.findMany({

@@ -22,6 +22,7 @@ import { getUserSongKeys } from "@/lib/services/song-keys";
 import { getEventSmartSchedulingActivity } from "@/lib/services/activity";
 import { getEventMessages } from "@/lib/services/chat";
 import {
+  getOrganizationTimeZone,
   getOrgMembersWithUser,
   getUserMembershipRole,
 } from "@/lib/services/organization";
@@ -51,9 +52,10 @@ export default async function EventDetailPage({
 
   if (!user) notFound();
 
-  const [event, membership] = await Promise.all([
+  const [event, membership, timeZone] = await Promise.all([
     getEventDetailsById(eventId, orgId),
     getUserMembershipRole(user.id, orgId),
+    getOrganizationTimeZone(orgId),
   ]);
 
   if (!event || !membership) notFound();
@@ -204,6 +206,7 @@ export default async function EventDetailPage({
               enabled={event.smartSchedulingEnabled}
               available={smartSchedulingAvailable}
               items={smartSchedulingActivity}
+              timeZone={timeZone}
             />
           </AnimatedSection>
         )}

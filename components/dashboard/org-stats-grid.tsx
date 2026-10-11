@@ -1,7 +1,12 @@
 import { Users, Mail, Calendar, Music } from "lucide-react";
 import { AnimatedSection } from "@/components/dashboard/animate-section";
 import { StatsCard } from "@/components/dashboard/stats-card";
-import { getOrgMemberCountById, getUserVolunteerRolesByOrg } from "@/lib/services/organization";
+import {
+  getOrgMemberCountById,
+  getOrganizationTimeZone,
+  getUserVolunteerRolesByOrg,
+} from "@/lib/services/organization";
+import { floatingNow } from "@/lib/time-zone";
 import { userEventsTotalCount, getUserEvents } from "@/lib/services/events";
 import { getSeatUsage } from "@/lib/billing/limits";
 import { PLAN_NAMES } from "@/lib/config/plans";
@@ -20,21 +25,25 @@ export const OrganizationStatsGrid = async ({
   canManage,
 }: OrganizationStatsGridProps) => {
 
-  const [memberCount, userRolesCount, upcomingCount, userEvents, seatUsage] = await Promise.all([
-    getOrgMemberCountById(organizationId),
-    getUserVolunteerRolesByOrg(organizationId, userId),
-    userEventsTotalCount(userId, organizationId, canManage),
-    getUserEvents(organizationId, userId),
-    getSeatUsage(organizationId),
-  ]);
+  const [memberCount, userRolesCount, upcomingCount, userEvents, seatUsage, timeZone] =
+    await Promise.all([
+      getOrgMemberCountById(organizationId),
+      getUserVolunteerRolesByOrg(organizationId, userId),
+      userEventsTotalCount(userId, organizationId, canManage),
+      getUserEvents(organizationId, userId),
+      getSeatUsage(organizationId),
+      getOrganizationTimeZone(organizationId),
+    ]);
 
-  // Invites still open for a reply: pending, not expired, event not over.
+  // Invites still open for a reply: pending, not expired, event not over —
+  // over on the church's clock, which event times are written in.
   const now = new Date();
+  const churchNow = floatingNow(timeZone, now);
   const pendingCount = userEvents.filter(
     (event) =>
       event.assignments.some(
         (a) => a.status === InvitationStatus.PENDING && a.expiresAt > now,
-      ) && event.dates.some((d) => d.endTime >= now),
+      ) && event.dates.some((d) => d.endTime >= churchNow),
   ).length;
 
   // Only managers invite, so only they see the cap. Pending invites hold seats

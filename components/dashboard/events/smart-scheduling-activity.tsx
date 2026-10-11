@@ -10,7 +10,7 @@ import {
   ZapOff,
   type LucideIcon,
 } from "lucide-react";
-import { format, formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow } from "date-fns";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -22,6 +22,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { formatDateInZone, formatDateTimeInZone } from "@/lib/time-zone";
 import { ActivityType } from "@/generated/prisma/enums";
 import type { SmartSchedulingActivityItem } from "@/lib/services/activity";
 
@@ -112,11 +113,13 @@ const describeRow = (item: SmartSchedulingActivityItem): ReactNode => {
   }
 };
 
-const formatRowTime = (date: Date) => {
+// Dates on the organization's clock, the same on the server render and in the
+// browser — the server's own zone is UTC and would hydrate to another day.
+const formatRowTime = (date: Date, timeZone: string) => {
   const diffDays = (Date.now() - date.getTime()) / 86_400_000;
   return diffDays < 7
     ? formatDistanceToNow(date, { addSuffix: true })
-    : format(date, "MMM d, yyyy");
+    : formatDateInZone(date, timeZone);
 };
 
 const UNFILLED_TYPES = new Set<string>([
@@ -131,6 +134,8 @@ interface SmartSchedulingActivityProps {
   // Whether the plan includes it. An enabled event on a plan without it is paused.
   available: boolean;
   items: SmartSchedulingActivityItem[];
+  /** The organization's zone, for the rows' dates. */
+  timeZone: string;
 }
 
 /**
@@ -144,6 +149,7 @@ export const SmartSchedulingActivity = ({
   enabled,
   available,
   items,
+  timeZone,
 }: SmartSchedulingActivityProps) => {
   const [open, setOpen] = useState(false);
 
@@ -276,9 +282,9 @@ export const SmartSchedulingActivity = ({
                   </p>
                   <p
                     className="text-xs text-muted-foreground"
-                    title={format(item.createdAt, "PPpp")}
+                    title={formatDateTimeInZone(item.createdAt, timeZone)}
                   >
-                    {formatRowTime(item.createdAt)}
+                    {formatRowTime(item.createdAt, timeZone)}
                     {item.detail && ` · ${item.detail}`}
                   </p>
                 </div>

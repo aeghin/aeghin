@@ -30,6 +30,7 @@ import {
 } from "@/components/dashboard/events/staffing-meter";
 import type { Staffing } from "@/lib/staffing";
 import { getServiceColors as getColorClasses } from "@/lib/config/service-types-config";
+import { floatingNow } from "@/lib/time-zone";
 
 interface EventDate {
   id: string;
@@ -71,12 +72,35 @@ interface Event {
 // Palette lives in lib/config/service-types-config.ts — see getServiceColors.
 
 // ─── Date helpers (pure functions — accept `today` as parameter) ─
+//
+// Every date here is floating, like the event times it is compared with: the
+// organization's wall clock, read through UTC fields. `today` is midnight of
+// the church's current day, and month and week bounds are built with
+// Date.UTC — local midnights would sit hours off the stored times, and differ
+// between the server render and the browser.
 
-function createToday(): Date {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  return today;
+function createToday(timeZone: string): Date {
+  const now = floatingNow(timeZone);
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
 }
+
+/** The first and last moment of the month `cursor` shows, as floating times. */
+function monthBounds(cursor: Date): { monthStart: Date; monthEnd: Date } {
+  return {
+    monthStart: new Date(Date.UTC(cursor.getFullYear(), cursor.getMonth(), 1)),
+    monthEnd: new Date(Date.UTC(cursor.getFullYear(), cursor.getMonth() + 1, 0, 23, 59, 59)),
+  };
+}
+
+/** A week on from `today`, as a floating time. */
+function weekEndFrom(today: Date): Date {
+  const weekEnd = new Date(today);
+  weekEnd.setUTCDate(weekEnd.getUTCDate() + 7);
+  return weekEnd;
+}
+
+/** The floating calendar day a date groups under: "2026-10-18". */
+const dayGroupKey = (date: Date) => date.toISOString().slice(0, 10);
 
 /** Earliest startTime across all EventDates */
 function getEarliestDate(dates: EventDate[]): Date {
@@ -161,8 +185,7 @@ function isEventInTimeScope(
 
   switch (scope) {
     case "week": {
-      const weekEnd = new Date(today);
-      weekEnd.setDate(weekEnd.getDate() + 7);
+      const weekEnd = weekEndFrom(today);
       return dates.some((d) => {
         const start = new Date(d.startTime);
         const end = new Date(d.endTime);
@@ -170,19 +193,7 @@ function isEventInTimeScope(
       });
     }
     case "month": {
-      const monthStart = new Date(
-        currentMonth.getFullYear(),
-        currentMonth.getMonth(),
-        1,
-      );
-      const monthEnd = new Date(
-        currentMonth.getFullYear(),
-        currentMonth.getMonth() + 1,
-        0,
-        23,
-        59,
-        59,
-      );
+      const { monthStart, monthEnd } = monthBounds(currentMonth);
       return dates.some((d) => {
         const start = new Date(d.startTime);
         const end = new Date(d.endTime);
@@ -193,19 +204,7 @@ function isEventInTimeScope(
       return dates.some((d) => new Date(d.endTime) >= today);
     }
     case "past": {
-      const monthStart = new Date(
-        currentMonth.getFullYear(),
-        currentMonth.getMonth(),
-        1,
-      );
-      const monthEnd = new Date(
-        currentMonth.getFullYear(),
-        currentMonth.getMonth() + 1,
-        0,
-        23,
-        59,
-        59,
-      );
+      const { monthStart, monthEnd } = monthBounds(currentMonth);
       return (
         dates.every((d) => new Date(d.endTime) < today) &&
         dates.some((d) => {
@@ -277,24 +276,11 @@ function getAnchorDateInScope(
 
     switch (scope) {
       case "week": {
-        const weekEnd = new Date(today);
-        weekEnd.setDate(weekEnd.getDate() + 7);
+        const weekEnd = weekEndFrom(today);
         return start <= weekEnd && end >= today;
       }
       case "month": {
-        const monthStart = new Date(
-          currentMonth.getFullYear(),
-          currentMonth.getMonth(),
-          1,
-        );
-        const monthEnd = new Date(
-          currentMonth.getFullYear(),
-          currentMonth.getMonth() + 1,
-          0,
-          23,
-          59,
-          59,
-        );
+        const { monthStart, monthEnd } = monthBounds(currentMonth);
         return start <= monthEnd && end >= monthStart;
       }
       case "upcoming":
@@ -326,6 +312,8 @@ interface MemberEventsDashboardProps {
   canManage: boolean;
   /** Event already shown in the Upcoming banner — kept out of My Schedule rows. */
   upNextEventId?: string | null;
+  /** The organization's zone: what "today" is, against event times written in its wall clock. */
+  timeZone: string;
 }
 
 // Motion only scale-corrects borderRadius when it's a number or a px string —
@@ -347,6 +335,7 @@ export function MemberEventsDashboard({
   organizationId,
   canManage,
   upNextEventId = null,
+  timeZone,
 }: MemberEventsDashboardProps) {
   const [activeTab, setActiveTab] = useState<TabType>(() =>
     events.some((e) => hasLiveInvite(e, new Date())) ? "pending" : "schedule",
@@ -355,15 +344,19 @@ export function MemberEventsDashboard({
   const [selectedServiceType, setSelectedServiceType] = useState<string | null>(
     null,
   );
-  const [currentMonth, setCurrentMonth] = useState(() => new Date());
+  // Compute today once per render, pass to all helpers
+  const today = useMemo(() => createToday(timeZone), [timeZone]);
+
+  // A month cursor: only its year and month are read. Started from the
+  // church's today, so the server render and the browser agree on it.
+  const [currentMonth, setCurrentMonth] = useState(
+    () => new Date(today.getUTCFullYear(), today.getUTCMonth(), 1),
+  );
   const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {
     setIsMounted(true);
   }, []);
-
-  // Compute today once per render, pass to all helpers
-  const today = useMemo(() => createToday(), []);
 
   // `today` is midnight because every date helper above wants a calendar day.
   // Expiry is a timestamp, so it gets its own clock — see hasLiveInvite.
@@ -477,7 +470,7 @@ export function MemberEventsDashboard({
         currentMonth,
         today,
       );
-      const key = anchorDate.toDateString();
+      const key = dayGroupKey(anchorDate);
 
       if (!groups[key]) {
         groups[key] = [];
@@ -529,7 +522,7 @@ export function MemberEventsDashboard({
         currentMonth,
         today,
       );
-      const key = anchorDate.toDateString();
+      const key = dayGroupKey(anchorDate);
 
       if (!groups[key]) {
         groups[key] = [];

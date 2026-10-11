@@ -32,12 +32,15 @@ const buildPageList = (
 
 interface ActivityFeedProps {
   organizationId: string;
+  /** The organization's zone, for the rows' dates. */
+  timeZone: string;
   initialItems: ActivityItem[];
   initialTotalPages: number;
 }
 
 export const ActivityFeed = ({
   organizationId,
+  timeZone,
   initialItems,
   initialTotalPages,
 }: ActivityFeedProps) => {
@@ -87,6 +90,7 @@ export const ActivityFeed = ({
             item={item}
             index={Math.min(i, 9)}
             organizationId={organizationId}
+            timeZone={timeZone}
           />
         ))}
       </div>

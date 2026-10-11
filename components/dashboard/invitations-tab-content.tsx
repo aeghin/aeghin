@@ -8,6 +8,8 @@ import { organizationInvitations } from "@/lib/services/invitation";
 import { InvitationStatus } from "@/generated/prisma/enums";
 import { getOrgPlan } from "@/lib/billing/entitlements";
 import { NEXT_PLAN } from "@/lib/config/plans";
+import { getOrganizationTimeZone } from "@/lib/services/organization";
+import { formatDateInZone } from "@/lib/time-zone";
 
 const getStatusConfig = (status: InvitationStatus) => {
   switch (status) {
@@ -59,9 +61,12 @@ export const InvitationsTabContent = async ({
 }: InvitationsTabContentProps) => {
   
 
-  const [invitations, plan] = await Promise.all([
+  // Dates on the organization's clock: this renders on the server, whose own
+  // zone is UTC and would roll an evening invite over to the next day.
+  const [invitations, plan, timeZone] = await Promise.all([
     organizationInvitations(organizationId),
     getOrgPlan(organizationId),
+    getOrganizationTimeZone(organizationId),
   ]);
 
   const pendingCount = invitations.filter(
@@ -98,10 +103,7 @@ export const InvitationsTabContent = async ({
               const statusConfig = getStatusConfig(invitation.status);
               const StatusIcon = statusConfig.icon;
 
-              const statusDate = new Date(invitation.updatedAt).toLocaleDateString(
-                "en-US",
-                { month: "short", day: "numeric", year: "numeric" },
-              );
+              const statusDate = formatDateInZone(invitation.updatedAt, timeZone);
 
               return (
                 <AnimatedInvitationRow key={invitation.id} index={i}>
@@ -127,14 +129,7 @@ export const InvitationsTabContent = async ({
                       </div>
                       <p className="text-xs text-muted-foreground">
                         Invited{" "}
-                        {new Date(invitation.createdAt).toLocaleDateString(
-                          "en-US",
-                          {
-                            month: "short",
-                            day: "numeric",
-                            year: "numeric"
-                          }
-                        )}
+                        {formatDateInZone(invitation.createdAt, timeZone)}
                         {` By ${invitation.invitedBy.firstName} ${invitation.invitedBy.lastName}`}
                       </p>
                       <p className="text-xs text-muted-foreground sm:hidden">

@@ -19,6 +19,7 @@ import {
   rosterStandings,
   spotLabel,
 } from "@/lib/role-spots";
+import { MAX_BEHIND_UTC_MS, hasDateAhead } from "@/lib/time-zone";
 
 /**
  * What the cron tells an event's managers about its roster. Shared by the
@@ -184,6 +185,9 @@ export function lapseBody(lapsed: LapsedInvite[], when: string | null) {
  * Restricted to events that have not happened yet — a past event is not
  * something anyone can go and staff — and to lapses inside
  * NOTIFY_WINDOW_HOURS of when they were swept, so a backlog is swept quietly.
+ * "Not happened yet" is on the organization's clock: event times are its wall
+ * clock, so the real one would call a Sunday morning service over before it
+ * began, and drop the lapses an admin most needs to hear about.
  */
 export async function lapseBuckets(
   where: Prisma.EventAssignmentWhereInput,
@@ -193,7 +197,13 @@ export async function lapseBuckets(
     where: {
       ...where,
       status: InvitationStatus.EXPIRED,
-      event: { dates: { some: { endTime: { gte: now } } } },
+      // Wide enough for any zone; the exact test, on each organization's own
+      // clock, is below.
+      event: {
+        dates: {
+          some: { endTime: { gte: new Date(now.getTime() - MAX_BEHIND_UTC_MS) } },
+        },
+      },
     },
     select: {
       id: true,
@@ -215,14 +225,15 @@ export async function lapseBuckets(
           assignments: { select: { role: true, status: true, expiresAt: true } },
         },
       },
-      organization: { select: { name: true, logoUrl: true } },
+      organization: { select: { name: true, logoUrl: true, timeZone: true } },
     },
   });
 
   const lapsed = rows.filter(
     (row) =>
+      hasDateAhead(row.event.dates, row.organization.timeZone, now) &&
       row.expiresAt.getTime() >=
-      (row.lapsedAt ?? now).getTime() - NOTIFY_WINDOW_HOURS * 60 * 60 * 1000,
+        (row.lapsedAt ?? now).getTime() - NOTIFY_WINDOW_HOURS * 60 * 60 * 1000,
   );
 
   if (lapsed.length === 0) return [];

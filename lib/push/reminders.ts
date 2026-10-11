@@ -12,6 +12,7 @@ import {
   wakingSameDay,
   zonesByEmail,
 } from "@/lib/push/timing";
+import { zoneOrFallback } from "@/lib/time-zone";
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
@@ -33,8 +34,8 @@ const firstStartOf = (dates: { startTime: Date }[]) =>
  * "Tomorrow: Sunday Service".
  *
  * At the event's own time of day, on each person's phone: a 9am service
- * reminds at 9am the day before, wherever the church is. Kept inside 8am to
- * 8pm — a 6am service reminds at 8am, an 11pm one at 8pm — and always on the
+ * reminds at 9am the day before, wherever the church is. Kept inside 6am to
+ * 10pm — a 5am service reminds at 6am, an 11pm one at 10pm — and always on the
  * day before, so "Tomorrow" stays true. Somebody whose phone hasn't reported a
  * zone (a build older than this) isn't reminded, rather than reminded at
  * whatever hour UTC lands on.
@@ -84,7 +85,7 @@ export async function sendDayBeforeReminders(now: Date): Promise<number> {
             rehearsalStart: true,
             rehearsalEnd: true,
             dates: { select: { startTime: true, endTime: true } },
-            organization: { select: { name: true } },
+            organization: { select: { name: true, timeZone: true } },
           },
         },
       },
@@ -107,7 +108,7 @@ export async function sendDayBeforeReminders(now: Date): Promise<number> {
           timeZone,
         );
 
-        return isDue(sendAt, now, timeZone) ? [{ ...row, timeZone }] : [];
+        return isDue(sendAt, now, timeZone) ? [row] : [];
       } catch {
         // A zone this runtime can't resolve: no reminder, rather than no tick.
         return [];
@@ -129,11 +130,13 @@ export async function sendDayBeforeReminders(now: Date): Promise<number> {
 
       const notices: PushNotice[] = due
         .filter((row) => claimedIds.has(row.id))
-        .map(({ event, role, user, timeZone }) => {
-          // Only a rehearsal still ahead: most are days earlier, and done by now.
+        .map(({ event, role, user }) => {
+          // Only a rehearsal still ahead: most are days earlier, and done by
+          // now. Ahead at the church, whose wall clock it's written in.
           const rehearsal =
             event.rehearsalStart &&
-            inZone(event.rehearsalStart, timeZone).getTime() > now.getTime()
+            inZone(event.rehearsalStart, zoneOrFallback(event.organization.timeZone)).getTime() >
+              now.getTime()
               ? formatRehearsal(event.rehearsalStart, event.rehearsalEnd)
               : null;
 

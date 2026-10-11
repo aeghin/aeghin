@@ -12,6 +12,8 @@ import {
     syncOrganizationNotifications,
 } from "@/lib/notifications/sync";
 import { userRoleSchema, UserRoleInput, assignOwnerSchema, AssignOwnerInput } from "../validations/roles";
+import { getOrganizationTimeZone } from "@/lib/services/organization";
+import { floatingNow } from "@/lib/time-zone";
 
 /**
  * How a caller expires cache tags. `updateTag` throws inside a Route Handler,
@@ -159,11 +161,16 @@ export const removeMember = async (userId: string, organizationId: string, touch
 
         if (userMembership.role === OrgRole.ADMIN && assignee.role !== OrgRole.MEMBER) return { success: false, error: "Admins can only remove members." };
 
+        // Not over yet at the church, whose wall clock event times are: the
+        // real clock would leave them on this morning's service. One reading
+        // for the list and the delete, so the two can't disagree.
+        const ahead = floatingNow(await getOrganizationTimeZone(organizationId));
+
         const upcoming = await prisma.eventAssignment.findMany({
             where: {
                 userId,
                 organizationId,
-                event: { dates: { some: { endTime: { gte: new Date() } } } },
+                event: { dates: { some: { endTime: { gte: ahead } } } },
             },
             select: { eventId: true, role: true, status: true, expiresAt: true, assignedById: true },
         });
@@ -173,7 +180,7 @@ export const removeMember = async (userId: string, organizationId: string, touch
                 where: {
                     userId,
                     organizationId,
-                    event: { dates: { some: { endTime: { gte: new Date() } } } },
+                    event: { dates: { some: { endTime: { gte: ahead } } } },
                 },
             }),
             prisma.blockoutDate.deleteMany({
@@ -345,11 +352,14 @@ export const leaveOrganization = async (organizationId: string, touch: TagInvali
             }
         };
 
+        // Not over yet at the church, as removeMember reads it.
+        const ahead = floatingNow(await getOrganizationTimeZone(organizationId));
+
         const upcoming = await prisma.eventAssignment.findMany({
       where: {
           userId: user.id,
           organizationId,
-          event: { dates: { some: { endTime: { gte: new Date() } } } },
+          event: { dates: { some: { endTime: { gte: ahead } } } },
       },
       select: { eventId: true, role: true, status: true, expiresAt: true, assignedById: true },
   });   
@@ -361,7 +371,7 @@ export const leaveOrganization = async (organizationId: string, touch: TagInvali
           where: {
               userId: user.id,
               organizationId,
-              event: { dates: { some: { endTime: { gte: new Date() } } } },
+              event: { dates: { some: { endTime: { gte: ahead } } } },
           },
       }),
       prisma.blockoutDate.deleteMany({

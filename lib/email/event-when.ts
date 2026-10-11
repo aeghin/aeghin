@@ -9,6 +9,8 @@
  * Greenwich. The dashboard's event details card pins UTC for the same reason.
  */
 
+import { inZone, zoneOrFallback } from "@/lib/time-zone";
+
 type EventWhenDate = { startTime: Date; endTime: Date };
 
 export type EventWhen = {
@@ -72,6 +74,17 @@ export function eventStart(dates: EventWhenDate[]): Date | null {
   if (dates.length === 0) return null;
 
   return new Date(Math.min(...dates.map((date) => date.startTime.getTime())));
+}
+
+/**
+ * When the event's first block starts as a real instant, on the organization's
+ * clock — for comparing with a deadline, which is a real instant. Null with no
+ * dates.
+ */
+export function eventStartAt(dates: EventWhenDate[], timeZone: string): Date | null {
+  const start = eventStart(dates);
+
+  return start && inZone(start, zoneOrFallback(timeZone));
 }
 
 /**

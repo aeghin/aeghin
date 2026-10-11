@@ -127,6 +127,13 @@ model Organization {
   stripeCustomerId String?  @unique
   entitlements     String[] @default([])
 
+  // Where the organization is, as an IANA zone: "America/Chicago". Event times
+  // are floating wall clock (`10:00Z` is 10am at the church), so this is what
+  // turns one into a real instant — whether a service is over yet, and when an
+  // email to somebody without the app goes out. Set from the creator's device
+  // and changed by owners in Settings. See lib/time-zone.ts.
+  timeZone String @default("UTC")
+
   memberships Membership[]
   invitations Invitation[]
   serviceTypes ServiceType[]

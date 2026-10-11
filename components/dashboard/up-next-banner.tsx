@@ -41,6 +41,8 @@ interface UpNextBannerProps {
   upNext: UpNextSelection | null;
   serviceTypes: ServiceType[];
   organizationId: string;
+  /** The organization's clock right now, floating like event times (`floatingNow`). */
+  now: Date;
 }
 
 // Events store wall-clock times with a Z suffix, so display always pins to UTC.
@@ -62,18 +64,16 @@ function formatTime(date: Date): string {
   });
 }
 
-// Day distance between the event's wall-clock date (UTC fields) and today.
+// Calendar days between the event's date and today, both on the
+// organization's wall clock — floating times, read through their UTC fields.
 function daysUntil(target: Date, now: Date): number {
-  const startOfToday = new Date(now);
-  startOfToday.setHours(0, 0, 0, 0);
-  const startOfTarget = new Date(
+  const startOfToday = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const startOfTarget = Date.UTC(
     target.getUTCFullYear(),
     target.getUTCMonth(),
     target.getUTCDate(),
   );
-  return Math.round(
-    (startOfTarget.getTime() - startOfToday.getTime()) / 86_400_000,
-  );
+  return Math.round((startOfTarget - startOfToday) / 86_400_000);
 }
 
 function countdownLabel(days: number): string {
@@ -84,7 +84,9 @@ function countdownLabel(days: number): string {
 
 // Next accepted commitment: earliest upcoming date block across accepted events.
 // Exported so the caller picks it once and the schedule list can drop the same
-// event instead of repeating it — see events-tab-content.tsx.
+// event instead of repeating it — see events-tab-content.tsx. `now` is the
+// organization's clock as a floating time (`floatingNow`), since event times
+// are its wall clock: the real one would skip this morning's service.
 export function findUpNext(
   events: UpNextEvent[],
   now: Date,
@@ -115,11 +117,11 @@ export function UpNextBanner({
   upNext,
   serviceTypes,
   organizationId,
+  now,
 }: UpNextBannerProps) {
   // Banners have to earn their row — render nothing when there is no commitment.
   if (!upNext) return null;
 
-  const now = new Date();
   const upNextEvent = upNext.event;
   const upNextDate = upNext.date;
 

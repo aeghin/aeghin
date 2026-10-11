@@ -5,6 +5,7 @@ import {
   getOrganizationActivity,
   getOrganizationActivityPageCount,
 } from "@/lib/services/activity";
+import { getOrganizationTimeZone } from "@/lib/services/organization";
 
 interface ActivityTabContentProps {
   organizationId: string;
@@ -13,9 +14,10 @@ interface ActivityTabContentProps {
 export const ActivityTabContent = async ({
   organizationId,
 }: ActivityTabContentProps) => {
-  const [items, totalPages] = await Promise.all([
+  const [items, totalPages, timeZone] = await Promise.all([
     getOrganizationActivity(organizationId, 1),
     getOrganizationActivityPageCount(organizationId),
+    getOrganizationTimeZone(organizationId),
   ]);
 
   return (
@@ -47,6 +49,7 @@ export const ActivityTabContent = async ({
         ) : (
           <ActivityFeed
             organizationId={organizationId}
+            timeZone={timeZone}
             initialItems={items}
             initialTotalPages={totalPages}
           />

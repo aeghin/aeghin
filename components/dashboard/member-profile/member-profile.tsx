@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { OrgRole, VolunteerRole } from "@/generated/prisma/enums";
 import { getRoleConfig, volunteerRoleConfig } from "@/lib/config/roles";
+import { floatingNow, formatDateInZone } from "@/lib/time-zone";
 
 export type MemberProfileData = {
   role: OrgRole;
@@ -48,11 +49,14 @@ export default function MemberProfile({
   stats,
   songs,
   orgId,
+  timeZone,
 }: {
   membership: MemberProfileData;
   stats: Record<RangeKey, RangeStats>;
   songs: MemberSong[];
   orgId: string;
+  /** The organization's zone, for the joined date and the year the stats count. */
+  timeZone: string;
 }) {
   const [range, setRange] = useState<RangeKey>("all");
 
@@ -67,7 +71,7 @@ export default function MemberProfile({
   const caption =
     active.invited === 0
       ? `No invites ${range === "year" ? "this year" : "yet"}`
-      : `${range === "year" ? new Date().getFullYear() : "All time"} · ${active.invited} ${inviteWord}`;
+      : `${range === "year" ? floatingNow(timeZone).getUTCFullYear() : "All time"} · ${active.invited} ${inviteWord}`;
 
   const fullName = `${membership.user.firstName} ${membership.user.lastName}`;
   const nameInitial = `${membership.user.firstName.charAt(0)}${membership.user.lastName.charAt(0)}`;
@@ -76,10 +80,9 @@ export default function MemberProfile({
   const memberRole = getRoleConfig(membership.role);
   const RoleIcon = memberRole.icon;
   const volunteerRoles = membership.volunteerRoles;
-  const joinedDate = new Date(membership.createdAt).toLocaleDateString(
-    'en-US',
-    { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" }
-  );
+  // A real moment, on the organization's clock — the same on the server render
+  // and in the browser. UTC put an evening join on the next day.
+  const joinedDate = formatDateInZone(membership.createdAt, timeZone);
 
   
 

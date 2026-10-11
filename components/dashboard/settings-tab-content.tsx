@@ -2,6 +2,7 @@ import { Eye, Settings } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getOrganizationSettings } from "@/lib/services/organization";
 import { getTeamNotificationSettings } from "@/lib/services/team-notifications";
+import { FALLBACK_TIME_ZONE, timeZoneLabel } from "@/lib/time-zone";
 import { EditSettingsDialog } from "./edit-settings-dialog";
 import { DeleteOrgDialog } from "./delete-org-dialog";
 import { LeaveOrgDialog } from "./leave-org-dialog";
@@ -80,6 +81,20 @@ export const SettingsTabContent = async ({
               )}
             </div>
           </div>
+
+          <div className="h-px bg-border/40" />
+
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+              Time Zone
+            </label>
+            <div className="text-sm text-foreground/90">
+              {timeZoneLabel(org?.timeZone ?? FALLBACK_TIME_ZONE)}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Reminders and emails go out on this clock, and events end on it.
+            </p>
+          </div>
         </div>
 
         {canManage && (
@@ -88,6 +103,7 @@ export const SettingsTabContent = async ({
               organizationId={organizationId}
               name={org?.name ?? ""}
               description={org?.description ?? ""}
+              timeZone={org?.timeZone ?? FALLBACK_TIME_ZONE}
             />
           </div>
         )}

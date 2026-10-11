@@ -9,6 +9,8 @@ import {
   getMemberAcceptance,
   getMemberTopSongs,
 } from "@/lib/services/member";
+import { getOrganizationTimeZone } from "@/lib/services/organization";
+import { floatingNow } from "@/lib/time-zone";
 
 const MemberProfilePage = ({ params }: { params: Promise<{ id: string; userId: string }> }) => {
   return (
@@ -25,11 +27,15 @@ const MemberProfileContent = async ({
 }) => {
   const { id: orgId, userId } = await params;
 
-  const membership = await getMemberProfile(userId, orgId);
+  const [membership, timeZone] = await Promise.all([
+    getMemberProfile(userId, orgId),
+    getOrganizationTimeZone(orgId),
+  ]);
 
   if (!membership) notFound();
 
-  const currentYear = new Date().getUTCFullYear();
+  // This year at the church: on New Year's Eve evening, UTC is already next year.
+  const currentYear = floatingNow(timeZone).getUTCFullYear();
   const [all, year, songs] = await Promise.all([
     getMemberAcceptance(userId, orgId),
     getMemberAcceptance(userId, orgId, currentYear),
@@ -37,7 +43,13 @@ const MemberProfileContent = async ({
   ]);
 
   return (
-    <MemberProfile membership={membership} stats={{ all, year }} songs={songs} orgId={orgId} />
+    <MemberProfile
+      membership={membership}
+      stats={{ all, year }}
+      songs={songs}
+      orgId={orgId}
+      timeZone={timeZone}
+    />
   );
 };
 

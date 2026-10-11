@@ -9,6 +9,7 @@ import {
 } from "@/lib/actions/organizations";
 import { organizationSchema } from "@/lib/validations/organization";
 import { expireTag } from "@/lib/mobile/route";
+import { floatingNow } from "@/lib/time-zone";
 
 
 type OrganizationDetail = {
@@ -21,6 +22,8 @@ type OrganizationDetail = {
     volunteerRoles: VolunteerRole[];
     memberCount: number;
     createdAt: string;
+    /** Where the organization is, as an IANA zone. Owners change it in Settings. */
+    timeZone: string;
     upcomingEventCount: number;
     songCount: number;
     pendingInvitationCount: number;
@@ -48,8 +51,6 @@ export async function GET(
 
         const { orgId } = await params;
 
-        const now = new Date();
-
         const organizationDetails = await prisma.organization.findUnique({
             where: {
                 id: orgId,
@@ -67,6 +68,7 @@ export async function GET(
                 description: true,
                 logoUrl: true,
                 createdAt: true,
+                timeZone: true,
                 memberships: {
                     where: {
                         user: {
@@ -83,7 +85,6 @@ export async function GET(
                         memberships: true,
                         invitations: { where: { status: InvitationStatus.PENDING } },
                         songs: { where: { deletedAt: null } },
-                        events: { where: { dates: { some: { startTime: { gte: now } } } } },
                     },
                 },
             },
@@ -98,6 +99,16 @@ export async function GET(
 
         const { memberships, _count, createdAt, ...organization } = organizationDetails;
 
+        // Against the organization's own clock: event times are its wall clock,
+        // so the real one would count this morning's service as already begun
+        // hours before it starts, anywhere west of UTC.
+        const upcomingEventCount = await prisma.event.count({
+            where: {
+                organizationId: orgId,
+                dates: { some: { startTime: { gte: floatingNow(organization.timeZone) } } },
+            },
+        });
+
         
         const organizationDetail: OrganizationDetail = {
             ...organization,
@@ -105,7 +116,7 @@ export async function GET(
             volunteerRoles: memberships[0].volunteerRoles,
             memberCount: _count.memberships,
             createdAt: createdAt.toISOString(),
-            upcomingEventCount: _count.events,
+            upcomingEventCount,
             songCount: _count.songs,
             pendingInvitationCount: _count.invitations,
         };
@@ -129,8 +140,9 @@ export async function GET(
 /**
  * PATCH /api/mobile/v1/organizations/[orgId]
  *
- * Renames or re-describes the organization: `{ name, description }`. Owners
- * only — the action refuses everybody else with a message the app shows.
+ * Renames or re-describes the organization, or moves its time zone:
+ * `{ name, description, timeZone? }`. Owners only — the action refuses
+ * everybody else, and an unknown zone, with a message the app shows.
  */
 export async function PATCH(
     req: Request,

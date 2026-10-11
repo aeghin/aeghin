@@ -2,6 +2,7 @@ import "server-only";
 
 import prisma from "../prisma";
 import { cacheLife, cacheTag } from 'next/cache';
+import { zoneOrFallback } from '@/lib/time-zone';
 import { InvitationStatus } from "@/generated/prisma/enums";
 
 export const getOrganizationDetailsById = async (id: string, userId: string) => {
@@ -262,6 +263,28 @@ export const getOrgMembersWithUser = async (organizationId: string) => {
 };
 
 
+/**
+ * The organization's IANA zone: what its event times — floating wall clock —
+ * are compared to the real clock in (lib/time-zone.ts). Carries the details tag,
+ * which every edit of the organization expires.
+ */
+export const getOrganizationTimeZone = async (organizationId: string): Promise<string> => {
+
+  "use cache";
+
+  cacheLife("hours");
+
+  cacheTag(`org-${organizationId}-details`);
+
+  const organization = await prisma.organization.findUnique({
+    where: { id: organizationId },
+    select: { timeZone: true },
+  });
+
+  return zoneOrFallback(organization?.timeZone);
+};
+
+
 export const getOrganizationSettings = async (organizationId: string) => {
 
   "use cache";
@@ -279,6 +302,7 @@ export const getOrganizationSettings = async (organizationId: string) => {
       name: true,
       description: true,
       logoUrl: true,
+      timeZone: true,
       serviceTypes: {
         where: { deletedAt: null }
       }

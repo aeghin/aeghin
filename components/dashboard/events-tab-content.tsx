@@ -2,6 +2,8 @@ import { MemberEventsDashboard } from "@/components/dashboard/events-member-dash
 import { UpNextBanner, findUpNext } from "@/components/dashboard/up-next-banner";
 import { getOrgServiceTypes, getServiceTypeOrder } from "@/lib/services/service-types";
 import { getUserEvents, getOrgEvents } from "@/lib/services/events";
+import { getOrganizationTimeZone } from "@/lib/services/organization";
+import { floatingNow } from "@/lib/time-zone";
 
 interface EventsTabContentProps {
   organizationId: string;
@@ -15,16 +17,21 @@ export const EventsTabContent = async ({
   canManage,
 }: EventsTabContentProps) => {
 
-  const [serviceTypes, serviceTypeOrder, events, allEvents] = await Promise.all([
+  const [serviceTypes, serviceTypeOrder, events, allEvents, timeZone] = await Promise.all([
     getOrgServiceTypes(organizationId),
     getServiceTypeOrder(userId, organizationId),
     getUserEvents(organizationId, userId),
     canManage ? getOrgEvents(organizationId, userId) : Promise.resolve([]),
+    getOrganizationTimeZone(organizationId),
   ]);
+
+  // The church's clock, which event times are written in — read once, so the
+  // banner's "Today"/"Tomorrow" and its pick can't disagree.
+  const now = floatingNow(timeZone);
 
   // Picked once here so the banner and the schedule list can't disagree about
   // which event is up next — the list drops it rather than show it twice.
-  const upNext = findUpNext(events, new Date());
+  const upNext = findUpNext(events, now);
 
   return (
     <div className="flex flex-col gap-6">
@@ -32,6 +39,7 @@ export const EventsTabContent = async ({
         upNext={upNext}
         serviceTypes={serviceTypes}
         organizationId={organizationId}
+        now={now}
       />
 
       <MemberEventsDashboard
@@ -42,6 +50,7 @@ export const EventsTabContent = async ({
         organizationId={organizationId}
         canManage={canManage}
         upNextEventId={upNext?.event.id ?? null}
+        timeZone={timeZone}
       />
     </div>
   );

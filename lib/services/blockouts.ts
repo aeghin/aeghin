@@ -2,6 +2,8 @@ import "server-only";
 
 import prisma from "@/lib/prisma";
 import { cacheLife, cacheTag } from "next/cache";
+import { getOrganizationTimeZone } from "@/lib/services/organization";
+import { floatingNow } from "@/lib/time-zone";
 
 type DateRange = { startTime: Date | string; endTime: Date | string };
 
@@ -16,12 +18,17 @@ export const getUserBlockouts = async (
 
   cacheLife("minutes");
   cacheTag(`user-${userId}-blockouts-${organizationId}`);
+  cacheTag(`org-${organizationId}-details`);
+
+  // A blockout's last day is inclusive and stored as its floating midnight, so
+  // it runs until the next midnight on the organization's clock.
+  const today = floatingNow(await getOrganizationTimeZone(organizationId));
 
   const blockouts = await prisma.blockoutDate.findMany({
     where: {
       userId,
       organizationId,
-      endDate: { gte: new Date(Date.now() - DAY_MS) },
+      endDate: { gt: new Date(today.getTime() - DAY_MS) },
     },
     orderBy: { startDate: "asc" },
     select: {

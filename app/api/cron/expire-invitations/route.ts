@@ -319,7 +319,7 @@ export async function GET(req: Request) {
         }
 
         // The pushes this cron schedules itself. Each is timed on its
-        // recipient's own clock and only rings between 8am and 9pm there
+        // recipient's own clock and only rings between 6am and 11pm there
         // (lib/push/timing.ts), so none of them wake anybody; each claims what
         // it sends first, so a slow tick overlapping the next can't double it.
         // After the sweep, so a lapse it just found in waking hours goes now.

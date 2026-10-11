@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { MembersList } from "@/components/dashboard/members-list";
 import { EmailOrganizationDialog } from "@/components/dashboard/email-organization-dialog";
-import { organizationMembersList } from "@/lib/services/organization";
+import { getOrganizationTimeZone, organizationMembersList } from "@/lib/services/organization";
 import { getEmailAllowance } from "@/lib/billing/limits";
 import { OrgRole } from "@/generated/prisma/enums";
 import { notFound } from "next/navigation";
@@ -19,7 +19,10 @@ export const MembersTabContent = async ({
   userId
 }: MembersTabContentProps) => {
 
-  const members = await organizationMembersList(organizationId);
+  const [members, timeZone] = await Promise.all([
+    organizationMembersList(organizationId),
+    getOrganizationTimeZone(organizationId),
+  ]);
 
   const sorted = [
     ...members.filter((mem) => mem.user.id === userId),
@@ -78,7 +81,7 @@ export const MembersTabContent = async ({
             <p className="text-sm">No members found</p>
           </div>
         ) : (
-          <MembersList members={visibleMembers} currentUserId={userId} viewerRole={viewerRole}/>
+          <MembersList members={visibleMembers} currentUserId={userId} viewerRole={viewerRole} timeZone={timeZone}/>
         )}
       </CardContent>
     </Card>

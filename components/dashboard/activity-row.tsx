@@ -18,7 +18,8 @@ import {
   ZapOff,
   type LucideIcon,
 } from "lucide-react";
-import { formatDistanceToNow, format } from "date-fns";
+import { formatDistanceToNow } from "date-fns";
+import { formatDateInZone, formatDateTimeInZone } from "@/lib/time-zone";
 import { AnimatedInvitationRow } from "@/components/dashboard/animated-invitation-row";
 import { cn } from "@/lib/utils";
 import { ActivityType } from "@/generated/prisma/enums";
@@ -212,21 +213,25 @@ const describeActivity = (item: ActivityItem): ReactNode => {
 };
 
 // Recent entries read best as relative ("3 hours ago"); older ones are clearer
-// as an absolute date. The exact timestamp is always available on hover.
-const formatActivityTime = (date: Date) => {
+// as an absolute date. The exact timestamp is always available on hover. Dates
+// are on the organization's clock: this renders on the server too, whose own
+// zone is UTC and would put an evening entry on the next day.
+const formatActivityTime = (date: Date, timeZone: string) => {
   const diffDays = (Date.now() - date.getTime()) / 86_400_000;
   return diffDays < 7
     ? formatDistanceToNow(date, { addSuffix: true })
-    : format(date, "MMM d, yyyy");
+    : formatDateInZone(date, timeZone);
 };
 
 interface ActivityRowProps {
   item: ActivityItem;
   index: number;
   organizationId: string;
+  /** The organization's zone, for the dates. */
+  timeZone: string;
 }
 
-export const ActivityRow = ({ item, index, organizationId }: ActivityRowProps) => {
+export const ActivityRow = ({ item, index, organizationId, timeZone }: ActivityRowProps) => {
   const config = activityConfig[item.type];
   const Icon = config.icon;
 
@@ -248,9 +253,9 @@ export const ActivityRow = ({ item, index, organizationId }: ActivityRowProps) =
         <p className="text-sm text-muted-foreground">{describeActivity(item)}</p>
         <p
           className="text-xs text-muted-foreground"
-          title={format(item.createdAt, "PPpp")}
+          title={formatDateTimeInZone(item.createdAt, timeZone)}
         >
-          {formatActivityTime(item.createdAt)}
+          {formatActivityTime(item.createdAt, timeZone)}
           {supplementalDetail && ` · ${supplementalDetail}`}
         </p>
       </div>

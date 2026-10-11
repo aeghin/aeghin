@@ -54,7 +54,7 @@ import EventRemovedEmail from "@/components/email/event-removed-template";
 import EventUpdatedEmail, { type EventChange } from "@/components/email/event-updated-template";
 
 import {
-  eventStart,
+  eventStartAt,
   formatEventShort,
   formatEventWhen,
   formatRehearsal,
@@ -340,7 +340,7 @@ export async function createEvent(
     const [membership, serviceType] = await Promise.all([
       prisma.membership.findFirst({
         where: { userId: id, organizationId },
-        include: { organization: { select: { name: true, logoUrl: true } } },
+        include: { organization: { select: { name: true, logoUrl: true, timeZone: true } } },
       }),
       prisma.serviceType.findFirst({
         where: { id: serviceTypeId, organizationId, deletedAt: null },
@@ -578,7 +578,7 @@ export async function createEvent(
                 invitedByName,
                 eventDate: fullWhen?.date ?? null,
                 eventTime: fullWhen?.time ?? null,
-                startsAt: eventStart(eventDates),
+                startsAt: eventStartAt(eventDates, membership.organization.timeZone),
                 expiresAt: answerBy,
                 viewLink: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/organizations/${organizationId}`,
               }),
@@ -874,7 +874,7 @@ export const declineEventInvitation = async (
         },
         // Entitlements are read here, before the decline commits, so nothing
         // after it can fail on a plan lookup.
-        organization: { select: { name: true, logoUrl: true, entitlements: true } },
+        organization: { select: { name: true, logoUrl: true, entitlements: true, timeZone: true } },
       },
     });
 
@@ -1049,7 +1049,7 @@ export const declineEventInvitation = async (
               invitedByName: null,
               eventDate: replacementWhen?.date ?? null,
               eventTime: replacementWhen?.time ?? null,
-              startsAt: eventStart(assignment.event.dates),
+              startsAt: eventStartAt(assignment.event.dates, assignment.organization.timeZone),
               expiresAt: replacementExpiry,
               viewLink: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/organizations/${organizationId}`,
             }),
@@ -1305,7 +1305,7 @@ export const resendEventInvitation = async (
         },
         select: {
           role: true,
-          organization: { select: { name: true, logoUrl: true } },
+          organization: { select: { name: true, logoUrl: true, timeZone: true } },
         },
       }),
       prisma.eventAssignment.findFirst({
@@ -1419,7 +1419,7 @@ export const resendEventInvitation = async (
           invitedByName: `${user.firstName} ${user.lastName}`,
           eventDate: resentWhen?.date ?? null,
           eventTime: resentWhen?.time ?? null,
-          startsAt: eventStart(assignment.event.dates),
+          startsAt: eventStartAt(assignment.event.dates, membership.organization.timeZone),
           expiresAt: resentExpiry,
           viewLink: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/organizations/${organizationId}`,
         }),
@@ -1864,7 +1864,7 @@ export const inviteMembersToEvent = async (
         where: {
           userId_organizationId: { userId: user.id, organizationId },
         },
-        include: { organization: { select: { name: true, logoUrl: true } } },
+        include: { organization: { select: { name: true, logoUrl: true, timeZone: true } } },
       }),
       prisma.event.findFirst({
         where: { id: eventId, organizationId },
@@ -2083,7 +2083,7 @@ export const inviteMembersToEvent = async (
             invitedByName: `${user.firstName} ${user.lastName}`,
             eventDate: fullWhen?.date ?? null,
             eventTime: fullWhen?.time ?? null,
-            startsAt: eventStart(event.dates),
+            startsAt: eventStartAt(event.dates, membership.organization.timeZone),
             expiresAt: expiry,
             viewLink: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/organizations/${organizationId}`,
           }),

@@ -28,6 +28,7 @@ import { OrgRole, VolunteerRole } from "@/generated/prisma/enums";
 import { getRoleConfig, volunteerRoleConfig } from "@/lib/config/roles";
 
 import { cn } from "@/lib/utils";
+import { formatDateInZone } from "@/lib/time-zone";
 
 import { RoleAssignButtons } from "@/components/dashboard/role-assign-buttons";
 import { capitalizeName } from "@/lib/names";
@@ -51,9 +52,11 @@ interface MembersListProps {
   members: Members[]
   currentUserId: string
   viewerRole: OrgRole
+  /** The organization's zone, for the joined dates. */
+  timeZone: string
 }
 
-export function MembersList({ members, currentUserId, viewerRole }: MembersListProps) {
+export function MembersList({ members, currentUserId, viewerRole, timeZone }: MembersListProps) {
 
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState<OrgRole | "ALL">("ALL");
@@ -138,10 +141,9 @@ export function MembersList({ members, currentUserId, viewerRole }: MembersListP
 
         const isSelf = member.user.id === currentUserId;
 
-        const joinedDate = new Date(member.user.createdAt).toLocaleDateString(
-          "en-US",
-          { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" },
-        );
+        // A real moment, on the organization's clock — the same on the server
+        // render and in the browser. UTC put an evening sign-up on the next day.
+        const joinedDate = formatDateInZone(member.user.createdAt, timeZone);
 
         const canManageMember =
           viewerRole !== OrgRole.MEMBER &&

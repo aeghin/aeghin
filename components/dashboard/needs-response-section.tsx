@@ -1,5 +1,7 @@
 import { getUserEvents } from "@/lib/services/events";
 import { getOrgServiceTypes } from "@/lib/services/service-types";
+import { getOrganizationTimeZone } from "@/lib/services/organization";
+import { floatingNow } from "@/lib/time-zone";
 import { volunteerRoleConfig } from "@/lib/config/roles";
 import { InvitationStatus, VolunteerRole } from "@/generated/prisma/enums";
 import {
@@ -53,12 +55,16 @@ export const NeedsResponseSection = async ({
   canManage
 }: NeedsResponseSectionProps) => {
 
-  const [events, serviceTypes] = await Promise.all([
+  const [events, serviceTypes, timeZone] = await Promise.all([
     getUserEvents(organizationId, userId),
     getOrgServiceTypes(organizationId),
+    getOrganizationTimeZone(organizationId),
   ]);
 
+  // Deadlines are real instants; event times are the church's wall clock, so
+  // "not over yet" reads the church's clock instead.
   const now = new Date();
+  const churchNow = floatingNow(timeZone, now);
 
   // Open invitations: pending, not expired, and the event isn't over yet.
   const pending: { invite: PendingInvite; expiresAt: Date }[] = [];
@@ -69,7 +75,7 @@ export const NeedsResponseSection = async ({
     );
     if (!assignment) continue;
 
-    const upcomingDates = event.dates.filter((d) => d.endTime >= now);
+    const upcomingDates = event.dates.filter((d) => d.endTime >= churchNow);
     if (upcomingDates.length === 0) continue;
 
     const start = upcomingDates.reduce(

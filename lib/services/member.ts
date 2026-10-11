@@ -3,6 +3,8 @@ import "server-only";
 import prisma from "@/lib/prisma";
 import { InvitationStatus } from "@/generated/prisma/enums";
 import { cacheLife, cacheTag } from "next/cache";
+import { getOrganizationTimeZone } from "@/lib/services/organization";
+import { inZone } from "@/lib/time-zone";
 
 import type {
   MemberProfileData,
@@ -55,7 +57,17 @@ export const getMemberAcceptance = async (
   cacheLife("minutes");
   cacheTag(`org-${organizationId}-acceptance-stats`);
 
-  const since = year !== undefined ? new Date(Date.UTC(year, 0, 1)) : undefined;
+  // A year starts at midnight on Jan 1 at the church, not in UTC: `createdAt`
+  // is a real moment, and UTC's new year begins at 6pm on Dec 31 in Chicago.
+  let since: Date | undefined;
+
+  if (year !== undefined) {
+    cacheTag(`org-${organizationId}-details`);
+    since = inZone(
+      new Date(Date.UTC(year, 0, 1)),
+      await getOrganizationTimeZone(organizationId),
+    );
+  }
 
   const grouped = await prisma.eventAssignment.groupBy({
     by: ["status"],

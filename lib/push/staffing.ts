@@ -23,12 +23,12 @@ import {
   daysBefore,
   inZone,
   isDue,
-  isDueAt,
   wakingNext,
   wakingSameDay,
   wallClock,
   zonesByEmail,
 } from "@/lib/push/timing";
+import { zoneOrFallback } from "@/lib/time-zone";
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
@@ -43,8 +43,8 @@ const LAST_CALL_HORIZON_MS = (LAST_CALL_DAYS[0] + 1) * DAY_MS;
 const LAST_CALL_PAGE = 200;
 
 /**
- * How long a lapse can wait for its push: 9pm to the next 8am, plus a
- * daylight-saving hour and the cron's grace.
+ * How long a lapse can wait for its push: 11pm to the next 6am, plus a
+ * daylight-saving hour and the cron's grace, with room to spare.
  */
 const LAPSE_HOLD_MS = 16 * HOUR_MS;
 
@@ -81,11 +81,11 @@ export async function forgetOldPushClaims(now: Date): Promise<number> {
  * email and push together, timed for each manager.
  *
  * Planned on the manager's own clock: the event's time of day, three days and
- * one day before, kept inside 8am to 8pm in the zone their phone reports. The
- * email used to go on the event's floating clock instead, which put a 9am
- * service's at 4am in Chicago, hours ahead of its own push, and after the mark
- * east of UTC. A manager whose phone hasn't reported a zone gets the email
- * alone, at the floating mark, since there's no telling when their night is.
+ * one day before, kept inside 6am to 10pm in the zone their phone reports. A
+ * manager whose phone hasn't reported a zone — usually one without the app —
+ * gets the email alone, planned the same way on the organization's clock,
+ * which is where they most likely are. (It used to go at the floating mark read
+ * as UTC: 4am in Chicago for a 9am service.)
  *
  * Staffing is read when it goes, and each check is claimed per person and
  * spent whatever it finds: fully staffed then means nothing for that check,
@@ -127,7 +127,7 @@ export async function sendLastCalls(now: Date): Promise<SendCount> {
         rolesNeeded: true,
         roleSpots: true,
         dates: { select: { startTime: true, endTime: true } },
-        organization: { select: { name: true, logoUrl: true } },
+        organization: { select: { name: true, logoUrl: true, timeZone: true } },
         assignments: {
           select: {
             role: true,
@@ -162,7 +162,8 @@ export async function sendLastCalls(now: Date): Promise<SendCount> {
     const planned: {
       key: string;
       addressee: Addressee;
-      timeZone: string | undefined;
+      /** The zone their phone reports. Only somebody with one is pushed. */
+      phoneZone: string | undefined;
       event: (typeof events)[number];
     }[] = [];
 
@@ -170,29 +171,28 @@ export async function sendLastCalls(now: Date): Promise<SendCount> {
       if (event.dates.length === 0) return;
 
       const firstStart = firstStartOf(event.dates);
+      const orgZone = zoneOrFallback(event.organization.timeZone);
 
       for (const addressee of recipients[index]) {
         const { email } = addressee.person;
-        const timeZone = zones.get(email);
+        const phoneZone = zones.get(email);
+
+        // The clock it's planned on: their phone's, else the organization's.
+        const clock = phoneZone ?? orgZone;
 
         try {
-          const start = timeZone ? inZone(firstStart, timeZone) : firstStart;
-
-          // Already under way: the bell and the lapse notices carry on without it.
-          if (start.getTime() <= now.getTime()) continue;
+          // Already under way, at the church: the bell and the lapse notices
+          // carry on without it.
+          if (inZone(firstStart, orgZone).getTime() <= now.getTime()) continue;
 
           for (const days of LAST_CALL_DAYS) {
-            const sendAt = timeZone
-              ? inZone(wakingSameDay(daysBefore(firstStart, days)), timeZone)
-              : daysBefore(firstStart, days);
+            const sendAt = inZone(wakingSameDay(daysBefore(firstStart, days)), clock);
 
-            const due = timeZone ? isDue(sendAt, now, timeZone) : isDueAt(sendAt, now);
-
-            if (event.createdAt.getTime() <= sendAt.getTime() && due) {
+            if (event.createdAt.getTime() <= sendAt.getTime() && isDue(sendAt, now, clock)) {
               planned.push({
                 key: `last-call:${event.id}:${days}:${firstStart.getTime()}:${email}`,
                 addressee,
-                timeZone,
+                phoneZone,
                 event,
               });
             }
@@ -236,7 +236,7 @@ export async function sendLastCalls(now: Date): Promise<SendCount> {
     });
 
     const notices: PushNotice[] = sending
-      .filter((item) => item.timeZone)
+      .filter((item) => item.phoneZone)
       .map(({ addressee, event, unfilledRoles, waitingOn }) => {
         const missing = [
           unfilledRoles.length > 0 && `Open: ${unfilledRoles.join(", ")}`,
@@ -273,7 +273,7 @@ export async function sendLastCalls(now: Date): Promise<SendCount> {
 
 /**
  * The push for a lapsed invitation, held for the manager's waking hours: at
- * once between 8am and 9pm on their phone, otherwise at 8am. The email still
+ * once between 6am and 11pm on their phone, otherwise at 6am. The email still
  * goes when the sweep finds the lapse.
  *
  * Reads lapses back from `lapsedAt` rather than being handed them by the

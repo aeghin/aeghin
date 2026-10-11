@@ -62,7 +62,13 @@ export function CreateOrganizationModal({
 
   const handleSubmit = (values: OrganizationInput) => {
     startTransition(async () => {
-      const result = await createOrganization(values);
+      // Where the church is, from this browser: event times are its wall clock,
+      // and reminders and "is it over yet" are worked out on it. Owners can
+      // change it in Settings.
+      const result = await createOrganization({
+        ...values,
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      });
 
       if (result.success) {
         toast.success("Organization Created! 🚀", { position: "top-center"});
