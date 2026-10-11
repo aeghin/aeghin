@@ -7,10 +7,12 @@ import { sendPushNotices } from "@/lib/push/send";
 
 /**
  * How long a phone stays silent about one event's chat after it last rang for
- * it. Every message is still delivered; inside the window it arrives without a
- * sound, so a burst is one ring and the rest stack quietly beneath it.
+ * it — only long enough to catch a burst. Somebody sending three quick lines
+ * is one ring, with the rest stacking quietly beneath it; anything slower, like
+ * a reply, rings again, the way a messaging app does. Every message is still
+ * delivered either way.
  */
-const CHAT_RING_WINDOW_MS = 60 * 1000;
+const CHAT_RING_WINDOW_MS = 10 * 1000;
 
 /**
  * Tells the rest of an event's team about a new chat message.

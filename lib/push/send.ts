@@ -58,8 +58,14 @@ export type PushNotice = {
 const TITLE_LIMIT = 120;
 const BODY_LIMIT = 400;
 
-/** The Android channels the app creates for chat, in `obtainPushToken` (`src/lib/push.ts`). */
-const CHAT_CHANNEL = "chat";
+/**
+ * The Android channels the app creates for chat, in `obtainPushToken`
+ * (`src/lib/push.ts`). `chat-v2` pops up on screen; it replaced `chat`, which
+ * didn't, because Android lets only the person change a channel's importance
+ * once it exists. A phone yet to create it shows the push in expo-notifications'
+ * fallback channel, which pops up too.
+ */
+const CHAT_CHANNEL = "chat-v2";
 const QUIET_CHAT_CHANNEL = "chat-quiet";
 
 /** Cut on characters, not UTF-16 units, so an emoji is never split in half. */
@@ -120,10 +126,13 @@ export async function sendPushNotices(
           // Chat has its own Android channel, so it can be silenced without
           // everything else, and one iOS thread per event, so a conversation
           // stacks as one. A build too old to have created the channel shows
-          // it in expo-notifications' fallback channel instead.
+          // it in expo-notifications' fallback channel instead. High priority
+          // is what a messaging app sends: Android holds a normal one while the
+          // phone is idle or the app rarely opened. iOS is high already.
           ...(notice.data.type === "chat" && {
             channelId: notice.quiet ? QUIET_CHAT_CHANNEL : CHAT_CHANNEL,
             threadId: `chat-${notice.data.eventId}`,
+            priority: "high",
           }),
         }),
       ),
