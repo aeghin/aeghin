@@ -2,7 +2,14 @@
 
 import { useTransition } from "react";
 import Link from "next/link";
-import { Bell, CircleCheck, Inbox, TriangleAlert } from "lucide-react";
+import {
+  Bell,
+  Building2,
+  CircleCheck,
+  Inbox,
+  TriangleAlert,
+  type LucideIcon,
+} from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
 import { Button } from "@/components/ui/button";
@@ -18,11 +25,13 @@ import {
   markAllNotificationsRead,
   markNotificationRead,
 } from "@/lib/actions/notification";
-import type { NotificationItem } from "@/lib/types";
+import type { InvitationNotice, NotificationItem } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 interface NotificationsMenuProps {
   items: NotificationItem[];
+  /** Organizations asking to have you, which head the list. */
+  invitations: InvitationNotice[];
   unreadCount: number;
 }
 
@@ -79,8 +88,12 @@ const hrefFor = (item: NotificationItem) =>
     ? `/dashboard/organizations/${item.organizationId}`
     : `/dashboard/organizations/${item.organizationId}/events/${item.eventId}`;
 
+/** An organization invitation asks for an answer too, so it shares that colour. */
+const INVITATION_COLOR = CATEGORY_COLORS.AWAITING_RESPONSE;
+
 export function NotificationsMenu({
   items,
+  invitations,
   unreadCount,
 }: NotificationsMenuProps) {
   const [, startTransition] = useTransition();
@@ -91,7 +104,7 @@ export function NotificationsMenu({
     });
   };
 
-  const handleOpen = (item: NotificationItem) => {
+  const handleOpen = (item: { id: string; unread: boolean }) => {
     if (!item.unread) return;
 
     startTransition(async () => {
@@ -146,7 +159,7 @@ export function NotificationsMenu({
 
         <DropdownMenuSeparator className="m-0" />
 
-        {items.length === 0 ? (
+        {items.length === 0 && invitations.length === 0 ? (
           // Honest, because rows are deleted once the roster is fixed rather
           // than left behind to be marked read.
           <div className="flex flex-col items-center justify-center py-10 text-center">
@@ -162,63 +175,95 @@ export function NotificationsMenu({
           </div>
         ) : (
           <div className="max-h-100 overflow-y-auto">
-            {items.map((item) => {
-              const Icon = CATEGORY_ICONS[item.category];
-              const colorClass = CATEGORY_COLORS[item.category];
-
-              return (
-                <DropdownMenuItem
-                  key={item.id}
-                  asChild
-                  className="cursor-pointer focus:bg-muted/50"
-                >
-                  <Link
-                    href={hrefFor(item)}
-                    onClick={() => handleOpen(item)}
-                    className="flex items-start gap-3 px-4 py-3"
-                  >
-                    <div
-                      className={cn(
-                        "mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-transform",
-                        colorClass,
-                      )}
-                    >
-                      <Icon className="h-4 w-4" />
-                    </div>
-                    <div className="flex-1 space-y-1">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-sm font-medium leading-tight">
-                          {item.eventName}
-                        </span>
-                        {item.unread && (
-                          <>
-                            {/* The dot is the only thing separating a read row
-                                from an unread one, so it has to say so. */}
-                            <span className="sr-only">Unread</span>
-                            <span
-                              aria-hidden="true"
-                              className="h-2 w-2 shrink-0 rounded-full bg-primary"
-                            />
-                          </>
-                        )}
-                      </div>
-                      <p className="text-xs leading-relaxed text-muted-foreground">
-                        {describe(item)}
-                      </p>
-                      <p className="text-[11px] text-muted-foreground/60">
-                        {item.organizationName} ·{" "}
-                        {formatDistanceToNow(item.updatedAt, {
-                          addSuffix: true,
-                        })}
-                      </p>
-                    </div>
-                  </Link>
-                </DropdownMenuItem>
-              );
-            })}
+            {invitations.map((invitation) => (
+              <BellRow
+                key={invitation.id}
+                href={`/invite/${invitation.token}`}
+                onClick={() => handleOpen(invitation)}
+                icon={Building2}
+                colorClass={INVITATION_COLOR}
+                title={invitation.organizationName}
+                unread={invitation.unread}
+                line={
+                  invitation.invitedByName
+                    ? `${invitation.invitedByName} invited you to join`
+                    : "You've been invited to join"
+                }
+                meta={formatDistanceToNow(invitation.createdAt, { addSuffix: true })}
+              />
+            ))}
+            {items.map((item) => (
+              <BellRow
+                key={item.id}
+                href={hrefFor(item)}
+                onClick={() => handleOpen(item)}
+                icon={CATEGORY_ICONS[item.category]}
+                colorClass={CATEGORY_COLORS[item.category]}
+                title={item.eventName}
+                unread={item.unread}
+                line={describe(item)}
+                meta={`${item.organizationName} · ${formatDistanceToNow(item.updatedAt, {
+                  addSuffix: true,
+                })}`}
+              />
+            ))}
           </div>
         )}
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+/** One row of the bell, whatever it points at. */
+function BellRow({
+  href,
+  onClick,
+  icon: Icon,
+  colorClass,
+  title,
+  unread,
+  line,
+  meta,
+}: {
+  href: string;
+  onClick: () => void;
+  icon: LucideIcon;
+  colorClass: string;
+  title: string;
+  unread: boolean;
+  line: string;
+  meta: string;
+}) {
+  return (
+    <DropdownMenuItem asChild className="cursor-pointer focus:bg-muted/50">
+      <Link href={href} onClick={onClick} className="flex items-start gap-3 px-4 py-3">
+        <div
+          className={cn(
+            "mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-transform",
+            colorClass,
+          )}
+        >
+          <Icon className="h-4 w-4" />
+        </div>
+        <div className="flex-1 space-y-1">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-sm font-medium leading-tight">{title}</span>
+            {unread && (
+              <>
+                {/* The dot is the only thing separating a read row from an
+                    unread one, so it has to say so. */}
+                <span className="sr-only">Unread</span>
+                <span
+                  aria-hidden="true"
+                  className="h-2 w-2 shrink-0 rounded-full bg-primary"
+                />
+              </>
+            )}
+          </div>
+          <p className="text-xs leading-relaxed text-muted-foreground">{line}</p>
+          <p className="text-[11px] text-muted-foreground/60">{meta}</p>
+        </div>
+      </Link>
+    </DropdownMenuItem>
   );
 }

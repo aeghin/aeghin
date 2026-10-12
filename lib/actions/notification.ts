@@ -3,6 +3,7 @@
 import { updateTag } from "next/cache";
 
 import prisma from "@/lib/prisma";
+import { InvitationStatus } from "@/generated/prisma/enums";
 import { currentUser } from "@/lib/services/user";
 
 type ActionResponse = { success: true } | { success: false; error: string };
@@ -34,6 +35,17 @@ export const markAllNotificationsRead = async (
       data: { unreadAt: null },
     });
 
+    // The organization invitations in the bell too. They stay listed until
+    // answered, like the rows above.
+    await prisma.invitation.updateMany({
+      where: {
+        email: { equals: user.email, mode: "insensitive" },
+        status: InvitationStatus.PENDING,
+        seenAt: null,
+      },
+      data: { seenAt: new Date() },
+    });
+
     touch(`user-${user.id}-notifications`);
 
     return { success: true };
@@ -56,6 +68,17 @@ export const markNotificationRead = async (
     await prisma.notification.updateMany({
       where: { id: notificationId, userId: user.id },
       data: { unreadAt: null },
+    });
+
+    // Or it's an organization invitation in the bell, scoped by the address it
+    // was sent to for the same reason.
+    await prisma.invitation.updateMany({
+      where: {
+        id: notificationId,
+        email: { equals: user.email, mode: "insensitive" },
+        seenAt: null,
+      },
+      data: { seenAt: new Date() },
     });
 
     touch(`user-${user.id}-notifications`);

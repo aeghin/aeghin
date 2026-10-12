@@ -18,6 +18,8 @@ type PendingInvitation = {
     volunteerRoles: VolunteerRole[];
     expiresAt: string;
     createdAt: string;
+    /** Opened from the bell, which shows it as read from then on. */
+    seen: boolean;
     invitedBy: { firstName: string; lastName: string };
     organization: {
         id: string;
@@ -67,6 +69,7 @@ export const GET = route<Record<string, never>>("GET /invitations", async () => 
             volunteerRoles: true,
             expiresAt: true,
             createdAt: true,
+            seenAt: true,
             invitedBy: { select: { firstName: true, lastName: true } },
             organization: {
                 select: {
@@ -87,6 +90,7 @@ export const GET = route<Record<string, never>>("GET /invitations", async () => 
         volunteerRoles: row.volunteerRoles,
         expiresAt: row.expiresAt.toISOString(),
         createdAt: row.createdAt.toISOString(),
+        seen: row.seenAt !== null,
         invitedBy: row.invitedBy,
         organization: {
             id: row.organization.id,

@@ -22,7 +22,8 @@ const expo = new Expo({ accessToken: process.env.EXPO_ACCESS_TOKEN });
  *   for a manager told about several at once. Builds that predate it open
  *   the default tab.
  * - `organization-invite`: an invitation to join, which has no organization to
- *   switch to yet.
+ *   switch to yet. The phone answers it on its organization picker; builds
+ *   that predate that open the invitation's own page.
  * - `chat`: the event's chat — only for people on its team. Builds that predate
  *   it open the organization instead.
  */

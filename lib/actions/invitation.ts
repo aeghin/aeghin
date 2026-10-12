@@ -130,6 +130,8 @@ export async function inviteMember(data: OrgInvitationInput, touch: TagInvalidat
                 status: InvitationStatus.PENDING,
                 volunteerRoles,
                 invitedById: user.id,
+                // Sent again, it's news again in the invitee's bell.
+                seenAt: null,
             },
             create: {
                 email,

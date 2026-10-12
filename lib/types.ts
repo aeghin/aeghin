@@ -258,3 +258,17 @@ export type NotificationFeed = {
   items: NotificationItem[]
   unreadCount: number
 }
+
+/**
+ * An invitation to join an organization, in the invitee's bell. Not a
+ * `Notification` row: the invitation itself is the record, so it leaves the
+ * bell the moment it is answered, withdrawn or lapses.
+ */
+export type InvitationNotice = {
+  id: string
+  token: string
+  organizationName: string
+  invitedByName: string
+  unread: boolean
+  createdAt: Date
+}

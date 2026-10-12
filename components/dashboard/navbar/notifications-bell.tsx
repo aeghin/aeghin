@@ -1,6 +1,9 @@
 import { Bell } from "lucide-react";
 
-import { getUserNotifications } from "@/lib/services/notifications";
+import {
+  getInvitationNotices,
+  getUserNotifications,
+} from "@/lib/services/notifications";
 import { currentUser } from "@/lib/services/user";
 
 import { NotificationsMenu } from "./notifications-menu";
@@ -27,7 +30,18 @@ export async function NotificationsBell() {
 
   if (!user) return null;
 
-  const { items, unreadCount } = await getUserNotifications(user.id);
+  const [{ items, unreadCount }, invitations] = await Promise.all([
+    getUserNotifications(user.id),
+    getInvitationNotices(user.email),
+  ]);
 
-  return <NotificationsMenu items={items} unreadCount={unreadCount} />;
+  return (
+    <NotificationsMenu
+      items={items}
+      invitations={invitations}
+      unreadCount={
+        unreadCount + invitations.filter((invitation) => invitation.unread).length
+      }
+    />
+  );
 }

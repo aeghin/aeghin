@@ -2,7 +2,8 @@ import "server-only";
 
 import prisma from "@/lib/prisma";
 import { cacheLife, cacheTag } from "next/cache";
-import type { NotificationFeed } from "@/lib/types";
+import { InvitationStatus } from "@/generated/prisma/enums";
+import type { InvitationNotice, NotificationFeed } from "@/lib/types";
 
 /** The bell is a glance, not an inbox — anything past this belongs in the app. */
 const FEED_LIMIT = 15;
@@ -66,4 +67,42 @@ export const getUserNotifications = async (
     })),
     unreadCount,
   };
+};
+
+
+/**
+ * The organization invitations waiting on this address, for the top of the
+ * bell: pending and not yet lapsed, newest first.
+ *
+ * Read fresh rather than cached. An invitation leaves the bell when it is
+ * answered, withdrawn or lapses, and only the read itself is sure to know.
+ * Matched case-insensitively, as the invite and its answer are: rows written
+ * before the schema lowercased emails are still out there.
+ */
+export const getInvitationNotices = async (email: string): Promise<InvitationNotice[]> => {
+  const rows = await prisma.invitation.findMany({
+    where: {
+      email: { equals: email, mode: "insensitive" },
+      status: InvitationStatus.PENDING,
+      expiresAt: { gt: new Date() },
+    },
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      token: true,
+      seenAt: true,
+      createdAt: true,
+      invitedBy: { select: { firstName: true, lastName: true } },
+      organization: { select: { name: true } },
+    },
+  });
+
+  return rows.map((row) => ({
+    id: row.id,
+    token: row.token,
+    organizationName: row.organization.name,
+    invitedByName: `${row.invitedBy.firstName} ${row.invitedBy.lastName}`.trim(),
+    unread: row.seenAt === null,
+    createdAt: row.createdAt,
+  }));
 };

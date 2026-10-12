@@ -192,6 +192,10 @@ model Invitation {
   volunteerRoles VolunteerRole[]
   expiresAt DateTime
 
+  // When the invitee opened it from the bell. Null reads as unread there, and
+  // sending it again makes it news again.
+  seenAt DateTime?
+
   invitedById String
   invitedBy User @relation(fields: [invitedById], references: [id], onDelete: Cascade)
 
