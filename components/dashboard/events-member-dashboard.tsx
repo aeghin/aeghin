@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { m, AnimatePresence } from "motion/react";
 import {
   Calendar,
@@ -31,6 +32,14 @@ import {
 import type { Staffing } from "@/lib/staffing";
 import { getServiceColors as getColorClasses } from "@/lib/config/service-types-config";
 import { floatingNow } from "@/lib/time-zone";
+import {
+  getAnchorDateInScope,
+  isEventInTimeScope,
+  isEventPast,
+  nextChange,
+  startOfFloatingDay,
+  type TimeScope,
+} from "@/lib/time-scope";
 
 interface EventDate {
   id: string;
@@ -71,33 +80,10 @@ interface Event {
 // ─── Color config ───────────────────────────────────────────────
 // Palette lives in lib/config/service-types-config.ts — see getServiceColors.
 
-// ─── Date helpers (pure functions — accept `today` as parameter) ─
+// ─── Date helpers ───────────────────────────────────────────────
 //
-// Every date here is floating, like the event times it is compared with: the
-// organization's wall clock, read through UTC fields. `today` is midnight of
-// the church's current day, and month and week bounds are built with
-// Date.UTC — local midnights would sit hours off the stored times, and differ
-// between the server render and the browser.
-
-function createToday(timeZone: string): Date {
-  const now = floatingNow(timeZone);
-  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-}
-
-/** The first and last moment of the month `cursor` shows, as floating times. */
-function monthBounds(cursor: Date): { monthStart: Date; monthEnd: Date } {
-  return {
-    monthStart: new Date(Date.UTC(cursor.getFullYear(), cursor.getMonth(), 1)),
-    monthEnd: new Date(Date.UTC(cursor.getFullYear(), cursor.getMonth() + 1, 0, 23, 59, 59)),
-  };
-}
-
-/** A week on from `today`, as a floating time. */
-function weekEndFrom(today: Date): Date {
-  const weekEnd = new Date(today);
-  weekEnd.setUTCDate(weekEnd.getUTCDate() + 7);
-  return weekEnd;
-}
+// Which period an event belongs to, and the day it groups under, live in
+// lib/time-scope.ts — shared rule for rule with the phone.
 
 /** The floating calendar day a date groups under: "2026-10-18". */
 const dayGroupKey = (date: Date) => date.toISOString().slice(0, 10);
@@ -172,57 +158,6 @@ function getMonthYear(date: Date): string {
 }
 
 /**
- * Check if ANY of an event's dates overlap with the given time scope.
- * Pure function — all dependencies passed as parameters.
- */
-function isEventInTimeScope(
-  dates: EventDate[],
-  scope: TimeScope,
-  currentMonth: Date,
-  today: Date,
-): boolean {
-  if (dates.length === 0) return false;
-
-  switch (scope) {
-    case "week": {
-      const weekEnd = weekEndFrom(today);
-      return dates.some((d) => {
-        const start = new Date(d.startTime);
-        const end = new Date(d.endTime);
-        return start <= weekEnd && end >= today;
-      });
-    }
-    case "month": {
-      const { monthStart, monthEnd } = monthBounds(currentMonth);
-      return dates.some((d) => {
-        const start = new Date(d.startTime);
-        const end = new Date(d.endTime);
-        return start <= monthEnd && end >= monthStart;
-      });
-    }
-    case "upcoming": {
-      return dates.some((d) => new Date(d.endTime) >= today);
-    }
-    case "past": {
-      const { monthStart, monthEnd } = monthBounds(currentMonth);
-      return (
-        dates.every((d) => new Date(d.endTime) < today) &&
-        dates.some((d) => {
-          const start = new Date(d.startTime);
-          const end = new Date(d.endTime);
-          return start <= monthEnd && end >= monthStart;
-        })
-      );
-    }
-  }
-}
-
-/** True only if every EventDate's endTime is before today */
-function isEventPast(dates: EventDate[], today: Date): boolean {
-  return dates.length > 0 && dates.every((d) => new Date(d.endTime) < today);
-}
-
-/**
  * A pending invitation the member can still answer.
  *
  * Takes a real timestamp, never `today`. Expiry is wall-clock — an invite
@@ -260,45 +195,8 @@ function hasExpiredInvite(event: Event, now: Date): boolean {
   );
 }
 
-/**
- * For grouping: find the earliest startTime that falls within the current scope.
- * Falls back to the absolute earliest date if none qualify.
- */
-function getAnchorDateInScope(
-  dates: EventDate[],
-  scope: TimeScope,
-  currentMonth: Date,
-  today: Date,
-): Date {
-  const datesInScope = dates.filter((d) => {
-    const start = new Date(d.startTime);
-    const end = new Date(d.endTime);
-
-    switch (scope) {
-      case "week": {
-        const weekEnd = weekEndFrom(today);
-        return start <= weekEnd && end >= today;
-      }
-      case "month": {
-        const { monthStart, monthEnd } = monthBounds(currentMonth);
-        return start <= monthEnd && end >= monthStart;
-      }
-      case "upcoming":
-        return end >= today;
-      case "past":
-        return end < today;
-    }
-  });
-
-  if (datesInScope.length > 0) {
-    return getEarliestDate(datesInScope);
-  }
-  return getEarliestDate(dates);
-}
-
 // ─── Component types ────────────────────────────────────────────
 
-type TimeScope = "month" | "week" | "upcoming" | "past";
 type TabType = "pending" | "schedule" | "all";
 
 interface MemberEventsDashboardProps {
@@ -344,8 +242,19 @@ export function MemberEventsDashboard({
   const [selectedServiceType, setSelectedServiceType] = useState<string | null>(
     null,
   );
-  // Compute today once per render, pass to all helpers
-  const today = useMemo(() => createToday(timeZone), [timeZone]);
+  const router = useRouter();
+
+  // The organization's clock, which event times are written in. Read again
+  // when the list would change — a block ending, an invitation lapsing, the
+  // church's midnight — and the server's half of the page (the Upcoming
+  // banner, the counts) refreshed with it, so a finished service leaves at
+  // its end time without a reload, as on the phone.
+  const [instant, setInstant] = useState(() => Date.now());
+  const churchNow = useMemo(
+    () => floatingNow(timeZone, new Date(instant)),
+    [timeZone, instant],
+  );
+  const today = useMemo(() => startOfFloatingDay(churchNow), [churchNow]);
 
   // A month cursor: only its year and month are read. Started from the
   // church's today, so the server render and the browser agree on it.
@@ -358,9 +267,29 @@ export function MemberEventsDashboard({
     setIsMounted(true);
   }, []);
 
-  // `today` is midnight because every date helper above wants a calendar day.
-  // Expiry is a timestamp, so it gets its own clock — see hasLiveInvite.
-  const now = useMemo(() => new Date(), []);
+  // Expiry is a real instant, not the church's wall clock — see hasLiveInvite.
+  const now = useMemo(() => new Date(instant), [instant]);
+
+  const due = nextChange(
+    [...events, ...allEvents].flatMap((event) => event.dates),
+    events.flatMap((event) =>
+      event.assignments
+        .filter((assignment) => assignment.status === InvitationStatus.PENDING)
+        .map((assignment) => assignment.expiresAt),
+    ),
+    timeZone,
+    churchNow,
+    instant,
+  );
+
+  useEffect(() => {
+    // A second late, so the server is sure to read the same side of it.
+    const timer = setTimeout(() => {
+      setInstant(Date.now());
+      router.refresh();
+    }, Math.max(0, due - Date.now()) + 1000);
+    return () => clearTimeout(timer);
+  }, [due, router]);
 
   // ── Memoized lookups ────────────────────────────────────────
 
@@ -387,13 +316,13 @@ export function MemberEventsDashboard({
   }, [events]);
 
   const nonPastPendingEvents = useMemo(
-    () => pendingEvents.filter((e) => !isEventPast(e.dates, today)),
-    [pendingEvents, today],
+    () => pendingEvents.filter((e) => !isEventPast(e.dates, churchNow)),
+    [pendingEvents, churchNow],
   );
 
   const nonPastAcceptedEvents = useMemo(
-    () => acceptedEvents.filter((e) => !isEventPast(e.dates, today)),
-    [acceptedEvents, today],
+    () => acceptedEvents.filter((e) => !isEventPast(e.dates, churchNow)),
+    [acceptedEvents, churchNow],
   );
 
   const filteredPendingEvents = useMemo(() => {
@@ -402,15 +331,15 @@ export function MemberEventsDashboard({
         event.dates,
         timeScope,
         currentMonth,
-        today,
+        churchNow,
       );
       const matchesService =
         !selectedServiceType || event.serviceTypeId === selectedServiceType;
       const notPast =
-        timeScope === "past" || !isEventPast(event.dates, today);
+        timeScope === "past" || !isEventPast(event.dates, churchNow);
       return inScope && matchesService && notPast;
     });
-  }, [pendingEvents, timeScope, currentMonth, selectedServiceType, today]);
+  }, [pendingEvents, timeScope, currentMonth, selectedServiceType, churchNow]);
 
   // Same scope and service filtering as the live list, so the tab stays
   // coherent when a month or a service type is selected.
@@ -420,15 +349,15 @@ export function MemberEventsDashboard({
         event.dates,
         timeScope,
         currentMonth,
-        today,
+        churchNow,
       );
       const matchesService =
         !selectedServiceType || event.serviceTypeId === selectedServiceType;
       const notPast =
-        timeScope === "past" || !isEventPast(event.dates, today);
+        timeScope === "past" || !isEventPast(event.dates, churchNow);
       return inScope && matchesService && notPast;
     });
-  }, [expiredEvents, timeScope, currentMonth, selectedServiceType, today]);
+  }, [expiredEvents, timeScope, currentMonth, selectedServiceType, churchNow]);
 
   const filteredAcceptedEvents = useMemo(() => {
     return acceptedEvents
@@ -437,12 +366,12 @@ export function MemberEventsDashboard({
           event.dates,
           timeScope,
           currentMonth,
-          today,
+          churchNow,
         );
         const matchesService =
           !selectedServiceType || event.serviceTypeId === selectedServiceType;
         const notPast =
-          timeScope === "past" || !isEventPast(event.dates, today);
+          timeScope === "past" || !isEventPast(event.dates, churchNow);
         return inScope && matchesService && notPast;
       })
       .sort(
@@ -450,7 +379,7 @@ export function MemberEventsDashboard({
           getEarliestDate(a.dates).getTime() -
           getEarliestDate(b.dates).getTime(),
       );
-  }, [acceptedEvents, timeScope, currentMonth, selectedServiceType, today]);
+  }, [acceptedEvents, timeScope, currentMonth, selectedServiceType, churchNow]);
 
   // The Upcoming banner above already renders this one — drop it from the rows.
   // Kept as its own layer so the empty state can tell "nothing matches" apart
@@ -468,7 +397,7 @@ export function MemberEventsDashboard({
         event.dates,
         timeScope,
         currentMonth,
-        today,
+        churchNow,
       );
       const key = dayGroupKey(anchorDate);
 
@@ -481,13 +410,13 @@ export function MemberEventsDashboard({
     return Object.entries(groups).sort(
       ([a], [b]) => new Date(a).getTime() - new Date(b).getTime(),
     );
-  }, [scheduleEvents, timeScope, currentMonth, today]);
+  }, [scheduleEvents, timeScope, currentMonth, churchNow]);
 
   // ── All-events derivations (managers only) ──────────────────
 
   const nonPastAllEvents = useMemo(
-    () => allEvents.filter((e) => !isEventPast(e.dates, today)),
-    [allEvents, today],
+    () => allEvents.filter((e) => !isEventPast(e.dates, churchNow)),
+    [allEvents, churchNow],
   );
 
   const filteredAllEvents = useMemo(() => {
@@ -497,12 +426,12 @@ export function MemberEventsDashboard({
           event.dates,
           timeScope,
           currentMonth,
-          today,
+          churchNow,
         );
         const matchesService =
           !selectedServiceType || event.serviceTypeId === selectedServiceType;
         const notPast =
-          timeScope === "past" || !isEventPast(event.dates, today);
+          timeScope === "past" || !isEventPast(event.dates, churchNow);
         return inScope && matchesService && notPast;
       })
       .sort(
@@ -510,7 +439,7 @@ export function MemberEventsDashboard({
           getEarliestDate(a.dates).getTime() -
           getEarliestDate(b.dates).getTime(),
       );
-  }, [allEvents, timeScope, currentMonth, selectedServiceType, today]);
+  }, [allEvents, timeScope, currentMonth, selectedServiceType, churchNow]);
 
   const groupedAllEvents = useMemo(() => {
     const groups: Record<string, Event[]> = {};
@@ -520,7 +449,7 @@ export function MemberEventsDashboard({
         event.dates,
         timeScope,
         currentMonth,
-        today,
+        churchNow,
       );
       const key = dayGroupKey(anchorDate);
 
@@ -533,7 +462,7 @@ export function MemberEventsDashboard({
     return Object.entries(groups).sort(
       ([a], [b]) => new Date(a).getTime() - new Date(b).getTime(),
     );
-  }, [filteredAllEvents, timeScope, currentMonth, today]);
+  }, [filteredAllEvents, timeScope, currentMonth, churchNow]);
 
   // ── Helpers ─────────────────────────────────────────────────
 
@@ -872,7 +801,7 @@ export function MemberEventsDashboard({
                   ([dateStr, dateEvents], groupIndex) => {
                     const groupDate = new Date(dateStr);
                     const allPast = dateEvents.every((e) =>
-                      isEventPast(e.dates, today),
+                      isEventPast(e.dates, churchNow),
                     );
                     const isNextUpcoming = dateStr === nextUpcomingDate;
 

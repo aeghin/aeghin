@@ -5,7 +5,7 @@ import { InvitationStatus } from "@/generated/prisma/enums";
 import { cacheLife, cacheTag } from "next/cache";
 import { staffingOf, staffingTallies } from "@/lib/staffing";
 import { parseRoleSpots } from "@/lib/role-spots";
-import { floatingNow } from "@/lib/time-zone";
+import { MAX_BEHIND_UTC_MS, floatingNow } from "@/lib/time-zone";
 import { getOrganizationTimeZone } from "@/lib/services/organization";
 
 
@@ -15,53 +15,68 @@ const DASHBOARD_ASSIGNMENT_STATUSES: InvitationStatus[] = [
   InvitationStatus.EXPIRED,
 ];
 
-export const userEventsTotalCount = async (userId: string, organizationId: string, canManage: boolean) => {
+/** Each event's last end, the moment it's over: floating, like its times. */
+const lastEndOf = (dates: { endTime: Date }[]) =>
+  Math.max(...dates.map((date) => date.endTime.getTime()));
+
+/**
+ * The last end of every event that could still be to come — the caller's
+ * accepted ones, or the organization's for a manager. Wide by half a day
+ * because no zone runs further behind UTC, which keeps an entry right however
+ * long it is served; the exact test is made against the clock on every read,
+ * by `userEventsTotalCount`.
+ */
+const upcomingEventEnds = async (userId: string, organizationId: string, canManage: boolean) => {
     "use cache"
 
     cacheLife("minutes");
 
-    // Still to come on the organization's clock: event times are its wall
-    // clock, and the real one would drop this morning's service before it began.
-    cacheTag(`org-${organizationId}-details`);
-    const ahead = floatingNow(await getOrganizationTimeZone(organizationId));
+    const after = new Date(Date.now() - MAX_BEHIND_UTC_MS);
 
     if (canManage) {
       cacheTag(`org-${organizationId}-events`);
 
-      return prisma.event.count({
+      const events = await prisma.event.findMany({
         where: {
           organizationId,
-          dates: {
-            some: {
-              endTime: {
-                gte: ahead,
-              }
-            }
-          }
+          dates: { some: { endTime: { gte: after } } },
         },
+        select: { dates: { select: { endTime: true } } },
       });
+
+      return events.map((event) => lastEndOf(event.dates));
     }
 
     cacheTag(`user-${userId}-events-${organizationId}`);
 
-    const count = await prisma.eventAssignment.count({
-        where: {
-          userId,
-          organizationId,
-          status: InvitationStatus.ACCEPTED,
-          event: {
-            dates: {
-              some: {
-                endTime: {
-                  gte: ahead,
-                }
-              }
-            }
-          }
-        },
-      });
+    const assignments = await prisma.eventAssignment.findMany({
+      where: {
+        userId,
+        organizationId,
+        status: InvitationStatus.ACCEPTED,
+        event: { dates: { some: { endTime: { gte: after } } } },
+      },
+      select: { event: { select: { dates: { select: { endTime: true } } } } },
+    });
 
-      return count;
+    return assignments.map((assignment) => lastEndOf(assignment.event.dates));
+}
+
+/**
+ * Events still to come, on the organization's clock: event times are its wall
+ * clock, and the real one would drop this morning's service before it began.
+ * Read against the clock here rather than inside a cache, so a service drops
+ * out of the count the moment it ends — as it does from the Events list.
+ */
+export const userEventsTotalCount = async (userId: string, organizationId: string, canManage: boolean) => {
+    const [ends, timeZone] = await Promise.all([
+      upcomingEventEnds(userId, organizationId, canManage),
+      getOrganizationTimeZone(organizationId),
+    ]);
+
+    const ahead = floatingNow(timeZone).getTime();
+
+    return ends.filter((end) => end >= ahead).length;
 }
 
 export const getUserEvents = async (organizationId: string, userId: string) => {
@@ -306,10 +321,13 @@ type OrgAssignmentCounts = {
   upcoming: number
 };
 
-// Per-org assignment counts for the dashboard org cards. Lives here rather than
-// on getUserOrganizations because these numbers move on accept/decline, which
-// busts `user-${userId}-events-${orgId}` — a tag the org-list query never carries.
-export const getAssignmentCountsByOrg = async (userId: string) => {
+/**
+ * The caller's accepted and pending assignments whose events could still be to
+ * come, with what `getAssignmentCountsByOrg` needs to finish the test against
+ * the clock: each organization's zone, each event's last end, each deadline.
+ * Wide by half a day, which no zone runs further behind UTC than.
+ */
+const assignmentsAhead = async (userId: string) => {
 
   "use cache";
 
@@ -326,51 +344,60 @@ export const getAssignmentCountsByOrg = async (userId: string) => {
     cacheTag(`org-${m.organizationId}-details`);
   }
 
-  const now = new Date();
-
-  const grouped = await prisma.eventAssignment.groupBy({
-    by: ["organizationId", "status"],
+  const assignments = await prisma.eventAssignment.findMany({
     where: {
       userId,
-      AND: [
-        // Not over yet on each organization's own clock: event times are its
-        // wall clock, and the real one would call this morning's service over
-        // before it began anywhere west of UTC.
-        {
-          OR: memberships.map((m) => ({
-            organizationId: m.organizationId,
-            event: {
-              dates: {
-                some: {
-                  endTime: { gte: floatingNow(m.organization.timeZone, now) },
-                },
-              },
-            },
-          })),
-        },
-        {
-          OR: [
-            { status: InvitationStatus.ACCEPTED },
-            { status: InvitationStatus.PENDING, expiresAt: { gt: now } },
-          ],
-        },
-      ],
+      organizationId: { in: memberships.map((m) => m.organizationId) },
+      status: { in: [InvitationStatus.ACCEPTED, InvitationStatus.PENDING] },
+      event: {
+        dates: { some: { endTime: { gte: new Date(Date.now() - MAX_BEHIND_UTC_MS) } } },
+      },
     },
-    _count: { _all: true },
+    select: {
+      organizationId: true,
+      status: true,
+      expiresAt: true,
+      event: { select: { dates: { select: { endTime: true } } } },
+    },
   });
 
-  const counts: Record<string, OrgAssignmentCounts> = {};
+  return {
+    zones: memberships.map((m) => [m.organizationId, m.organization.timeZone] as const),
+    assignments: assignments.map((assignment) => ({
+      organizationId: assignment.organizationId,
+      accepted: assignment.status === InvitationStatus.ACCEPTED,
+      expiresAt: assignment.expiresAt.getTime(),
+      lastEnd: lastEndOf(assignment.event.dates),
+    })),
+  };
+};
 
-  for (const m of memberships) {
-    counts[m.organizationId] = { pending: 0, upcoming: 0 };
+// Per-org assignment counts for the dashboard org cards. Lives here rather than
+// on getUserOrganizations because these numbers move on accept/decline, which
+// busts `user-${userId}-events-${orgId}` — a tag the org-list query never carries.
+//
+// Counted against the clock on every read, not inside the cache: a service is
+// over at its end on its organization's clock, and an invitation at its
+// deadline, whenever the cached rows were read.
+export const getAssignmentCountsByOrg = async (userId: string) => {
+  const { zones, assignments } = await assignmentsAhead(userId);
+  const now = new Date();
+
+  const counts: Record<string, OrgAssignmentCounts> = {};
+  const ahead = new Map<string, number>();
+
+  for (const [organizationId, timeZone] of zones) {
+    counts[organizationId] = { pending: 0, upcoming: 0 };
+    ahead.set(organizationId, floatingNow(timeZone, now).getTime());
   }
 
-  for (const row of grouped) {
-    const entry = counts[row.organizationId];
-    if (!entry) continue;
+  for (const assignment of assignments) {
+    const entry = counts[assignment.organizationId];
+    const from = ahead.get(assignment.organizationId);
+    if (!entry || from === undefined || assignment.lastEnd < from) continue;
 
-    if (row.status === InvitationStatus.ACCEPTED) entry.upcoming = row._count._all;
-    else entry.pending = row._count._all;
+    if (assignment.accepted) entry.upcoming += 1;
+    else if (assignment.expiresAt > now.getTime()) entry.pending += 1;
   }
 
   return counts;

@@ -6,6 +6,7 @@ import type { OrgRole, VolunteerRole } from "@/generated/prisma/enums";
 import { createOrganization } from "@/lib/actions/organizations";
 import { organizationSchema } from "@/lib/validations/organization";
 import { expireTag } from "@/lib/mobile/route";
+import { zoneOrFallback } from "@/lib/time-zone";
 
 /**
  * Wire contract for the mobile home list. Mirrors `OrganizationSummary` in the
@@ -22,6 +23,8 @@ type OrganizationSummary = {
     volunteerRoles: VolunteerRole[];
     /** The caller's own order for the service-type pills on Events. */
     serviceTypeOrder: string[];
+    /** The organization's IANA zone: when its events end, on the phone as on the dashboard. */
+    timeZone: string;
 };
 
 /**
@@ -54,6 +57,7 @@ export async function GET() {
                         name: true,
                         description: true,
                         logoUrl: true,
+                        timeZone: true,
                         _count: { select: { memberships: true } },
                     },
                 },
@@ -72,6 +76,7 @@ export async function GET() {
             memberCount: organization._count.memberships,
             volunteerRoles,
             serviceTypeOrder,
+            timeZone: zoneOrFallback(organization.timeZone),
         }));
 
         return NextResponse.json(
