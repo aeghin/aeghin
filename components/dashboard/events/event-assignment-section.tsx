@@ -4,9 +4,9 @@ import {
   Check,
   X,
   Hourglass,
+  CircleAlert,
   LucideIcon,
 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   Accordion,
@@ -24,7 +24,7 @@ import {
   VolunteerRole,
 } from "@/generated/prisma/enums";
 import { statusStyles } from "@/lib/config/status";
-import { colorClasses } from "@/lib/config/service-types-config";
+import { getServiceColors } from "@/lib/config/service-types-config";
 // import { VolunteerRowMenu } from "./volunteer-row-menu";
 
 import {
@@ -41,6 +41,7 @@ import { InviteToEventDialog, type RoleHolder } from "./invite-to-event-dialog";
 import { EventRoleRemoveButton } from "./event-role-remove-button";
 import { roleStanding } from "@/lib/role-spots";
 import { EventSmartSchedulingToggle } from "./event-smart-scheduling-toggle";
+import { DETAIL_CARD, DetailCardHeader } from "./event-detail-parts";
 
 export type TeamMember = {
   userId: string;
@@ -103,6 +104,9 @@ const lapsedAgo = (expiresAt: Date, now: Date) => {
   return `${days} days ago`;
 };
 
+/** Holds the colour wash over the header, then lets it go before the roster. */
+const HEADER_FADE = "linear-gradient(to bottom, black 0%, black 35%, transparent 75%)";
+
 export function EventAssignmentsCard({
   event,
   currentUserId,
@@ -113,7 +117,8 @@ export function EventAssignmentsCard({
   canUpgrade,
   teamLeads,
 }: EventAssignmentsCardProps) {
-  const serviceColors = colorClasses[event.serviceType.color];
+  const serviceColor = event.serviceType.color;
+  const serviceColors = getServiceColors(serviceColor);
 
   // One clock for the whole card, so the roster, the counts and the invite
   // pickers can't disagree about which invitations are still live.
@@ -214,6 +219,18 @@ export function EventAssignmentsCard({
         key,
         label: teamLabel(key),
         roleGroups,
+        // Somebody was invited, it fell through, and nothing is in flight to
+        // fill the spot they left — the state a manager has to act on. A
+        // fresh event is short everywhere, so being short alone isn't marked.
+        stalled: roleGroups.some(
+          (g) =>
+            g.standing.open > 0 &&
+            g.items.some(
+              (a) =>
+                a.status !== InvitationStatus.ACCEPTED &&
+                !(a.status === InvitationStatus.PENDING && a.expiresAt > now),
+            ),
+        ),
         needed: roleGroups.reduce((sum, g) => sum + g.standing.needed, 0),
         filled: roleGroups.reduce(
           (sum, g) => sum + Math.min(g.standing.accepted, g.standing.needed),
@@ -223,15 +240,17 @@ export function EventAssignmentsCard({
     })
     .filter((cat) => cat.roleGroups.length > 0);
 
-  const decorativeMask =
-    "linear-gradient(to bottom, black 0%, black 35%, transparent 75%)";
+  // Buttons share a line two or three across, and a lone last one stretches.
+  const actionClass = "flex-1 basis-28";
 
   return (
-    <Card className="relative overflow-hidden">
+    <div className={cn(DETAIL_CARD, "relative isolate")}>
+      {/* The service colour washed in behind the header — a gradient and two
+          blurred blobs — fading out before the roster so the rows stay plain. */}
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-x-0 top-0 h-40 overflow-hidden rounded-[inherit]"
-        style={{ maskImage: decorativeMask, WebkitMaskImage: decorativeMask }}
+        className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-40 overflow-hidden"
+        style={{ maskImage: HEADER_FADE, WebkitMaskImage: HEADER_FADE }}
       >
         <div
           className={cn(
@@ -241,7 +260,7 @@ export function EventAssignmentsCard({
         />
         <div
           className={cn(
-            "absolute -right-16 -top-16 h-40 w-40 rounded-full blur-3xl",
+            "absolute -top-16 -right-16 h-40 w-40 rounded-full blur-3xl",
             serviceColors.blurSoft,
           )}
         />
@@ -253,54 +272,75 @@ export function EventAssignmentsCard({
         />
       </div>
 
-      <CardHeader className="relative pb-4">
-        {/* This card lives in the narrow lg column, so the three actions get
-            their own line rather than fighting the title for ~430px. */}
-        <div className="flex flex-col gap-2">
-          <div className="flex items-center justify-between gap-2">
-            <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-              <Users className="h-4 w-4 text-muted-foreground" />
-              Team
-            </CardTitle>
-            <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-              {filledSpots}/{neededSpots} confirmed
+      <DetailCardHeader
+        icon={Users}
+        title="Team"
+        serviceColor={serviceColor}
+        trailing={
+          neededSpots > 0 ? (
+            // The title's size and line, so the count reads as part of the
+            // header rather than a second headline beside it.
+            <span
+              className="flex shrink-0 items-baseline gap-1.5"
+              aria-label={`${filledSpots} of ${neededSpots} ${neededSpots === 1 ? "spot" : "spots"} filled`}
+            >
+              <span aria-hidden className="text-[15px] leading-5 font-bold tabular-nums">
+                {filledSpots}
+                <span className="text-muted-foreground">/{neededSpots}</span>
+              </span>
+              <span aria-hidden className="text-[13px] text-muted-foreground">
+                {neededSpots === 1 ? "spot filled" : "spots filled"}
+              </span>
             </span>
-          </div>
-          {canManage && (
-            <div className="flex flex-wrap items-center gap-2">
-              <EventSmartSchedulingToggle
-                organizationId={event.organizationId}
-                organizationName={event.organization.name}
-                eventId={event.id}
-                enabled={event.smartSchedulingEnabled}
-                available={smartSchedulingAvailable}
-                canUpgrade={canUpgrade}
-              />
-              <AddEventRolesDialog
-                organizationId={event.organizationId}
-                eventId={event.id}
-                existingRoles={[...rosterRoles]}
-                memberCountByRole={memberCountByRole}
-                serviceColor={event.serviceType.color}
-              />
-              {acceptedCount > 0 && emailAllowance && (
-                <EmailTeamDialog
-                  organizationId={event.organizationId}
-                  organizationName={event.organization.name}
-                  eventId={event.id}
-                  eventName={event.name}
-                  recipientCount={acceptedCount}
-                  serviceColor={event.serviceType.color}
-                  allowance={emailAllowance}
-                  canUpgrade={canUpgrade}
-                />
-              )}
-            </div>
+          ) : undefined
+        }
+      />
+
+      {/* The roster-wide actions sit under the title, where the roster is worked on. */}
+      {canManage && (
+        <div className="flex flex-wrap gap-2 px-4 pb-4 sm:px-5">
+          <EventSmartSchedulingToggle
+            organizationId={event.organizationId}
+            organizationName={event.organization.name}
+            eventId={event.id}
+            enabled={event.smartSchedulingEnabled}
+            available={smartSchedulingAvailable}
+            canUpgrade={canUpgrade}
+            serviceColor={serviceColor}
+            className={actionClass}
+          />
+          <AddEventRolesDialog
+            organizationId={event.organizationId}
+            eventId={event.id}
+            existingRoles={[...rosterRoles]}
+            memberCountByRole={memberCountByRole}
+            serviceColor={serviceColor}
+            className={actionClass}
+          />
+          {acceptedCount > 0 && emailAllowance && (
+            <EmailTeamDialog
+              organizationId={event.organizationId}
+              organizationName={event.organization.name}
+              eventId={event.id}
+              eventName={event.name}
+              recipientCount={acceptedCount}
+              serviceColor={serviceColor}
+              allowance={emailAllowance}
+              canUpgrade={canUpgrade}
+              className={actionClass}
+            />
           )}
         </div>
-      </CardHeader>
+      )}
 
-      <CardContent className="relative">
+      {categories.length === 0 ? (
+        <p className="border-t border-border px-4 pt-3 pb-4 text-[13px] text-muted-foreground sm:px-5">
+          {canManage
+            ? "No roles on this event yet. Add roles to start building the team."
+            : "No roles on this event yet."}
+        </p>
+      ) : (
+      <div className="border-t border-border px-4 sm:px-5">
         <Accordion
           type="multiple"
           defaultValue={[Team.BAND]}
@@ -310,11 +350,17 @@ export function EventAssignmentsCard({
             <AccordionItem
               key={category.key}
               value={category.key}
-              className="border-border/40"
+              className="border-border"
             >
               <AccordionTrigger className="py-3 hover:no-underline">
-                <div className="flex w-full items-center justify-between pr-2">
-                  <span className="text-sm font-semibold">{category.label}</span>
+                <div className="flex w-full items-center gap-2 pr-2">
+                  <span className="flex-1 text-sm font-bold">{category.label}</span>
+                  {category.stalled && (
+                    <CircleAlert
+                      aria-label="Needs attention"
+                      className="size-3.5 shrink-0 text-amber-500"
+                    />
+                  )}
                   <span className="text-xs text-muted-foreground tabular-nums">
                     {category.filled}/{category.needed}
                   </span>
@@ -407,13 +453,13 @@ export function EventAssignmentsCard({
                             <div
                               key={`${assignment.userId}-${assignment.role}`}
                               className={cn(
-                                "group flex items-center gap-3 rounded-lg border px-3 py-2.5 transition-colors",
+                                "group flex items-center gap-3 rounded-xl border px-3 py-2.5 transition-colors",
                                 isCurrentUser
                                   ? cn(
                                       assignmentStyles.border,
                                       assignmentStyles.bgSoft,
                                     )
-                                  : "border-border/40 hover:border-border hover:bg-muted/30",
+                                  : "border-border bg-card hover:bg-secondary/40",
                               )}
                             >
                               <div className="relative shrink-0">
@@ -451,15 +497,12 @@ export function EventAssignmentsCard({
                                     strokeWidth={3}
                                   />
                                 </span>
-                                <span className="sr-only">
-                                  {assignmentStyles.label}
-                                </span>
                               </div>
 
                               <div className="min-w-0 flex-1">
                                 <p
                                   className={cn(
-                                    "truncate text-sm font-medium",
+                                    "truncate text-sm font-semibold",
                                     isDeclined &&
                                       "text-muted-foreground line-through",
                                   )}
@@ -475,6 +518,18 @@ export function EventAssignmentsCard({
                                   </p>
                                 )}
                               </div>
+                              <span
+                                className={cn(
+                                  "inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold",
+                                  assignmentStyles.pill,
+                                )}
+                              >
+                                <span
+                                  aria-hidden
+                                  className={cn("size-1.5 rounded-full", assignmentStyles.dot)}
+                                />
+                                {assignmentStyles.label}
+                              </span>
                               {canManage && <EventVolunteerRowMenu assignedUserId={assignment.userId} eventId={assignment.eventId} organizationId={assignment.organizationId} isExpired={isExpired} isEnded={isDeclined} />}
                             </div>
                           );
@@ -512,7 +567,8 @@ export function EventAssignmentsCard({
             </AccordionItem>
           ))}
         </Accordion>
-      </CardContent>
-    </Card>
+      </div>
+      )}
+    </div>
   );
 }

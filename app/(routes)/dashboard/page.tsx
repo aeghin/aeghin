@@ -1,11 +1,7 @@
 import { Suspense } from "react";
 import { DashboardHeader } from "@/components/dashboard/dashboard-header";
-import { DashboardStats } from "@/components/dashboard/dashboard-stats";
 import { OrganizationsGrid } from "@/components/dashboard/organizations-grid";
-import {
-  DashboardStatsSkeleton,
-  OrganizationsGridSkeleton,
-} from "@/components/dashboard/skeletons";
+import { OrganizationsGridSkeleton } from "@/components/dashboard/skeletons";
 
 import { currentUser } from "@/lib/services/user";
 import { redirect } from "next/navigation";
@@ -23,10 +19,6 @@ export default async function DashboardPage() {
         <div className="space-y-8">
           
           <DashboardHeader firstName={firstName} />
-        
-          <Suspense fallback={<DashboardStatsSkeleton />}>
-            <DashboardStats userId={id} />
-          </Suspense>
 
           <Suspense fallback={<OrganizationsGridSkeleton />}>
             <OrganizationsGrid userId={id} />

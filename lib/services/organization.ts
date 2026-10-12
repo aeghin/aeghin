@@ -108,26 +108,6 @@ export const getOrgMemberCountById = async (organizationId: string) => {
   return count;
 };
 
-export const getUserVolunteerRolesByOrg = async (organizationId: string, userId: string) => {
-    "use cache";
-
-    cacheLife('hours');
-    
-    cacheTag(`user-${userId}-roles`);
-
-    const count = await prisma.membership.findFirst({
-      where: {
-        userId,
-        organizationId
-      },
-      select: {
-        volunteerRoles: true
-      }
-    });
-
-    return count?.volunteerRoles.length ?? 0;
-};
-
 export const organizationMembersList = async (organizationId: string) => {
 
   "use cache";

@@ -10,7 +10,6 @@ import { AnimatedSection } from "@/components/dashboard/animate-section";
 import { BackLink } from "@/components/dashboard/back-link-button";
 import { EventHeader } from "@/components/dashboard/events/event-header";
 import { EventPager } from "@/components/dashboard/events/event-pager";
-import { EventDetailsCard } from "@/components/dashboard/events/event-details-card";
 import { EventSetlistSection } from "@/components/dashboard/events/event-setlist-section";
 import { EventAssignmentsCard } from "@/components/dashboard/events/event-assignment-section";
 import { EventChatPanel } from "@/components/dashboard/events/event-chat-panel";
@@ -39,6 +38,7 @@ import type {
   TeamLeadPicks,
 } from "@/components/dashboard/events/event-team-leads-field";
 import { InvitationStatus, OrgRole } from "@/generated/prisma/enums";
+import { floatingNow } from "@/lib/time-zone";
 
 export default async function EventDetailPage({
   params,
@@ -176,19 +176,10 @@ export default async function EventDetailPage({
     <main className="mx-auto max-w-screen-2xl px-4 py-6 sm:px-6 sm:py-8">
       <div className="space-y-6 sm:space-y-8">
         <AnimatedSection delay={0.05}>
-          <div className="flex items-center justify-between gap-3">
-            <BackLink
-              href={`/dashboard/organizations/${orgId}`}
-              label={`Back to ${event.organization.name}`}
-            />
-            <EventPager
-              organizationId={orgId}
-              serviceName={event.serviceType.name}
-              serviceColor={event.serviceType.color}
-              previous={adjacent.previous}
-              next={adjacent.next}
-            />
-          </div>
+          <BackLink
+            href={`/dashboard/organizations/${orgId}`}
+            label={`Back to ${event.organization.name}`}
+          />
         </AnimatedSection>
 
         <AnimatedSection delay={0.1}>
@@ -197,6 +188,18 @@ export default async function EventDetailPage({
             serviceType={event.serviceType}
             canManage={canManage}
             teamLeads={editTeamLeads}
+            // The church's clock, which event times are written in: what
+            // "today" is and which blocks are over.
+            now={floatingNow(timeZone)}
+            pager={
+              <EventPager
+                organizationId={orgId}
+                serviceName={event.serviceType.name}
+                serviceColor={event.serviceType.color}
+                previous={adjacent.previous}
+                next={adjacent.next}
+              />
+            }
           />
         </AnimatedSection>
 
@@ -207,13 +210,13 @@ export default async function EventDetailPage({
               available={smartSchedulingAvailable}
               items={smartSchedulingActivity}
               timeZone={timeZone}
+              serviceColor={event.serviceType.color}
             />
           </AnimatedSection>
         )}
 
         <div className="grid gap-6 lg:grid-cols-3">
           <div className="space-y-6 lg:col-span-2">
-            <EventDetailsCard event={event} serviceType={event.serviceType} />
             <EventSetlistSection
               event={event}
               orgId={orgId}

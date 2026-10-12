@@ -1,11 +1,9 @@
 import { Music, ArrowUpRight, FileText, AudioLines } from "lucide-react";
 import { YoutubeIcon, SpotifyIcon } from "@/components/icons/brand-icons";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { EditSetlistButton } from "./edit-setlist-button";
+import { DETAIL_CARD, DetailCardHeader, detailButtonClass, detailIconClass } from "./event-detail-parts";
 import { cn } from "@/lib/utils";
-import { colorClasses } from "@/lib/config/service-types-config";
 import { formatKey } from "@/lib/constants/key";
 import { InvitationStatus } from "@/generated/prisma/enums";
 import { volunteerRoleConfig } from "@/lib/config/roles";
@@ -29,7 +27,7 @@ export function EventSetlistSection({
   canSaveKeys,
   myKeys,
 }: EventSetlistSectionProps) {
-  const serviceColors = colorClasses[event.serviceType.color];
+  const serviceColor = event.serviceType.color;
 
   const songs: SetlistSong[] = event.setlistSongs.map((s) => ({
     id: s.id,
@@ -86,34 +84,39 @@ export function EventSetlistSection({
   );
 
   return (
-    <Card>
-      <CardHeader className="pb-3">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-            <Music className={cn("h-4 w-4", serviceColors.badgeText)} />
-            Setlist
-          </CardTitle>
-          {canManage && (
-            <div className="flex flex-wrap items-center gap-2">
+    <div className={DETAIL_CARD}>
+      <DetailCardHeader
+        icon={Music}
+        title="Setlist"
+        subtitle={
+          songs.length > 0
+            ? `${songs.length} ${songs.length === 1 ? "song" : "songs"}`
+            : undefined
+        }
+        serviceColor={serviceColor}
+        trailing={
+          canManage ? (
+            <div className="flex shrink-0 items-center gap-2">
               {songs.length > 0 && (
                 <EditSetlistButton
                   eventId={event.id}
                   eventName={event.name}
                   initialSongs={songs}
-                  serviceColor={event.serviceType.color}
+                  serviceColor={serviceColor}
                 />
               )}
-              <Button asChild variant="outline" size="sm">
-                <a href={editorHref}>
-                  Open Editor
-                  <ArrowUpRight className="ml-1 h-3.5 w-3.5" />
-                </a>
-              </Button>
+              <a href={editorHref} className={detailButtonClass(serviceColor)}>
+                <span className="sm:hidden">Editor</span>
+                <span className="hidden sm:inline">Open editor</span>
+                <ArrowUpRight className={detailIconClass(serviceColor)} />
+              </a>
             </div>
-          )}
-        </div>
-      </CardHeader>
-      <CardContent>
+          ) : undefined
+        }
+      />
+      {/* The rows are as they were; only the inset moves, so the numbers line
+          up under the header's icon. */}
+      <div className="px-1 pb-2 sm:px-2 sm:pb-3">
         {songs.length > 0 ? (
           <div className="space-y-1">
             {songs.map((song, idx) => {
@@ -242,7 +245,7 @@ export function EventSetlistSection({
             })}
           </div>
         ) : (
-          <div className="flex h-24 items-center justify-center rounded-xl border border-dashed border-border/40 bg-muted/10">
+          <div className="mx-3 mb-2 flex h-24 items-center justify-center rounded-xl border border-dashed border-border/40 bg-muted/10">
             <div className="text-center">
               <Music className="mx-auto mb-1.5 h-6 w-6 text-muted-foreground/30" />
               <p className="text-xs text-muted-foreground">
@@ -253,7 +256,7 @@ export function EventSetlistSection({
             </div>
           </div>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   )
 }

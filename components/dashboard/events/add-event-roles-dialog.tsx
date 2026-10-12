@@ -20,6 +20,7 @@ import { colorClasses } from "@/lib/config/service-types-config";
 import { VolunteerRole } from "@/generated/prisma/enums";
 import { volunteerRoleConfig } from "@/lib/config/roles";
 import { addEventRoles } from "@/lib/actions/event";
+import { detailButtonClass, detailIconClass } from "./event-detail-parts";
 
 const volunteerRoleEntries = Object.entries(volunteerRoleConfig) as [
   VolunteerRole,
@@ -34,6 +35,7 @@ interface AddEventRolesDialogProps {
   /** How many org members hold each role, for the "N available" hint */
   memberCountByRole: Record<string, number>;
   serviceColor: string;
+  className?: string;
 }
 
 export function AddEventRolesDialog({
@@ -42,6 +44,7 @@ export function AddEventRolesDialog({
   existingRoles,
   memberCountByRole,
   serviceColor,
+  className,
 }: AddEventRolesDialogProps) {
   const serviceColors = colorClasses[serviceColor];
   const [open, setOpen] = useState(false);
@@ -87,15 +90,13 @@ export function AddEventRolesDialog({
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
-        <Button
+        <button
           type="button"
-          variant="ghost"
-          size="sm"
-          className="h-7 cursor-pointer gap-1 px-2 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+          className={cn(detailButtonClass(serviceColor), className)}
         >
-          <Plus className="h-3.5 w-3.5" />
-          Add role
-        </Button>
+          <Plus className={detailIconClass(serviceColor)} />
+          Add roles
+        </button>
       </DialogTrigger>
 
       <DialogContent className="sm:max-w-2xl">

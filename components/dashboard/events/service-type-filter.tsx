@@ -40,12 +40,14 @@ interface ServiceTypeFilterProps {
   onSelect: (serviceTypeId: string | null) => void;
 }
 
+const PILL_BASE =
+  "flex shrink-0 snap-start items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-all cursor-pointer";
+
+const PILL_IDLE =
+  "border-border bg-background text-muted-foreground hover:border-foreground/20 hover:text-foreground";
+
 const pillClass = (active: boolean) =>
-  `flex shrink-0 snap-start items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-all cursor-pointer ${
-    active
-      ? "border border-transparent bg-foreground text-background"
-      : "border border-border bg-background text-muted-foreground hover:border-foreground/20 hover:text-foreground"
-  }`;
+  `${PILL_BASE} ${active ? "border-transparent bg-foreground text-background" : PILL_IDLE}`;
 
 /**
  * The service-type pills over the events list. Each person drags theirs into
@@ -189,7 +191,11 @@ function SortablePill({
         {...listeners}
         whileTap={{ scale: 0.97 }}
         onClick={onPress}
-        className={`${pillClass(active)} touch-manipulation select-none ${isDragging ? "cursor-grabbing shadow-md" : ""}`}
+        // A chosen service wears its own colour, the same as the stripe on
+        // every card the filter leaves.
+        className={`${PILL_BASE} ${
+          active ? `${colors.borderSoft} ${colors.badge} ${colors.badgeText}` : PILL_IDLE
+        } touch-manipulation select-none ${isDragging ? "cursor-grabbing shadow-md" : ""}`}
       >
         <span className={`h-2 w-2 rounded-full ${colors.dot}`} />
         {service.name}

@@ -3,11 +3,11 @@
 import { useState, useTransition } from "react";
 import { Zap } from "lucide-react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { PlanLimitReached } from "@/components/dashboard/plan-limit-reached";
 import { cn } from "@/lib/utils";
 import { setEventSmartScheduling } from "@/lib/actions/event";
+import { detailButtonClass, detailIconClass } from "./event-detail-parts";
 
 interface EventSmartSchedulingToggleProps {
   organizationId: string;
@@ -17,6 +17,8 @@ interface EventSmartSchedulingToggleProps {
   // Whether the plan includes it. Without it the button explains the plan instead.
   available: boolean;
   canUpgrade: boolean;
+  serviceColor: string;
+  className?: string;
 }
 
 export const EventSmartSchedulingToggle = ({
@@ -26,6 +28,8 @@ export const EventSmartSchedulingToggle = ({
   enabled,
   available,
   canUpgrade,
+  serviceColor,
+  className,
 }: EventSmartSchedulingToggleProps) => {
   const [on, setOn] = useState(enabled);
   const [isPending, startTransition] = useTransition();
@@ -59,17 +63,15 @@ export const EventSmartSchedulingToggle = ({
   if (!available) {
     return (
       <Dialog open={planOpen} onOpenChange={setPlanOpen}>
-        <Button
+        <button
           type="button"
-          variant="ghost"
-          size="sm"
           onClick={() => setPlanOpen(true)}
           title="Auto-fill is part of Premium"
-          className="h-7 cursor-pointer gap-1 px-2 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+          className={cn(detailButtonClass(serviceColor), className)}
         >
-          <Zap className="h-3.5 w-3.5" />
-          Auto-fill {enabled ? "paused" : "off"}
-        </Button>
+          <Zap className={detailIconClass(serviceColor)} />
+          Auto-fill{enabled ? " paused" : ""}
+        </button>
         <DialogContent className="sm:max-w-120">
           <PlanLimitReached
             icon={Zap}
@@ -91,10 +93,10 @@ export const EventSmartSchedulingToggle = ({
   }
 
   return (
-    <Button
+    // As on the phone, the colour says whether it's on; the filled bolt and
+    // aria-pressed say it without colour.
+    <button
       type="button"
-      variant="ghost"
-      size="sm"
       onClick={toggle}
       disabled={isPending}
       aria-pressed={on}
@@ -103,15 +105,10 @@ export const EventSmartSchedulingToggle = ({
           ? "Declines auto-fill from your roster"
           : "Declines won't be refilled automatically"
       }
-      className={cn(
-        "h-7 cursor-pointer gap-1 px-2 text-xs font-medium transition-colors",
-        on
-          ? "text-emerald-600 hover:text-emerald-700 dark:text-emerald-400"
-          : "text-muted-foreground hover:text-foreground",
-      )}
+      className={cn(detailButtonClass(serviceColor, { on }), className)}
     >
-      <Zap className={cn("h-3.5 w-3.5", on && "fill-current")} />
-      Auto-fill {on ? "on" : "off"}
-    </Button>
+      <Zap className={cn(detailIconClass(serviceColor), on && "fill-current")} />
+      Auto-fill
+    </button>
   );
 };

@@ -2,10 +2,8 @@
 
 import { useState } from "react";
 import { Pencil } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { SetlistEditorModal } from "./setlist-editor-modal";
-import { cn } from "@/lib/utils";
-import { colorClasses } from "@/lib/config/service-types-config";
+import { detailButtonClass, detailIconClass } from "./event-detail-parts";
 import type { SetlistSong } from "@/lib/types";
 
 interface EditSetlistButtonProps {
@@ -22,18 +20,17 @@ export function EditSetlistButton({
   serviceColor,
 }: EditSetlistButtonProps) {
   const [open, setOpen] = useState(false)
-  const serviceColors = colorClasses[serviceColor]
 
   return (
     <>
-      <Button
-        size="sm"
-        className={cn(serviceColors.solid, serviceColors.solidHover)}
+      <button
+        type="button"
+        className={detailButtonClass(serviceColor)}
         onClick={() => setOpen(true)}
       >
-        <Pencil className="mr-1 h-3.5 w-3.5" />
+        <Pencil className={detailIconClass(serviceColor)} />
         Edit
-      </Button>
+      </button>
       <SetlistEditorModal
         open={open}
         onOpenChange={setOpen}

@@ -9,15 +9,16 @@ import {
   MapPin,
   Check,
   X,
-  ChevronLeft,
-  ChevronRight,
   CheckCircle2,
+  ClockAlert,
   Hourglass,
+  type LucideIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { InvitationStatus, VolunteerRole } from "@/generated/prisma/enums";
-import { volunteerRoleConfig } from "@/lib/config/roles";
+import { InvitationStatus } from "@/generated/prisma/enums";
+import { capitalizeName } from "@/lib/names";
+import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import {
   acceptEventInvitation,
@@ -26,11 +27,23 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { ServiceTypeFilter } from "@/components/dashboard/events/service-type-filter";
 import {
-  METER_MAX_WIDTH,
-  StaffingMeter,
-} from "@/components/dashboard/events/staffing-meter";
+  EventCard,
+  MetaLine,
+  RoleChip,
+  ServiceBadge,
+} from "@/components/dashboard/events/event-card";
+import {
+  MonthStepper,
+  ScopeFilter,
+} from "@/components/dashboard/events/events-controls";
+import { UpNextCard, findUpNext } from "@/components/dashboard/up-next-card";
 import type { Staffing } from "@/lib/staffing";
 import { getServiceColors as getColorClasses } from "@/lib/config/service-types-config";
+import {
+  dayKey,
+  formatDateRange,
+  formatTimeRange,
+} from "@/lib/event-format";
 import { floatingNow } from "@/lib/time-zone";
 import {
   getAnchorDateInScope,
@@ -73,6 +86,8 @@ interface Event {
   assignments: EventAssignment[];
   serviceTypeId: string;
   rolesNeeded: string[];
+  rehearsalStart?: Date | string | null;
+  rehearsalEnd?: Date | string | null;
   /** Only on All Events — see `getOrgEvents`. */
   staffing?: Staffing;
 }
@@ -83,10 +98,8 @@ interface Event {
 // ─── Date helpers ───────────────────────────────────────────────
 //
 // Which period an event belongs to, and the day it groups under, live in
-// lib/time-scope.ts — shared rule for rule with the phone.
-
-/** The floating calendar day a date groups under: "2026-10-18". */
-const dayGroupKey = (date: Date) => date.toISOString().slice(0, 10);
+// lib/time-scope.ts; how its dates read lives in lib/event-format.ts — both
+// shared rule for rule with the phone.
 
 /** Earliest startTime across all EventDates */
 function getEarliestDate(dates: EventDate[]): Date {
@@ -95,62 +108,13 @@ function getEarliestDate(dates: EventDate[]): Date {
   );
 }
 
-/** Latest endTime across all EventDates */
-function getLatestDate(dates: EventDate[]): Date {
-  return new Date(Math.max(...dates.map((d) => new Date(d.endTime).getTime())));
-}
-
-/** Whether the event spans more than one calendar day */
-function isMultiDay(dates: EventDate[]): boolean {
-  if (dates.length > 1) return true;
-  if (dates.length === 0) return false;
-  const start = new Date(dates[0].startTime);
-  const end = new Date(dates[0].endTime);
-  return start.toISOString().slice(0, 10) !== end.toISOString().slice(0, 10);
-}
-
-function formatShortDate(date: Date): string {
-  return date.toLocaleDateString("en-US", {
-    timeZone: "UTC",
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-  });
-}
-
-function formatTime(date: Date): string {
-  return date.toLocaleTimeString("en-US", {
-    timeZone: "UTC",
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  });
-}
-
-/** Display-friendly date range: single day or "Mar 27 – 29" / "Mar 31 – Apr 2" */
-function formatDateRange(dates: EventDate[]): string {
-  if (dates.length === 0) return "";
-  const earliest = getEarliestDate(dates);
-  const latest = getLatestDate(dates);
-
-  if (!isMultiDay(dates)) {
-    return formatShortDate(earliest);
-  }
-
-  if (earliest.getUTCMonth() === latest.getUTCMonth()) {
-    return `${earliest.toLocaleDateString("en-US", { timeZone: "UTC", month: "short", day: "numeric" })} – ${latest.getUTCDate()}`;
-  }
-
-  return `${earliest.toLocaleDateString("en-US", { timeZone: "UTC", month: "short", day: "numeric" })} – ${latest.toLocaleDateString("en-US", { timeZone: "UTC", month: "short", day: "numeric" })}`;
-}
-
-/** Time range for the earliest EventDate (for card display) */
-function formatTimeRange(dates: EventDate[]): string {
-  if (dates.length === 0) return "";
-  const sorted = [...dates].sort(
-    (a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime(),
+/** The role a card shows: an accepted one outranks a pending one. */
+function cardRole(event: Event): string | null {
+  return (
+    event.assignments.find((a) => a.status === InvitationStatus.ACCEPTED)?.role ??
+    event.assignments.find((a) => a.status === InvitationStatus.PENDING)?.role ??
+    null
   );
-  return `${formatTime(new Date(sorted[0].startTime))} – ${formatTime(new Date(sorted[0].endTime))}`;
 }
 
 function getMonthYear(date: Date): string {
@@ -195,6 +159,23 @@ function hasExpiredInvite(event: Event, now: Date): boolean {
   );
 }
 
+/**
+ * How long is left to answer an invitation: `"Expires in 2 days"`, or in
+ * hours once under a day, when it's worth colouring. Counted from the real
+ * instant like hasLiveInvite, so it reads the same in every browser's zone.
+ */
+function formatExpiry(expiresAt: Date, now: Date): { label: string; urgent: boolean } {
+  const hours = (expiresAt.getTime() - now.getTime()) / 3_600_000;
+
+  if (hours < 24) {
+    const left = Math.max(1, Math.floor(hours));
+    return { label: `Expires in ${left} ${left === 1 ? "hour" : "hours"}`, urgent: true };
+  }
+
+  const days = Math.floor(hours / 24);
+  return { label: `Expires in ${days} ${days === 1 ? "day" : "days"}`, urgent: false };
+}
+
 // ─── Component types ────────────────────────────────────────────
 
 type TabType = "pending" | "schedule" | "all";
@@ -208,8 +189,6 @@ interface MemberEventsDashboardProps {
   serviceTypeOrder: string[];
   organizationId: string;
   canManage: boolean;
-  /** Event already shown in the Upcoming banner — kept out of My Schedule rows. */
-  upNextEventId?: string | null;
   /** The organization's zone: what "today" is, against event times written in its wall clock. */
   timeZone: string;
 }
@@ -232,7 +211,6 @@ export function MemberEventsDashboard({
   serviceTypeOrder,
   organizationId,
   canManage,
-  upNextEventId = null,
   timeZone,
 }: MemberEventsDashboardProps) {
   const [activeTab, setActiveTab] = useState<TabType>(() =>
@@ -325,39 +303,24 @@ export function MemberEventsDashboard({
     [acceptedEvents, churchNow],
   );
 
+  // Pending hides the period controls, as on the phone, so only the service
+  // filter applies: every invitation still to come is listed, whatever period
+  // the other tabs were left on.
   const filteredPendingEvents = useMemo(() => {
-    return pendingEvents.filter((event) => {
-      const inScope = isEventInTimeScope(
-        event.dates,
-        timeScope,
-        currentMonth,
-        churchNow,
-      );
-      const matchesService =
-        !selectedServiceType || event.serviceTypeId === selectedServiceType;
-      const notPast =
-        timeScope === "past" || !isEventPast(event.dates, churchNow);
-      return inScope && matchesService && notPast;
-    });
-  }, [pendingEvents, timeScope, currentMonth, selectedServiceType, churchNow]);
+    return nonPastPendingEvents.filter(
+      (event) => !selectedServiceType || event.serviceTypeId === selectedServiceType,
+    );
+  }, [nonPastPendingEvents, selectedServiceType]);
 
-  // Same scope and service filtering as the live list, so the tab stays
-  // coherent when a month or a service type is selected.
+  // Same filtering as the live list, so the tab stays coherent when a service
+  // type is selected.
   const filteredExpiredEvents = useMemo(() => {
-    return expiredEvents.filter((event) => {
-      const inScope = isEventInTimeScope(
-        event.dates,
-        timeScope,
-        currentMonth,
-        churchNow,
-      );
-      const matchesService =
-        !selectedServiceType || event.serviceTypeId === selectedServiceType;
-      const notPast =
-        timeScope === "past" || !isEventPast(event.dates, churchNow);
-      return inScope && matchesService && notPast;
-    });
-  }, [expiredEvents, timeScope, currentMonth, selectedServiceType, churchNow]);
+    return expiredEvents.filter(
+      (event) =>
+        (!selectedServiceType || event.serviceTypeId === selectedServiceType) &&
+        !isEventPast(event.dates, churchNow),
+    );
+  }, [expiredEvents, selectedServiceType, churchNow]);
 
   const filteredAcceptedEvents = useMemo(() => {
     return acceptedEvents
@@ -381,12 +344,26 @@ export function MemberEventsDashboard({
       );
   }, [acceptedEvents, timeScope, currentMonth, selectedServiceType, churchNow]);
 
-  // The Upcoming banner above already renders this one — drop it from the rows.
-  // Kept as its own layer so the empty state can tell "nothing matches" apart
-  // from "the banner took the only match".
+  // My Schedule on Upcoming only, as on the phone: narrowed to a week or a
+  // month, a card announcing something outside that window contradicts the
+  // list under it. It follows the service filter for the same reason.
+  const upNext = useMemo(
+    () =>
+      activeTab === "schedule" && timeScope === "upcoming"
+        ? findUpNext(
+            acceptedEvents.filter(
+              (e) => !selectedServiceType || e.serviceTypeId === selectedServiceType,
+            ),
+            churchNow,
+          )
+        : null,
+    [activeTab, timeScope, acceptedEvents, selectedServiceType, churchNow],
+  );
+
+  // The card is the list's first event, so the list picks up after it.
   const scheduleEvents = useMemo(
-    () => filteredAcceptedEvents.filter((e) => e.id !== upNextEventId),
-    [filteredAcceptedEvents, upNextEventId],
+    () => filteredAcceptedEvents.filter((e) => e.id !== upNext?.event.id),
+    [filteredAcceptedEvents, upNext],
   );
 
   const groupedAcceptedEvents = useMemo(() => {
@@ -399,7 +376,7 @@ export function MemberEventsDashboard({
         currentMonth,
         churchNow,
       );
-      const key = dayGroupKey(anchorDate);
+      const key = dayKey(anchorDate);
 
       if (!groups[key]) {
         groups[key] = [];
@@ -451,7 +428,7 @@ export function MemberEventsDashboard({
         currentMonth,
         churchNow,
       );
-      const key = dayGroupKey(anchorDate);
+      const key = dayKey(anchorDate);
 
       if (!groups[key]) {
         groups[key] = [];
@@ -470,33 +447,28 @@ export function MemberEventsDashboard({
   const scheduleCount = nonPastAcceptedEvents.length;
   const allCount = nonPastAllEvents.length;
 
+  const stepMonth = (delta: number) =>
+    setCurrentMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() + delta, 1));
+
   // "My Schedule" and "All Events" share the same grouped rendering; only the
   // source set differs by active tab.
   const groupedSchedule =
     activeTab === "all" ? groupedAllEvents : groupedAcceptedEvents;
 
-  // Whether the banner actually took an event out of *this* view — false when
-  // the scope or service filter had already excluded it anyway.
-  const bannerInThisView =
-    scheduleEvents.length !== filteredAcceptedEvents.length;
+  const todayKey = dayKey(today);
 
-  // The banner is holding the only event this view would have shown, so the
-  // list is empty while an event is plainly visible right above it.
-  const bannerHoldsSchedule =
-    activeTab !== "all" && bannerInThisView && scheduleEvents.length === 0;
+  // The Up Next card wears the solid tile; without one, the next day's cards do.
+  const nextKey = upNext
+    ? undefined
+    : groupedSchedule.find(([key]) => key >= todayKey)?.[0];
 
-  // The banner is the "soonest" marker for the events it took, so a second pill
-  // on the next group down would only compete with it. All Events is a
-  // different set (the whole org), so it keeps its own marker.
-  const nextUpcomingDate =
-    activeTab !== "all" && bannerInThisView
-      ? undefined
-      : groupedSchedule.find(([dateStr]) => new Date(dateStr) >= today)?.[0];
+  const eventHref = (eventId: string) =>
+    `/dashboard/organizations/${organizationId}/events/${eventId}`;
 
   // ── JSX ─────────────────────────────────────────────────────
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Tabs */}
       <m.div
         initial={{ opacity: 0, y: -10 }}
@@ -618,76 +590,33 @@ export function MemberEventsDashboard({
         </div>
       </m.div>
 
-      {/* Time Scope */}
-      <m.div
-        initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.1 }}
-        className="flex flex-wrap items-center gap-2"
-      >
-        <div className="flex rounded-lg border border-border bg-background p-1">
-          {(["upcoming", "month", "week", "past"] as TimeScope[]).map(
-            (scope) => (
-              <button
-                type="button"
-                key={scope}
-                onClick={() => setTimeScope(scope)}
-                className={`relative rounded-md px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer ${
-                  timeScope === scope
-                    ? "bg-secondary text-secondary-foreground"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {scope === "week" && "This Week"}
-                {scope === "month" && "This Month"}
-                {scope === "upcoming" && "Upcoming"}
-                {scope === "past" && "Past"}
-              </button>
-            ),
-          )}
-        </div>
+      {/* Time Scope — hidden on Pending, which lists every invitation still to come */}
+      {activeTab !== "pending" && (
+        <m.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="flex flex-col gap-3 sm:flex-row sm:items-center"
+        >
+          <ScopeFilter value={timeScope} onChange={setTimeScope} />
 
-        <AnimatePresence>
-          {(timeScope === "month" || timeScope === "past") && (
-            <m.div
-              initial={{ opacity: 0, x: -10 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -10 }}
-              className="flex items-center gap-1 text-sm"
-            >
-              <button
-                type="button"
-                onClick={() =>
-                  setCurrentMonth((prev) => {
-                    const newDate = new Date(prev);
-                    newDate.setMonth(newDate.getMonth() - 1);
-                    return newDate;
-                  })
-                }
-                className="rounded-md p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground cursor-pointer"
+          <AnimatePresence initial={false}>
+            {(timeScope === "month" || timeScope === "past") && (
+              <m.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
               >
-                <ChevronLeft className="h-4 w-4" />
-              </button>
-              <span className="min-w-30 text-center font-medium">
-                {getMonthYear(currentMonth)}
-              </span>
-              <button
-                type="button"
-                onClick={() =>
-                  setCurrentMonth((prev) => {
-                    const newDate = new Date(prev);
-                    newDate.setMonth(newDate.getMonth() + 1);
-                    return newDate;
-                  })
-                }
-                className="rounded-md p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground cursor-pointer"
-              >
-                <ChevronRight className="h-4 w-4" />
-              </button>
-            </m.div>
-          )}
-        </AnimatePresence>
-      </m.div>
+                <MonthStepper
+                  label={getMonthYear(currentMonth)}
+                  onPrevious={() => stepMonth(-1)}
+                  onNext={() => stepMonth(1)}
+                />
+              </m.div>
+            )}
+          </AnimatePresence>
+        </m.div>
+      )}
 
       {/* Service Type Filters */}
       <ServiceTypeFilter
@@ -714,16 +643,17 @@ export function MemberEventsDashboard({
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.1 }}
-                className="flex flex-col items-center justify-center rounded-lg border border-border bg-card py-16"
+                className="flex flex-col items-center justify-center rounded-2xl border border-border bg-card px-6 py-16 text-center"
               >
-                <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100">
-                  <CheckCircle2 className="h-6 w-6 text-emerald-600" />
+                {/* A tint rather than a pale fill, so it holds in dark mode. */}
+                <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500/15">
+                  <CheckCircle2 className="h-6 w-6 text-emerald-600 dark:text-emerald-400" />
                 </div>
                 <p className="text-sm font-medium text-foreground">
-                  You&apos;re all caught up!
+                  You&apos;re all caught up
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  No pending invitations
+                  No invitations are waiting on you.
                 </p>
               </m.div>
             ) : (
@@ -737,13 +667,13 @@ export function MemberEventsDashboard({
                     isMounted={isMounted}
                     getServiceType={getServiceType}
                     canManage={canManage}
+                    now={now}
                   />
                 ))}
 
                 {filteredExpiredEvents.length > 0 && (
                   <div className="space-y-3 pt-2">
-                    <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                      <Hourglass className="h-3.5 w-3.5" />
+                    <p className="text-[11px] font-bold tracking-wider text-muted-foreground uppercase">
                       Expired
                     </p>
                     {filteredExpiredEvents.map((event, index) => (
@@ -768,175 +698,80 @@ export function MemberEventsDashboard({
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
           >
-            {groupedSchedule.length === 0 ? (
-              <m.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.1 }}
-                className="flex flex-col items-center justify-center rounded-lg border border-border bg-card py-16"
-              >
-                <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-secondary">
-                  <Calendar className="h-6 w-6 text-muted-foreground" />
-                </div>
-                <p className="text-sm font-medium text-foreground">
-                  {activeTab === "all"
-                    ? "No events"
-                    : bannerHoldsSchedule
-                      ? "Nothing else scheduled"
-                      : "No scheduled events"}
-                </p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {timeScope === "past"
-                    ? "No past events found"
-                    : activeTab === "all"
-                      ? "No events in this period"
-                      : bannerHoldsSchedule
-                        ? "Your next event is shown above"
-                        : "Check back later for new assignments"}
-                </p>
-              </m.div>
-            ) : (
-              <div className="space-y-6">
-                {groupedSchedule.map(
-                  ([dateStr, dateEvents], groupIndex) => {
-                    const groupDate = new Date(dateStr);
-                    const allPast = dateEvents.every((e) =>
-                      isEventPast(e.dates, churchNow),
-                    );
-                    const isNextUpcoming = dateStr === nextUpcomingDate;
+            <div className="space-y-4">
+              {upNext && (
+                <m.div
+                  initial={isMounted ? { opacity: 0, y: 10 } : false}
+                  animate={{ opacity: 1, y: 0 }}
+                >
+                  <UpNextCard
+                    upNext={upNext}
+                    service={getServiceType(upNext.event.serviceTypeId)}
+                    href={eventHref(upNext.event.id)}
+                    today={todayKey}
+                    now={churchNow}
+                  />
+                </m.div>
+              )}
 
-                    return (
+              {groupedSchedule.length === 0 ? (
+                upNext ? null : (
+                  <m.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.1 }}
+                    className="flex flex-col items-center justify-center rounded-2xl border border-border bg-card px-6 py-16 text-center"
+                  >
+                    <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-secondary">
+                      <Calendar className="h-6 w-6 text-muted-foreground" />
+                    </div>
+                    <p className="text-sm font-medium text-foreground">
+                      {activeTab === "all" ? "No events" : "No scheduled events"}
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {timeScope === "past"
+                        ? "No past events found"
+                        : activeTab === "all"
+                          ? "No events in this period"
+                          : "Check back later for new assignments"}
+                    </p>
+                  </m.div>
+                )
+              ) : (
+                // Every other period drops finished events, so the whole Past
+                // list recedes together, as on the phone.
+                <div
+                  className={`flex flex-col gap-3 ${timeScope === "past" ? "opacity-60" : ""}`}
+                >
+                  {groupedSchedule
+                    .flatMap(([key, dayEvents]) =>
+                      dayEvents.map((event) => ({ key, event })),
+                    )
+                    .map(({ key, event }, index) => (
                       <m.div
-                        key={dateStr}
-                        initial={isMounted ? { opacity: 0, y: 20 } : false}
+                        key={event.id}
+                        initial={isMounted ? { opacity: 0, y: 10 } : false}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{
-                          delay: isMounted ? groupIndex * 0.05 : 0,
+                          delay: isMounted ? Math.min(index, 10) * 0.03 : 0,
                         }}
-                        className={allPast ? "opacity-60" : ""}
                       >
-                        <div className="mb-3 flex items-center gap-3">
-                          <h3 className="text-sm font-semibold text-foreground">
-                            {formatShortDate(groupDate)}
-                          </h3>
-                          {isNextUpcoming && (
-                            <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">
-                              Upcoming
-                            </span>
-                          )}
-                          {allPast && (
-                            <span className="rounded-full bg-secondary px-2 py-0.5 text-xs font-medium text-muted-foreground">
-                              Past
-                            </span>
-                          )}
-                          <div className="h-px flex-1 bg-border" />
-                        </div>
-
-                        <div className="space-y-2">
-                          {dateEvents.map((event, eventIndex) => {
-                            const service = getServiceType(event.serviceTypeId);
-                            const role = event.assignments[0]?.role ?? null;
-                            const roleInfo = role
-                              ? volunteerRoleConfig[role as VolunteerRole]
-                              : null;
-                            const colors = getColorClasses(
-                              service?.color || "indigo",
-                            );
-                            const multiDay = isMultiDay(event.dates);
-                            const meter =
-                              activeTab === "all" &&
-                              event.staffing &&
-                              event.staffing.needed > 0 ? (
-                                <StaffingMeter
-                                  staffing={event.staffing}
-                                />
-                              ) : null;
-
-                            return (
-                              <Link
-                                key={event.id}
-                                href={`/dashboard/organizations/${organizationId}/events/${event.id}`}
-                              >
-                                <m.div
-                                  initial={
-                                    isMounted ? { opacity: 0, x: -10 } : false
-                                  }
-                                  animate={{ opacity: 1, x: 0 }}
-                                  transition={{
-                                    delay: isMounted
-                                      ? groupIndex * 0.05 + eventIndex * 0.03
-                                      : 0,
-                                  }}
-                                  whileHover={{ scale: 1.01 }}
-                                  className={`group cursor-pointer rounded-lg border border-border border-l-[3px] bg-card p-3 transition-all duration-200 hover:shadow-md ${colors.border}`}
-                                >
-                                  {/* Desktop layout */}
-                                  <div className="hidden items-center gap-3 sm:flex">
-                                    <span className="min-w-17.5 text-sm font-medium text-foreground">
-                                      {formatTimeRange(event.dates)}
-                                    </span>
-                                    <span
-                                      className={`shrink-0 rounded px-2 py-0.5 text-xs font-medium ${colors.badge} ${colors.badgeText}`}
-                                    >
-                                      {service?.name || "Event"}
-                                    </span>
-                                    <span className="flex-1 truncate text-sm text-foreground">
-                                      {event.name}
-                                      {multiDay && (
-                                        <span className="ml-2 text-xs text-muted-foreground">
-                                          ({formatDateRange(event.dates)})
-                                        </span>
-                                      )}
-                                    </span>
-                                    {roleInfo && (
-                                      <span className="shrink-0 rounded-md bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground">
-                                        {roleInfo.icon} {roleInfo.label}
-                                      </span>
-                                    )}
-                                    {meter && (
-                                      <div
-                                        className="shrink-0"
-                                        style={{ width: METER_MAX_WIDTH }}
-                                      >
-                                        {meter}
-                                      </div>
-                                    )}
-                                  </div>
-                                  {/* Mobile layout */}
-                                  <div className="flex flex-col gap-2 sm:hidden">
-                                    <div className="flex items-center justify-between gap-2">
-                                      <span
-                                        className={`shrink-0 rounded px-2 py-0.5 text-xs font-medium ${colors.badge} ${colors.badgeText}`}
-                                      >
-                                        {service?.name || "Event"}
-                                      </span>
-                                      {roleInfo && (
-                                        <span className="shrink-0 rounded-md bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground">
-                                          {roleInfo.icon} {roleInfo.label}
-                                        </span>
-                                      )}
-                                    </div>
-                                    <p className="text-sm font-medium text-foreground">
-                                      {event.name}
-                                    </p>
-                                    <span className="text-xs text-muted-foreground">
-                                      {multiDay
-                                        ? `${formatDateRange(event.dates)} · ${formatTimeRange(event.dates)}`
-                                        : formatTimeRange(event.dates)}
-                                    </span>
-                                    {meter}
-                                  </div>
-                                </m.div>
-                              </Link>
-                            );
-                          })}
-                        </div>
+                        <EventCard
+                          href={eventHref(event.id)}
+                          event={event}
+                          service={getServiceType(event.serviceTypeId)}
+                          role={cardRole(event)}
+                          day={key}
+                          today={todayKey}
+                          now={churchNow}
+                          highlight={key === nextKey}
+                          staffing={activeTab === "all" ? event.staffing : null}
+                        />
                       </m.div>
-                    );
-                  },
-                )}
-              </div>
-            )}
+                    ))}
+                </div>
+              )}
+            </div>
           </m.div>
         )}
       </AnimatePresence>
@@ -953,6 +788,10 @@ export function MemberEventsDashboard({
  * of the tab the moment they lapsed, which read as the invitation never having
  * arrived; this says what actually happened. Reopening one is the admin's move,
  * since re-inviting is what resets the window, so there is nothing to press.
+ *
+ * Flatter than a live card on purpose, as on the phone: no service stripe, no
+ * buttons, muted text. It's a record, and mustn't compete with the cards above
+ * it that still want an answer.
  */
 function ExpiredInviteCard({
   event,
@@ -966,55 +805,75 @@ function ExpiredInviteCard({
   getServiceType: (id: string) => ServiceType | undefined;
 }) {
   const service = getServiceType(event.serviceTypeId);
-  const colors = getColorClasses(service?.color || "indigo");
-  const assignment = event.assignments[0] ?? null;
-  const roleInfo = assignment
-    ? volunteerRoleConfig[assignment.role as VolunteerRole]
-    : null;
+  // The sweep may not have written EXPIRED yet — see hasExpiredInvite.
+  const assignment =
+    event.assignments.find((a) => a.status === InvitationStatus.EXPIRED) ??
+    event.assignments.find((a) => a.status === InvitationStatus.PENDING) ??
+    null;
 
   return (
     <m.div
       initial={isMounted ? { opacity: 0, y: 20 } : false}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: isMounted ? index * 0.05 : 0 }}
-      className={`overflow-hidden rounded-lg border border-border border-l-[3px] bg-muted/20 p-4 ${colors.border}`}
+      className="space-y-2 rounded-2xl border border-border bg-muted/30 px-3.5 py-3 opacity-80 sm:px-4"
     >
-      <div className="mb-2 flex flex-wrap items-start justify-between gap-2">
-        <span className="rounded-md bg-slate-500/10 px-2 py-0.5 text-[11px] font-medium text-slate-500">
-          Invite expired
-        </span>
-        {roleInfo && (
-          <span className="text-xs text-muted-foreground">
-            {roleInfo.icon} {roleInfo.label}
-          </span>
-        )}
+      <div className="flex items-center gap-2">
+        <ServiceBadge service={service} />
+        <span className="flex-1" />
+        {assignment && <RoleChip role={assignment.role} />}
       </div>
 
-      <p className="truncate text-sm font-medium text-muted-foreground">
+      <p className="line-clamp-2 text-[15px] leading-5 font-semibold tracking-tight text-muted-foreground">
         {event.name}
       </p>
 
-      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-        <span className="flex items-center gap-1.5">
-          <Calendar className="h-3.5 w-3.5 shrink-0" />
-          {formatDateRange(event.dates)}
-        </span>
-        <span className="flex items-center gap-1.5">
-          <MapPin className="h-3.5 w-3.5 shrink-0" />
-          <span className="truncate">{event.location}</span>
-        </span>
+      <div className="flex flex-col gap-1 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-4">
+        <MetaLine icon={Calendar}>{formatDateRange(event.dates)}</MetaLine>
+        <MetaLine icon={MapPin}>{event.location}</MetaLine>
       </div>
 
-      <p className="mt-2.5 text-xs text-muted-foreground">
-        This invitation ran out before it was answered. Ask an admin to send a
-        new one if you can still serve.
-      </p>
+      <div className="flex items-center gap-1.5 pt-0.5">
+        <Pill label="Invite expired" icon={Hourglass} />
+        <p className="min-w-0 flex-1 text-[11.5px] text-muted-foreground">
+          Ran out before it was answered. Ask an admin for a new one.
+        </p>
+      </div>
     </m.div>
+  );
+}
+
+/** A tinted capsule for a countdown or a lapse — red when it's urgent. */
+function Pill({
+  label,
+  icon: Icon,
+  urgent,
+}: {
+  label: string;
+  icon: LucideIcon;
+  urgent?: boolean;
+}) {
+  return (
+    <span
+      className={cn(
+        "inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold",
+        urgent ? "bg-destructive/10 text-destructive" : "bg-secondary text-muted-foreground",
+      )}
+    >
+      <Icon aria-hidden className="size-2.5" />
+      {label}
+    </span>
   );
 }
 
 // ─── Pending Event Card ────────────────────────────────────────
 
+/**
+ * An invitation waiting on an answer, as on the phone: taller and louder than
+ * a schedule card, because it's the only one that asks for something.
+ * Everything above the buttons is what's needed to answer — when, where, who
+ * asked, and how long is left.
+ */
 function PendingEventCard({
   event,
   organizationId,
@@ -1022,6 +881,7 @@ function PendingEventCard({
   isMounted,
   getServiceType,
   canManage,
+  now,
 }: {
   event: Event;
   organizationId: string;
@@ -1029,15 +889,22 @@ function PendingEventCard({
   isMounted: boolean;
   getServiceType: (id: string) => ServiceType | undefined;
   canManage: boolean;
+  /** The real instant, which expiry counts down from. */
+  now: Date;
 }) {
   const [isAccepting, startAccept] = useTransition();
   const [isDeclining, startDecline] = useTransition();
 
   const service = getServiceType(event.serviceTypeId);
-  const role = event.assignments[0]?.role ?? null;
-  const roleInfo = role ? volunteerRoleConfig[role as VolunteerRole] : null;
+  const assignment =
+    event.assignments.find((a) => a.status === InvitationStatus.PENDING) ??
+    event.assignments[0] ??
+    null;
   const colors = getColorClasses(service?.color || "indigo");
-  const assignedBy = event.assignments[0]?.assignedBy?.firstName ?? null;
+  const assignedBy = assignment?.assignedBy
+    ? capitalizeName(assignment.assignedBy.firstName)
+    : null;
+  const expiry = assignment ? formatExpiry(assignment.expiresAt, now) : null;
   const isBusy = isAccepting || isDeclining;
 
   function handleAccept() {
@@ -1059,41 +926,36 @@ function PendingEventCard({
   // Pending invites aren't viewable until accepted, so only managers — who
   // reach the event page via their role — get a clickable card.
   const details = (
-    <>
-      <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
-        <span
-          className={`rounded px-2 py-0.5 text-xs font-medium ${colors.badge} ${colors.badgeText}`}
-        >
-          {service?.name || "Event"}
-        </span>
-        <span className="rounded-md bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground">
-          {roleInfo?.icon} {roleInfo?.label}
-        </span>
+    <div className="space-y-2.5 py-3.5 pr-3.5 pl-[15px] sm:py-4 sm:pr-4 sm:pl-5">
+      <div className="flex items-center gap-2">
+        <ServiceBadge service={service} />
+        <span className="flex-1" />
+        {assignment && <RoleChip role={assignment.role} />}
       </div>
 
-      <h3 className="mb-2 text-base font-semibold text-foreground">
+      <h3 className="line-clamp-2 text-base leading-snug font-semibold tracking-tight text-foreground">
         {event.name}
       </h3>
 
-      <div className="mb-2 flex flex-col gap-1 text-sm text-muted-foreground sm:flex-row sm:flex-wrap sm:gap-x-4 sm:gap-y-1">
-        <span className="flex items-center gap-1.5">
-          <Calendar className="h-3.5 w-3.5 shrink-0" />
-          {formatDateRange(event.dates)}
-        </span>
-        <span className="flex items-center gap-1.5">
-          <Clock className="h-3.5 w-3.5 shrink-0" />
-          {formatTimeRange(event.dates)}
-        </span>
-        <span className="flex items-center gap-1.5">
-          <MapPin className="h-3.5 w-3.5 shrink-0" />
-          <span className="truncate">{event.location}</span>
-        </span>
+      <div className="flex flex-col gap-1.5 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-4">
+        <MetaLine icon={Calendar}>{formatDateRange(event.dates)}</MetaLine>
+        <MetaLine icon={Clock}>{formatTimeRange(event.dates)}</MetaLine>
+        <MetaLine icon={MapPin}>{event.location}</MetaLine>
       </div>
 
-      {assignedBy && (
-        <p className="text-xs text-muted-foreground">Assigned By: {assignedBy}</p>
-      )}
-    </>
+      <div className="flex items-center gap-2 pt-0.5">
+        <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+          {assignedBy && `Assigned by ${assignedBy}`}
+        </p>
+        {expiry && (
+          <Pill
+            label={expiry.label}
+            icon={expiry.urgent ? ClockAlert : Hourglass}
+            urgent={expiry.urgent}
+          />
+        )}
+      </div>
+    </div>
   );
 
   return (
@@ -1101,25 +963,29 @@ function PendingEventCard({
       initial={isMounted ? { opacity: 0, y: 20 } : false}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: isMounted ? index * 0.05 : 0 }}
-      whileHover={{ scale: 1.01 }}
-      className={`group overflow-hidden rounded-lg border border-border border-l-[3px] bg-card transition-shadow duration-200 hover:shadow-md ${colors.border}`}
+      className="relative overflow-hidden rounded-2xl border border-border bg-card"
     >
+      <span aria-hidden className={cn("absolute inset-y-0 left-0 w-[3px]", colors.solid)} />
+
       {canManage ? (
         <Link
           href={`/dashboard/organizations/${organizationId}/events/${event.id}`}
-          className="block p-4"
+          className="block transition-colors hover:bg-secondary/40 focus-visible:bg-secondary/40 focus-visible:outline-none"
         >
           {details}
         </Link>
       ) : (
-        <div className="p-4">{details}</div>
+        details
       )}
 
-      <div className="border-t border-border" />
-      <div className="flex gap-2 p-3 sm:gap-3">
-        <m.div whileTap={{ scale: 0.97 }} className="flex-1">
+      {/* Accept leads, filled; Decline is the same size, outlined. Full width
+          on a phone, as in the app; from sm the pair sits at the right instead
+          of stretching across a wide card. The default variant underneath both,
+          since outline's dark-mode border would override Decline's red. */}
+      <div className="flex gap-2.5 border-t border-border p-3 sm:justify-end">
+        <m.div whileTap={{ scale: 0.97 }} className="flex-1 sm:w-36 sm:flex-none">
           <Button
-            className="h-10 w-full bg-emerald-600 text-white hover:bg-emerald-700 cursor-pointer sm:h-11"
+            className="h-11 w-full rounded-xl bg-emerald-600 text-[15px] font-semibold text-white hover:bg-emerald-700 sm:h-10 sm:text-sm"
             onClick={handleAccept}
             disabled={isBusy}
           >
@@ -1127,16 +993,15 @@ function PendingEventCard({
               <Spinner />
             ) : (
               <>
-                <Check className="mr-1.5 h-4 w-4 sm:mr-2" />
-                <span>Accept</span>
+                <Check className="size-3.5" />
+                Accept
               </>
             )}
           </Button>
         </m.div>
-        <m.div whileTap={{ scale: 0.97 }} className="flex-1">
+        <m.div whileTap={{ scale: 0.97 }} className="flex-1 sm:w-36 sm:flex-none">
           <Button
-            variant="outline"
-            className="h-10 w-full border-destructive text-destructive hover:bg-destructive/10 cursor-pointer sm:h-11"
+            className="h-11 w-full rounded-xl border border-destructive/45 bg-destructive/5 text-[15px] font-semibold text-destructive hover:bg-destructive/10 sm:h-10 sm:text-sm"
             onClick={handleDecline}
             disabled={isBusy}
           >
@@ -1144,8 +1009,8 @@ function PendingEventCard({
               <Spinner />
             ) : (
               <>
-                <X className="mr-1.5 h-4 w-4 sm:mr-2" />
-                <span>Decline</span>
+                <X className="size-3.5" />
+                Decline
               </>
             )}
           </Button>

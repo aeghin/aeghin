@@ -1,71 +1,83 @@
-import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 
 export function EventDetailSkeleton() {
   return (
     <main className="mx-auto max-w-screen-2xl px-4 py-6 sm:px-6 sm:py-8">
       <div className="space-y-6 sm:space-y-8">
-        {/* Sized like the back link and the prev/next pager, so stepping to
-            another event doesn't jump when the page lands. */}
-        <div className="flex items-center justify-between gap-3">
-          <Skeleton className="h-4 w-40" />
-          <Skeleton className="h-9.5 w-21 rounded-lg sm:w-44.5" />
-        </div>
+        <Skeleton className="h-4 w-40" />
 
-        <div className="rounded-2xl border border-border/40 border-l-[3px] border-l-muted bg-card p-5 sm:p-8">
-          <div className="flex items-start gap-4 sm:gap-5">
-            <Skeleton className="h-14 w-14 shrink-0 rounded-2xl sm:h-16 sm:w-16" />
-            <div className="min-w-0 flex-1 space-y-3">
-              <Skeleton className="h-5.5 w-28" />
-              <Skeleton className="h-8 w-full max-w-72 sm:h-9" />
-              <div className="py-1">
-                <Skeleton className="h-4 w-full max-w-80" />
+        {/* The hero: date tile, stripe, name and badge, the when and where
+            tiles beside them from lg, and the pager along the bottom. */}
+        <div className="rounded-2xl border border-border bg-card p-4 sm:p-6">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:gap-8">
+            <div className="flex min-w-0 items-center gap-3.5 lg:flex-1">
+              <Skeleton className="h-19 w-15 shrink-0 rounded-xl" />
+              <Skeleton className="w-[3px] self-stretch rounded-full" />
+              <div className="min-w-0 flex-1 space-y-2">
+                <Skeleton className="h-7 w-full max-w-72 sm:h-8" />
+                <Skeleton className="h-5 w-24" />
               </div>
             </div>
+            <div className="grid grid-cols-2 gap-2 lg:w-[46%] lg:shrink-0">
+              {[0, 1].map((i) => (
+                <div key={i} className="space-y-1.5 rounded-xl border border-border p-2.5">
+                  <Skeleton className="h-2.5 w-12" />
+                  <Skeleton className="h-3.5 w-24" />
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="mt-4 flex items-center justify-between border-t border-border pt-3 sm:mt-5">
+            <Skeleton className="h-7 w-20 rounded-lg" />
+            <Skeleton className="h-4 w-28" />
+            <Skeleton className="h-7 w-20 rounded-lg" />
           </div>
         </div>
 
         <div className="grid gap-6 lg:grid-cols-3">
           <div className="space-y-6 lg:col-span-2">
-            <Card>
-              <CardHeader className="pb-3">
-                <Skeleton className="h-4 w-16" />
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <Skeleton className="h-4 w-full" />
-                <Skeleton className="h-4 w-2/3" />
-                <Skeleton className="h-4 w-1/2" />
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="pb-3">
-                <Skeleton className="h-4 w-20" />
-              </CardHeader>
-              <CardContent className="space-y-2">
+            {/* Setlist: icon tile, title and song count, then the rows */}
+            <div className="overflow-hidden rounded-2xl border border-border bg-card">
+              <div className="flex items-center gap-3 px-4 pt-4 pb-3 sm:px-5 sm:pt-5">
+                <Skeleton className="size-7.5 rounded-[10px]" />
+                <div className="space-y-1.5">
+                  <Skeleton className="h-4 w-16" />
+                  <Skeleton className="h-3 w-12" />
+                </div>
+              </div>
+              <div className="space-y-2 px-4 pb-4 sm:px-5">
                 <Skeleton className="h-10 w-full" />
                 <Skeleton className="h-10 w-full" />
                 <Skeleton className="h-10 w-full" />
-              </CardContent>
-            </Card>
+              </div>
+            </div>
           </div>
           <div className="space-y-6">
-            <Card>
-              <CardHeader className="pb-3">
-                <Skeleton className="h-4 w-24" />
-                <Skeleton className="h-1.5 w-full mt-2" />
-              </CardHeader>
-              <CardContent className="space-y-2">
-                <Skeleton className="h-12 w-full" />
-                <Skeleton className="h-12 w-full" />
-                <Skeleton className="h-12 w-full" />
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-6 space-y-3">
-                <Skeleton className="h-4 w-full" />
-                <Skeleton className="h-4 w-full" />
-              </CardContent>
-            </Card>
+            {/* Team: icon tile, title and count, the actions, then a section of rows */}
+            <div className="overflow-hidden rounded-2xl border border-border bg-card">
+              <div className="flex items-center gap-3 px-4 pt-4 pb-3 sm:px-5 sm:pt-5">
+                <Skeleton className="size-7.5 rounded-[10px]" />
+                <Skeleton className="h-4 w-14" />
+                <Skeleton className="ml-auto h-4 w-24" />
+              </div>
+              <div className="flex gap-2 px-4 pb-4 sm:px-5">
+                <Skeleton className="h-8.5 flex-1 rounded-[10px]" />
+                <Skeleton className="h-8.5 flex-1 rounded-[10px]" />
+              </div>
+              <div className="space-y-2 border-t border-border px-4 py-3 sm:px-5">
+                <Skeleton className="h-4 w-16" />
+                <Skeleton className="h-13 w-full rounded-xl" />
+                <Skeleton className="h-13 w-full rounded-xl" />
+              </div>
+            </div>
+            {/* Chat: icon tile, title and who's online, then the message area */}
+            <div className="flex h-112 flex-col overflow-hidden rounded-2xl border border-border bg-card">
+              <div className="flex items-center gap-3 px-4 pt-4 pb-3 sm:px-5 sm:pt-5">
+                <Skeleton className="size-7.5 rounded-[10px]" />
+                <Skeleton className="h-4 w-20" />
+                <Skeleton className="ml-auto h-3 w-14" />
+              </div>
+            </div>
           </div>
         </div>
       </div>

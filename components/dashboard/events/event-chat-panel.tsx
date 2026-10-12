@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useSyncExternalStore } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
@@ -13,6 +12,7 @@ import { colorClasses } from "@/lib/config/service-types-config";
 import { markChatRead } from "@/lib/actions/chat";
 import { useEventChat } from "@/lib/realtime/use-event-chat";
 import type { ChatMessage } from "@/lib/realtime/types";
+import { DETAIL_CARD, DetailCardHeader } from "./event-detail-parts";
 
 /** One person's messages this close together read as a single run. */
 const RUN_MINUTES = 5;
@@ -205,26 +205,27 @@ export function EventChatPanel({
   }
 
   return (
-    <Card ref={cardRef} className="flex h-112 flex-col overflow-hidden">
-      <CardHeader className="flex-row items-center justify-between space-y-0 pb-3">
-        <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-          <MessagesSquare className="h-4 w-4 text-muted-foreground" />
-          Event Chat
-        </CardTitle>
-        <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <span
-            className={cn(
-              "h-2 w-2 rounded-full",
-              status === "connected"
-                ? "bg-emerald-500"
-                : "bg-muted-foreground/40",
-            )}
-          />
-          {presence.length} online
-        </span>
-      </CardHeader>
+    <div ref={cardRef} className={cn(DETAIL_CARD, "flex h-112 flex-col")}>
+      <DetailCardHeader
+        icon={MessagesSquare}
+        title="Event chat"
+        serviceColor={serviceColor}
+        trailing={
+          <span className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
+            <span
+              className={cn(
+                "h-2 w-2 rounded-full",
+                status === "connected"
+                  ? "bg-emerald-500"
+                  : "bg-muted-foreground/40",
+              )}
+            />
+            {presence.length} online
+          </span>
+        }
+      />
 
-      <CardContent className="flex min-h-0 flex-1 flex-col gap-3 pb-3">
+      <div className="flex min-h-0 flex-1 flex-col gap-3 px-4 pb-4 sm:px-5 sm:pb-5">
         <ScrollArea className="min-h-0 flex-1 pr-3">
           {hasMore && (
             <button
@@ -371,7 +372,7 @@ export function EventChatPanel({
             volunteers can reply.
           </p>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }

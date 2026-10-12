@@ -36,6 +36,7 @@ import { colorClasses } from "@/lib/config/service-types-config";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { EventEmailInput, eventEmailSchema } from "@/lib/validations/event-email";
+import { detailButtonClass, detailIconClass } from "./event-detail-parts";
 
 import { toast } from "sonner";
 
@@ -49,6 +50,7 @@ interface EmailTeamDialogProps {
   // This month's group emails against the plan's allowance.
   allowance: EmailAllowance;
   canUpgrade: boolean;
+  className?: string;
 }
 
 export function EmailTeamDialog({
@@ -58,6 +60,7 @@ export function EmailTeamDialog({
   eventName,
   recipientCount,
   serviceColor,
+  className,
   allowance,
   canUpgrade,
 }: EmailTeamDialogProps) {
@@ -106,15 +109,14 @@ export function EmailTeamDialog({
 
   return (
     <>
-      <Button
-        variant="outline"
-        size="sm"
-        className="h-7 gap-1.5 px-2.5 text-xs cursor-pointer"
+      <button
+        type="button"
+        className={cn(detailButtonClass(serviceColor), className)}
         onClick={() => setOpen(true)}
       >
-        <Mail className="h-3.5 w-3.5" />
-        Email Team
-      </Button>
+        <Mail className={detailIconClass(serviceColor)} />
+        Email
+      </button>
 
       <Dialog open={open} onOpenChange={handleClose}>
         <DialogContent className="sm:max-w-120">

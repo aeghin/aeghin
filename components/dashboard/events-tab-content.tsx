@@ -1,9 +1,7 @@
 import { MemberEventsDashboard } from "@/components/dashboard/events-member-dashboard";
-import { UpNextBanner, findUpNext } from "@/components/dashboard/up-next-banner";
 import { getOrgServiceTypes, getServiceTypeOrder } from "@/lib/services/service-types";
 import { getUserEvents, getOrgEvents } from "@/lib/services/events";
 import { getOrganizationTimeZone } from "@/lib/services/organization";
-import { floatingNow } from "@/lib/time-zone";
 
 interface EventsTabContentProps {
   organizationId: string;
@@ -25,33 +23,15 @@ export const EventsTabContent = async ({
     getOrganizationTimeZone(organizationId),
   ]);
 
-  // The church's clock, which event times are written in — read once, so the
-  // banner's "Today"/"Tomorrow" and its pick can't disagree.
-  const now = floatingNow(timeZone);
-
-  // Picked once here so the banner and the schedule list can't disagree about
-  // which event is up next — the list drops it rather than show it twice.
-  const upNext = findUpNext(events, now);
-
   return (
-    <div className="flex flex-col gap-6">
-      <UpNextBanner
-        upNext={upNext}
-        serviceTypes={serviceTypes}
-        organizationId={organizationId}
-        now={now}
-      />
-
-      <MemberEventsDashboard
-        events={events}
-        allEvents={allEvents}
-        serviceTypes={serviceTypes}
-        serviceTypeOrder={serviceTypeOrder}
-        organizationId={organizationId}
-        canManage={canManage}
-        upNextEventId={upNext?.event.id ?? null}
-        timeZone={timeZone}
-      />
-    </div>
+    <MemberEventsDashboard
+      events={events}
+      allEvents={allEvents}
+      serviceTypes={serviceTypes}
+      serviceTypeOrder={serviceTypeOrder}
+      organizationId={organizationId}
+      canManage={canManage}
+      timeZone={timeZone}
+    />
   );
 };

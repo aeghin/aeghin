@@ -8,7 +8,8 @@ import Link from "next/link";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { colorClasses } from "@/lib/config/service-types-config";
+import { getServiceColors } from "@/lib/config/service-types-config";
+import { formatDayMonth, formatShortDate } from "@/lib/event-format";
 
 interface AdjacentEvent {
   id: string;
@@ -27,25 +28,16 @@ interface EventPagerProps {
 interface PagerStepProps {
   organizationId: string;
   serviceName: string;
+  serviceColor: string;
   event: AdjacentEvent | null;
   direction: "previous" | "next";
 }
 
-// Events store wall-clock times with a Z suffix, so display always pins to UTC.
-function formatShortDate(date: Date): string {
-  return date.toLocaleDateString("en-US", {
-    timeZone: "UTC",
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-  });
-}
-
-const stepClass =
-  "inline-flex h-8 items-center gap-1 rounded-md px-2 text-sm text-muted-foreground";
-
-// Steps between events of one service type, so its dot sits between the
-// arrows — the same dot as the badge in the header below.
+/**
+ * Previous and next of the same service type, as the footer of the event's
+ * card on the phone. Each arrow carries the date it goes to, so a step is a
+ * choice rather than a guess, and the service is named between them.
+ */
 export function EventPager({
   organizationId,
   serviceName,
@@ -56,26 +48,32 @@ export function EventPager({
   // Nothing either side, e.g. a volunteer's only Sunday.
   if (!previous && !next) return null;
 
-  const serviceColors = colorClasses[serviceColor];
+  const serviceColors = getServiceColors(serviceColor);
 
   return (
     <nav
       aria-label={`Previous and next ${serviceName} event`}
-      className="flex shrink-0 items-center rounded-lg border border-border bg-background p-0.5"
+      className="mt-4 flex items-center gap-2 border-t border-border pt-3 sm:mt-5"
     >
       <PagerStep
         organizationId={organizationId}
         serviceName={serviceName}
+        serviceColor={serviceColor}
         event={previous}
         direction="previous"
       />
-      <span
-        aria-hidden="true"
-        className={cn("mx-1 h-1.5 w-1.5 shrink-0 rounded-full", serviceColors.dot)}
-      />
+
+      <div className="flex min-w-0 flex-1 items-center justify-center gap-1.5">
+        <span aria-hidden="true" className={cn("size-1.75 shrink-0 rounded-full", serviceColors.dot)} />
+        <span className="truncate text-[13px] font-semibold text-muted-foreground">
+          {serviceName}
+        </span>
+      </div>
+
       <PagerStep
         organizationId={organizationId}
         serviceName={serviceName}
+        serviceColor={serviceColor}
         event={next}
         direction="next"
       />
@@ -83,19 +81,37 @@ export function EventPager({
   );
 }
 
-function PagerStep({ organizationId, serviceName, event, direction }: PagerStepProps) {
+function PagerStep({ organizationId, serviceName, serviceColor, event, direction }: PagerStepProps) {
   const isNext = direction === "next";
   const label = isNext ? "Next" : "Previous";
+  const serviceColors = getServiceColors(serviceColor);
+
+  const arrow = (
+    <span className="flex size-7 shrink-0 items-center justify-center rounded-lg border border-border bg-card">
+      {isNext ? (
+        <ChevronRight className={cn("size-3.5", serviceColors.badgeText)} />
+      ) : (
+        <ChevronLeft className={cn("size-3.5", serviceColors.badgeText)} />
+      )}
+    </span>
+  );
+
+  const date = (
+    <span className="text-xs font-semibold text-foreground tabular-nums">
+      {event ? formatDayMonth(event.startTime) : isNext ? "Latest" : "First"}
+    </span>
+  );
 
   const content = (
     <>
-      {!isNext && <ChevronLeft className="h-4 w-4" />}
-      <span className="hidden sm:inline">{label}</span>
-      {isNext && <ChevronRight className="h-4 w-4" />}
+      {isNext ? date : arrow}
+      {isNext ? arrow : date}
     </>
   );
 
-  // At either end the arrow stays, greyed out, so the other one doesn't shift
+  const stepClass = "-m-1 inline-flex shrink-0 items-center gap-2 rounded-lg p-1";
+
+  // At either end the step stays, dimmed, so the other one doesn't shift
   // under a pointer that's clicking through.
   if (!event) {
     return (
@@ -115,13 +131,13 @@ function PagerStep({ organizationId, serviceName, event, direction }: PagerStepP
           aria-label={`${label} ${serviceName}: ${event.name}, ${when}`}
           className={cn(
             stepClass,
-            "outline-none transition-colors hover:bg-secondary hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50",
+            "outline-none transition-colors hover:bg-secondary focus-visible:ring-[3px] focus-visible:ring-ring/50",
           )}
         >
           {content}
         </Link>
       </TooltipTrigger>
-      <TooltipContent side="bottom" collisionPadding={16}>
+      <TooltipContent side="top" collisionPadding={16}>
         {event.name} · {when}
       </TooltipContent>
     </Tooltip>

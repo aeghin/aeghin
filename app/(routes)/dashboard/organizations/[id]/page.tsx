@@ -1,10 +1,7 @@
 import { AnimatedSection } from "@/components/dashboard/animate-section";
 import { BackLink } from "@/components/dashboard/back-link-button";
 import { OrganizationHero } from "@/components/dashboard/organization-hero";
-import { OrganizationStatsGrid } from "@/components/dashboard/org-stats-grid";
 import { OrganizationTabsSection } from "@/components/dashboard/org-tabs-section";
-import { NeedsResponseSection } from "@/components/dashboard/needs-response-section";
-import { StatsGridSkeleton } from "@/components/dashboard/org-stats-skeleton";
 import { TabsSkeleton } from "@/components/dashboard/org-tabs-skeleton";
 
 import { notFound } from "next/navigation";
@@ -60,8 +57,8 @@ export default async function OrganizationPage({
 
 
  return (
-    <main className="mx-auto max-w-screen-2xl px-6 py-8">
-      <div className="space-y-8">
+    <main className="mx-auto max-w-screen-2xl px-4 py-6 sm:px-6 sm:py-8">
+      <div className="space-y-6 sm:space-y-8">
         <AnimatedSection delay={0.05}>
           <BackLink href="/dashboard" label="Back to Dashboard" />
         </AnimatedSection>
@@ -73,22 +70,6 @@ export default async function OrganizationPage({
           />
         </AnimatedSection>
 
-        <Suspense fallback={<StatsGridSkeleton />}>
-          <OrganizationStatsGrid
-            organizationId={organization.id}
-            userId={userId}
-            canManage={canManage}
-          />
-        </Suspense>
-
-        <Suspense fallback={null}>
-          <NeedsResponseSection
-            organizationId={organization.id}
-            userId={userId}
-            canManage={canManage}
-          />
-        </Suspense>
- 
         <AnimatedSection delay={0.3}>
           <Suspense fallback={<TabsSkeleton />}>
             <OrganizationTabsSection

@@ -2,11 +2,11 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 
 export const TabsSkeleton = () => (
   <div className="space-y-6">
-    <div className="inline-flex h-auto gap-1 rounded-xl bg-secondary/50 p-1">
+    <div className="flex w-full gap-1 overflow-hidden rounded-xl bg-secondary/50 p-1 sm:w-fit sm:max-w-full">
       {Array.from({ length: 4 }).map((_, i) => (
         <div
           key={i}
-          className="h-10 animate-pulse rounded-lg bg-muted px-4"
+          className="h-9 shrink-0 animate-pulse rounded-lg bg-muted px-4 sm:h-10"
           style={{ width: `${80 + i * 10}px` }}
         />
       ))}

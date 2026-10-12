@@ -40,13 +40,14 @@ export const OrganizationHero = async ({
   const seatUsage = canManage ? await getSeatUsage(id) : null;
 
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-border/40 bg-linear-to-br from-card via-card to-primary/5 p-8">
+    // Tighter on phones, where a fixed p-8 and a 3xl name took half the screen.
+    <div className="relative overflow-hidden rounded-2xl border border-border/40 bg-linear-to-br from-card via-card to-primary/5 p-4 sm:p-6">
       <div className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-primary/5 blur-3xl" />
       <div className="pointer-events-none absolute -bottom-20 -left-20 h-48 w-48 rounded-full bg-primary/10 blur-3xl" />
 
-      <div className="relative flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
-        <div className="flex items-start gap-5">
-          <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl bg-linear-to-br from-primary/20 to-primary/10 text-primary shadow-lg shadow-primary/10 transition-transform hover:scale-105">
+      <div className="relative flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
+        <div className="flex min-w-0 items-start gap-3 sm:gap-5">
+          <div className="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-linear-to-br from-primary/20 to-primary/10 text-primary shadow-lg shadow-primary/10 transition-transform hover:scale-105 sm:size-16 sm:rounded-2xl">
             {logoUrl ? (
               <img
                 src={logoUrl}
@@ -54,12 +55,12 @@ export const OrganizationHero = async ({
                 className="h-full w-full object-cover"
               />
             ) : (
-              <Building2 className="h-8 w-8" />
+              <Building2 className="size-6 sm:size-8" />
             )}
           </div>
-          <div className="space-y-3">
-            <div className="flex flex-wrap items-center gap-3">
-              <h1 className="text-3xl font-bold tracking-tight">{name}</h1>
+          <div className="min-w-0 space-y-2 sm:space-y-3">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+              <h1 className="text-xl font-bold tracking-tight text-balance sm:text-2xl">{name}</h1>
               <Badge
                 variant="outline"
                 className={cn("text-xs font-medium", roleConfig.className)}
@@ -68,7 +69,7 @@ export const OrganizationHero = async ({
                 {roleConfig.label}
               </Badge>
             </div>
-            <p className="max-w-lg text-muted-foreground">{description}</p>
+            <p className="max-w-lg text-sm text-muted-foreground sm:text-base">{description}</p>
 
             {volunteerRoles.length > 0 ? (
               <div className="flex flex-wrap items-center gap-1.5">
