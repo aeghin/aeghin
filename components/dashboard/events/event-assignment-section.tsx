@@ -342,8 +342,10 @@ export function EventAssignmentsCard({
       ) : (
       <div className="border-t border-border px-4 sm:px-5">
         <Accordion
+          // Remounts when a team joins or leaves the roster, so a new one opens too.
+          key={categories.map((c) => c.key).join()}
           type="multiple"
-          defaultValue={[Team.BAND]}
+          defaultValue={categories.map((c) => c.key)}
           className="w-full"
         >
           {categories.map((category) => (
