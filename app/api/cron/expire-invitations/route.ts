@@ -325,7 +325,6 @@ export async function GET(req: Request) {
         // After the sweep, so a lapse it just found in waking hours goes now.
         const pushPasses = {
             lapsed: sendLapsePushes,
-            reminders: sendDayBeforeReminders,
         };
 
         const pushed: Partial<Record<keyof typeof pushPasses, number>> = {};
@@ -341,6 +340,21 @@ export async function GET(req: Request) {
                     err,
                 );
             }
+        }
+
+        // "Tomorrow: Sunday Service" to everybody who accepted. Email and push
+        // go together, timed like the pushes above (lib/push/reminders.ts).
+        let dayBefore: SendCount = { pushes: 0, emails: 0 };
+        let dayBeforeFailed = false;
+
+        try {
+            dayBefore = await sendDayBeforeReminders(now);
+        } catch (err) {
+            dayBeforeFailed = true;
+            console.error(
+                "GET /api/cron/expire-invitations: day-before reminders failed —",
+                err,
+            );
         }
 
         // An unanswered invitation, from both ends: the invitee's reminders,
@@ -470,6 +484,8 @@ export async function GET(req: Request) {
             lastCallFailed,
             pushed,
             pushesFailed,
+            dayBefore,
+            dayBeforeFailed,
             unanswered,
             unansweredFailed,
             receipts,

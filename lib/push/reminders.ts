@@ -2,8 +2,12 @@ import "server-only";
 
 import prisma from "@/lib/prisma";
 import { InvitationStatus } from "@/generated/prisma/enums";
+import EventReminderEmail from "@/components/email/event-reminder-template";
 import { volunteerRoleConfig } from "@/lib/config/roles";
-import { formatEventShort, formatRehearsal } from "@/lib/email/event-when";
+import { formatEventShort, formatEventWhen, formatRehearsal } from "@/lib/email/event-when";
+import { organizationSender } from "@/lib/email/organization";
+import { sendEmailBatches } from "@/lib/email/send";
+import type { SendCount } from "@/lib/notifications/unanswered";
 import { sendPushNotices, type PushNotice } from "@/lib/push/send";
 import {
   daysBefore,
@@ -33,12 +37,12 @@ const firstStartOf = (dates: { startTime: Date }[]) =>
  * Reminds everybody who accepted an event, the day before its first block:
  * "Tomorrow: Sunday Service".
  *
- * At the event's own time of day, on each person's phone: a 9am service
- * reminds at 9am the day before, wherever the church is. Kept inside 6am to
- * 10pm — a 5am service reminds at 6am, an 11pm one at 10pm — and always on the
- * day before, so "Tomorrow" stays true. Somebody whose phone hasn't reported a
- * zone (a build older than this) isn't reminded, rather than reminded at
- * whatever hour UTC lands on.
+ * By email and push together, at the event's own time of day on each person's
+ * clock: a 9am service reminds at 9am the day before, wherever the church is.
+ * Kept inside 6am to 10pm — a 5am service reminds at 6am, an 11pm one at 10pm —
+ * and always on the day before, so "Tomorrow" stays true. The clock is the
+ * zone their phone reports; somebody whose phone never has — usually somebody
+ * without the app — gets the email alone, planned on the organization's clock.
  *
  * Claimed on `reminderSentAt` before sending, so overlapping ticks can't both
  * send it, and sent once per schedule: moving the event clears the claim. One
@@ -49,10 +53,10 @@ const firstStartOf = (dates: { startTime: Date }[]) =>
  * two days, most not due yet, and a cap would let those crowd out the ones
  * that are.
  *
- * Returns how many were sent.
+ * Returns how many of each were sent.
  */
-export async function sendDayBeforeReminders(now: Date): Promise<number> {
-  let sent = 0;
+export async function sendDayBeforeReminders(now: Date): Promise<SendCount> {
+  const count: SendCount = { pushes: 0, emails: 0 };
   let after: string | undefined;
 
   for (;;) {
@@ -75,7 +79,7 @@ export async function sendDayBeforeReminders(now: Date): Promise<number> {
       select: {
         id: true,
         role: true,
-        user: { select: { email: true } },
+        user: { select: { email: true, firstName: true } },
         event: {
           select: {
             id: true,
@@ -85,7 +89,7 @@ export async function sendDayBeforeReminders(now: Date): Promise<number> {
             rehearsalStart: true,
             rehearsalEnd: true,
             dates: { select: { startTime: true, endTime: true } },
-            organization: { select: { name: true, timeZone: true } },
+            organization: { select: { name: true, logoUrl: true, timeZone: true } },
           },
         },
       },
@@ -93,22 +97,24 @@ export async function sendDayBeforeReminders(now: Date): Promise<number> {
       take: REMINDER_PAGE,
     });
 
-    if (rows.length === 0) return sent;
+    if (rows.length === 0) return count;
 
     const zones = await zonesByEmail(rows.map((row) => row.user.email));
 
     const due = rows.flatMap((row) => {
-      const timeZone = zones.get(row.user.email);
+      if (row.event.dates.length === 0) return [];
 
-      if (!timeZone || row.event.dates.length === 0) return [];
+      const phoneZone = zones.get(row.user.email);
+      // The clock it's planned on: their phone's, else the organization's.
+      const clock = phoneZone ?? zoneOrFallback(row.event.organization.timeZone);
 
       try {
         const sendAt = inZone(
           wakingSameDay(daysBefore(firstStartOf(row.event.dates), 1)),
-          timeZone,
+          clock,
         );
 
-        return isDue(sendAt, now, timeZone) ? [row] : [];
+        return isDue(sendAt, now, clock) ? [{ row, phoneZone }] : [];
       } catch {
         // A zone this runtime can't resolve: no reminder, rather than no tick.
         return [];
@@ -118,7 +124,7 @@ export async function sendDayBeforeReminders(now: Date): Promise<number> {
     if (due.length > 0) {
       const claimed = await prisma.eventAssignment.updateManyAndReturn({
         where: {
-          id: { in: due.map((row) => row.id) },
+          id: { in: due.map(({ row }) => row.id) },
           status: InvitationStatus.ACCEPTED,
           reminderSentAt: null,
         },
@@ -128,9 +134,11 @@ export async function sendDayBeforeReminders(now: Date): Promise<number> {
 
       const claimedIds = new Set(claimed.map((row) => row.id));
 
-      const notices: PushNotice[] = due
-        .filter((row) => claimedIds.has(row.id))
-        .map(({ event, role, user }) => {
+      const sending = due
+        .filter(({ row }) => claimedIds.has(row.id))
+        .map(({ row, phoneZone }) => {
+          const { event } = row;
+
           // Only a rehearsal still ahead: most are days earlier, and done by
           // now. Ahead at the church, whose wall clock it's written in.
           const rehearsal =
@@ -140,33 +148,63 @@ export async function sendDayBeforeReminders(now: Date): Promise<number> {
               ? formatRehearsal(event.rehearsalStart, event.rehearsalEnd)
               : null;
 
-          return {
-            email: user.email,
-            title: `Tomorrow: ${event.name}`,
-            subtitle: event.organization.name,
-            body: [
-              [volunteerRoleConfig[role].label, formatEventShort(event.dates)]
-                .filter(Boolean)
-                .join(" · "),
-              rehearsal && `Rehearsal ${rehearsal}`,
-              event.location,
-            ]
-              .filter(Boolean)
-              .join("\n"),
-            data: {
-              type: "event",
-              organizationId: event.organizationId,
-              eventId: event.id,
-            },
-          };
+          return { row, phoneZone, rehearsal };
         });
 
+      const emails = sending.map(({ row: { event, role, user }, rehearsal }) => {
+        const when = formatEventWhen(event.dates);
+
+        return {
+          from: organizationSender(event.organization.name),
+          to: user.email,
+          subject: `Tomorrow: ${event.name}`,
+          react: EventReminderEmail({
+            recipientName: user.firstName,
+            eventName: event.name,
+            organizationName: event.organization.name,
+            logoUrl: event.organization.logoUrl,
+            roleLabel: volunteerRoleConfig[role].label,
+            eventDate: when?.date ?? null,
+            eventTime: when?.time ?? null,
+            location: event.location,
+            rehearsal,
+            viewLink: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/organizations/${event.organizationId}/events/${event.id}`,
+          }),
+        };
+      });
+
+      // Pushed only to a phone that has reported its zone, whose clock it was
+      // planned on.
+      const notices: PushNotice[] = sending
+        .filter(({ phoneZone }) => phoneZone)
+        .map(({ row: { event, role, user }, rehearsal }) => ({
+          email: user.email,
+          title: `Tomorrow: ${event.name}`,
+          subtitle: event.organization.name,
+          body: [
+            [volunteerRoleConfig[role].label, formatEventShort(event.dates)]
+              .filter(Boolean)
+              .join(" · "),
+            rehearsal && `Rehearsal ${rehearsal}`,
+            event.location,
+          ]
+            .filter(Boolean)
+            .join("\n"),
+          data: {
+            type: "event",
+            organizationId: event.organizationId,
+            eventId: event.id,
+          },
+        }));
+
+      await sendEmailBatches("day-before reminder", emails);
       await sendPushNotices("day-before reminder", notices);
 
-      sent += notices.length;
+      count.emails += emails.length;
+      count.pushes += notices.length;
     }
 
-    if (rows.length < REMINDER_PAGE) return sent;
+    if (rows.length < REMINDER_PAGE) return count;
 
     after = rows[rows.length - 1].id;
   }
