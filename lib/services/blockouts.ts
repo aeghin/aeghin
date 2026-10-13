@@ -111,7 +111,7 @@ export async function getBlockedUserIds(
 
 /**
  * Who in the organization is away in the next {@link TEAM_WINDOW_DAYS} days,
- * grouped by identical stretches — owners and admins only, the caller checks.
+ * grouped by identical stretches — owners only, the caller checks.
  *
  * Gaps read the same open-spot rule as the staffing meter and alerts
  * (`rosterStandings`): a role with a spot nobody has accepted or is deciding

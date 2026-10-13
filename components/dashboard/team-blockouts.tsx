@@ -20,7 +20,7 @@ const fullName = (person: TeamBlockoutPerson) =>
 
 /**
  * Who's away in the next 60 days, one row per stretch of days with everybody
- * away for exactly that stretch. Owners and admins only — the page decides.
+ * away for exactly that stretch. Owners only — the page decides.
  * A row's pills are events it leaves with an open spot nobody free can take.
  */
 export const TeamBlockouts = ({ team, userId, organizationId, today }: TeamBlockoutsProps) => (
@@ -32,7 +32,7 @@ export const TeamBlockouts = ({ team, userId, organizationId, today }: TeamBlock
       <div>
         <CardTitle className="text-lg font-semibold">Team blockouts</CardTitle>
         <p className="text-sm text-muted-foreground">
-          Who&apos;s away in the next 60 days. Only owners and admins see this.
+          Who&apos;s away in the next 60 days. Only owners see this.
         </p>
       </div>
     </CardHeader>

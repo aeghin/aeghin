@@ -1,6 +1,6 @@
+import { OrgRole } from "@/generated/prisma/enums";
 import { getTeamBlockouts } from "@/lib/services/blockouts";
 import {
-    canManage,
     clerkIdOf,
     fail,
     json,
@@ -34,7 +34,7 @@ type Params = { orgId: string };
  * GET /api/mobile/v1/organizations/[orgId]/blockouts/team
  *
  * Who's away in the next 60 days, grouped by identical stretches — the
- * dashboard's Team blockouts card. Owners and admins only.
+ * dashboard's Team blockouts card. Owners only.
  */
 export const GET = route<Params>("GET .../blockouts/team", async (_req, { params }) => {
     const clerkId = await clerkIdOf();
@@ -47,7 +47,7 @@ export const GET = route<Params>("GET .../blockouts/team", async (_req, { params
 
     if (!membership) return fail(404, "Not Found");
 
-    if (!canManage(membership.role)) return fail(403, "Forbidden");
+    if (membership.role !== OrgRole.OWNER) return fail(403, "Forbidden");
 
     const rows = await getTeamBlockouts(orgId);
 

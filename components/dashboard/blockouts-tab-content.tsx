@@ -11,19 +11,20 @@ import { floatingNow } from "@/lib/time-zone";
 interface BlockoutsTabContentProps {
   organizationId: string;
   userId: string;
-  canManage: boolean;
+  /** Owners alone see who else is away. */
+  isOwner: boolean;
 }
 
 export const BlockoutsTabContent = async ({
   organizationId,
   userId,
-  canManage,
+  isOwner,
 }: BlockoutsTabContentProps) => {
   const [blockouts, events, timeZone, team] = await Promise.all([
     getUserBlockouts(userId, organizationId),
     getUserEvents(organizationId, userId),
     getOrganizationTimeZone(organizationId),
-    canManage ? getTeamBlockouts(organizationId) : null,
+    isOwner ? getTeamBlockouts(organizationId) : null,
   ]);
 
   // The church's today, which the calendars outline and dim the past against.
