@@ -16,6 +16,7 @@ export default async function OrganizationBlockoutsPage({
     <BlockoutsTabContent
       organizationId={access.orgId}
       userId={access.userId}
+      canManage={access.canManage}
     />
   );
 }
