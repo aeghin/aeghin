@@ -213,9 +213,6 @@ export function MemberEventsDashboard({
   canManage,
   timeZone,
 }: MemberEventsDashboardProps) {
-  const [activeTab, setActiveTab] = useState<TabType>(() =>
-    events.some((e) => hasLiveInvite(e, new Date())) ? "pending" : "schedule",
-  );
   const [timeScope, setTimeScope] = useState<TimeScope>("upcoming");
   const [selectedServiceType, setSelectedServiceType] = useState<string | null>(
     null,
@@ -247,6 +244,17 @@ export function MemberEventsDashboard({
 
   // Expiry is a real instant, not the church's wall clock — see hasLiveInvite.
   const now = useMemo(() => new Date(instant), [instant]);
+
+  // Opens on the tab that wants something from the viewer: Pending while an
+  // invitation can still be answered, else All for owners and admins, else
+  // their own schedule. Pending asks what its list and count ask — a live
+  // invitation to an event not yet over — so it never opens empty.
+  const [activeTab, setActiveTab] = useState<TabType>(() => {
+    if (events.some((e) => hasLiveInvite(e, now) && !isEventPast(e.dates, churchNow))) {
+      return "pending";
+    }
+    return canManage ? "all" : "schedule";
+  });
 
   const due = nextChange(
     [...events, ...allEvents].flatMap((event) => event.dates),
