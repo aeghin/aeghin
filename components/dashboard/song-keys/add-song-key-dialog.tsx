@@ -118,8 +118,11 @@ export function AddSongKeyDialog({
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
-        <Button size="sm" className="w-full shrink-0 sm:w-auto">
-          <Plus className="h-4 w-4 sm:mr-1.5" />
+        <Button
+          size="sm"
+          className="w-full shrink-0 gap-2 shadow-lg shadow-primary/20 transition-all hover:scale-105 hover:shadow-primary/30 sm:w-auto"
+        >
+          <Plus className="h-4 w-4" />
           <span className="hidden sm:inline">Add Song</span>
           <span className="sm:hidden">Add a song to my keys</span>
         </Button>

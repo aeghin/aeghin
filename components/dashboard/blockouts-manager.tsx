@@ -133,8 +133,11 @@ export function BlockoutsManager({
 
         <Popover open={isPickerOpen} onOpenChange={handlePickerOpenChange}>
           <PopoverTrigger asChild>
-            <Button size="sm" className="shrink-0">
-              <CalendarPlus className="h-4 w-4 sm:mr-1.5" />
+            <Button
+              size="sm"
+              className="shrink-0 gap-2 shadow-lg shadow-primary/20 transition-all hover:scale-105 hover:shadow-primary/30"
+            >
+              <CalendarPlus className="h-4 w-4" />
               <span className="hidden sm:inline">Add Blockout</span>
             </Button>
           </PopoverTrigger>

@@ -100,12 +100,11 @@ export function EmailOrganizationDialog({
   return (
     <>
       <Button
-        variant="outline"
         size="sm"
-        className="h-7 gap-1.5 px-2.5 text-xs cursor-pointer"
+        className="gap-2 shadow-lg shadow-primary/20 transition-all hover:scale-105 hover:shadow-primary/30"
         onClick={() => setOpen(true)}
       >
-        <Megaphone className="h-3.5 w-3.5" />
+        <Megaphone className="h-4 w-4" />
         Message All
       </Button>
 
