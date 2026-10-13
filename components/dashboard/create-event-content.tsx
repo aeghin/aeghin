@@ -11,7 +11,6 @@ import {
   useOptimistic,
 } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { m, AnimatePresence } from "motion/react";
 import { format, eachDayOfInterval, isBefore, startOfDay, addDays } from "date-fns";
 import type { DateRange } from "react-day-picker";
@@ -903,27 +902,14 @@ export function CreateEventPageContent({
         animate={{ opacity: 1, y: 0 }}
       >
         <div className="mx-auto flex w-full max-w-screen-2xl flex-col gap-6 px-4 pt-6 sm:px-6 sm:pt-8">
-          <Link
-            href={`/dashboard/organizations/${organizationId}`}
-            onClick={handleClose}
-            className="group inline-flex w-fit items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
-          >
-            <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-1" />
-            Back to {organizationName}
-          </Link>
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div className="flex items-center gap-4">
               <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-linear-to-br from-primary/20 to-primary/10 text-primary shadow-lg shadow-primary/10">
                 <CalendarPlus className="h-6 w-6" />
               </div>
-              <div>
-                <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
-                  Create Event
-                </h1>
-                <p className="text-sm text-muted-foreground">
-                  {organizationName}
-                </p>
-              </div>
+              <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
+                Create Event
+              </h1>
             </div>
             {/* Step indicator */}
             <div className="flex flex-wrap items-center gap-3">

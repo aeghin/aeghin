@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { Navbar } from "@/components/dashboard/navbar";
 import { DashboardHeader } from "@/components/dashboard/dashboard-header";
 import { OrganizationsGrid } from "@/components/dashboard/organizations-grid";
 import { OrganizationsGridSkeleton } from "@/components/dashboard/skeletons";
@@ -15,6 +16,8 @@ export default async function DashboardPage() {
   const { id, firstName } = user;
 
   return (
+    <>
+      <Navbar />
       <main className="mx-auto max-w-screen-2xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
         <div className="space-y-8">
           
@@ -26,5 +29,6 @@ export default async function DashboardPage() {
 
         </div>
       </main>
+    </>
   )
 }

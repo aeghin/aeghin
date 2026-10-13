@@ -1,14 +1,14 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import { UserButton } from "@clerk/nextjs";
-import { NavLinks } from "./nav-links";
 import {
   NotificationsBell,
   NotificationsBellSkeleton,
 } from "./notifications-bell";
-import { PremiumNav } from "./premium-nav";
 import { ThemeSwitch } from "./theme-switch";
 
+/** The bar on the /dashboard home. Inside an organization the org sidebar and
+ *  top bar replace it, and they carry the Songs link and plan badge. */
 export function Navbar() {
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur-xl supports-backdrop-filter:bg-background/60">
@@ -25,11 +25,9 @@ export function Navbar() {
                 link's accessible name. */}
             <span className="font-brand text-sm font-semibold tracking-tight sr-only sm:not-sr-only">aeghin</span>
           </Link>
-          <NavLinks />
         </div>
 
         <div className="flex items-center gap-2 sm:gap-3">
-          <PremiumNav />
           <Suspense fallback={<NotificationsBellSkeleton />}>
             <NotificationsBell />
           </Suspense>

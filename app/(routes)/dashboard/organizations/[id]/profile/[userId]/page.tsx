@@ -47,7 +47,6 @@ const MemberProfileContent = async ({
       membership={membership}
       stats={{ all, year }}
       songs={songs}
-      orgId={orgId}
       timeZone={timeZone}
     />
   );

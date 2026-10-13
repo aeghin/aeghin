@@ -60,7 +60,7 @@ export const createBlockoutDate = async (
     });
 
     touch(`user-${user.id}-blockouts-${organizationId}`);
-    revalidatePath(`/dashboard/organizations/${organizationId}`);
+    revalidatePath(`/dashboard/organizations/${organizationId}/blockouts`);
 
     return { success: true };
   } catch {
@@ -95,7 +95,7 @@ export const deleteBlockoutDate = async (
     }
 
     touch(`user-${user.id}-blockouts-${organizationId}`);
-    revalidatePath(`/dashboard/organizations/${organizationId}`);
+    revalidatePath(`/dashboard/organizations/${organizationId}/blockouts`);
 
     return { success: true };
   } catch {

@@ -2,10 +2,8 @@ import { Skeleton } from "@/components/ui/skeleton"
 
 export function EventDetailSkeleton() {
   return (
-    <main className="mx-auto max-w-screen-2xl px-4 py-6 sm:px-6 sm:py-8">
+    <main className="mx-auto w-full max-w-screen-2xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
       <div className="space-y-6 sm:space-y-8">
-        <Skeleton className="h-4 w-40" />
-
         {/* The hero: date tile, stripe, name and badge, the when and where
             tiles beside them from lg, and the pager along the bottom. */}
         <div className="rounded-2xl border border-border bg-card p-4 sm:p-6">
@@ -34,8 +32,8 @@ export function EventDetailSkeleton() {
           </div>
         </div>
 
-        <div className="grid gap-6 lg:grid-cols-3">
-          <div className="space-y-6 lg:col-span-2">
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] lg:items-start">
+          <div className="space-y-6">
             {/* Setlist: icon tile, title and song count, then the rows */}
             <div className="overflow-hidden rounded-2xl border border-border bg-card">
               <div className="flex items-center gap-3 px-4 pt-4 pb-3 sm:px-5 sm:pt-5">
@@ -49,6 +47,14 @@ export function EventDetailSkeleton() {
                 <Skeleton className="h-10 w-full" />
                 <Skeleton className="h-10 w-full" />
                 <Skeleton className="h-10 w-full" />
+              </div>
+            </div>
+            {/* Chat: icon tile, title and who's online, then the message area */}
+            <div className="flex h-112 flex-col overflow-hidden rounded-2xl border border-border bg-card">
+              <div className="flex items-center gap-3 px-4 pt-4 pb-3 sm:px-5 sm:pt-5">
+                <Skeleton className="size-7.5 rounded-[10px]" />
+                <Skeleton className="h-4 w-20" />
+                <Skeleton className="ml-auto h-3 w-14" />
               </div>
             </div>
           </div>
@@ -68,14 +74,6 @@ export function EventDetailSkeleton() {
                 <Skeleton className="h-4 w-16" />
                 <Skeleton className="h-13 w-full rounded-xl" />
                 <Skeleton className="h-13 w-full rounded-xl" />
-              </div>
-            </div>
-            {/* Chat: icon tile, title and who's online, then the message area */}
-            <div className="flex h-112 flex-col overflow-hidden rounded-2xl border border-border bg-card">
-              <div className="flex items-center gap-3 px-4 pt-4 pb-3 sm:px-5 sm:pt-5">
-                <Skeleton className="size-7.5 rounded-[10px]" />
-                <Skeleton className="h-4 w-20" />
-                <Skeleton className="ml-auto h-3 w-14" />
               </div>
             </div>
           </div>

@@ -3,15 +3,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 export function MemberProfileSkeleton() {
   return (
     <div className="min-h-screen bg-background text-foreground">
-      {/* Top bar */}
-      <header className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-3.5 border-b border-border bg-background/85 px-[clamp(20px,5vw,56px)] py-3.5 backdrop-blur-[10px]">
-        <div className="flex items-center gap-2.5">
-          <span className="block size-2.5 rounded-full bg-muted" />
-          <Skeleton className="h-4 w-28" />
-        </div>
-        <Skeleton className="h-4 w-40" />
-      </header>
-
       <main className="mx-auto max-w-285 px-[clamp(20px,5vw,56px)] pb-[clamp(56px,8vw,96px)] pt-[clamp(32px,5.5vw,64px)]">
         {/* Hero */}
         <div className="flex flex-wrap items-center gap-[clamp(24px,4vw,44px)]">

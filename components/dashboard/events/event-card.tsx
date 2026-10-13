@@ -63,7 +63,7 @@ export function EventCard({
   return (
     <Link
       href={href}
-      className="group flex items-start gap-3 rounded-2xl border border-border bg-card p-3 transition-[border-color,box-shadow] duration-200 hover:border-foreground/15 hover:shadow-md focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none sm:items-center sm:gap-4 sm:p-4"
+      className="group flex items-start gap-3 rounded-xl border border-border bg-card p-3 shadow-xs transition-[border-color,box-shadow] duration-200 hover:border-foreground/15 hover:shadow-md focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none sm:items-center sm:gap-4 sm:p-4"
     >
       <DateTile
         day={day}

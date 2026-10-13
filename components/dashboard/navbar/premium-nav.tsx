@@ -19,7 +19,8 @@ type Status = { plan: OrgPlan; canSubscribe: boolean };
 
 export function PremiumNav() {
   const pathname = usePathname();
-  // Same derivation NavLinks uses, so this targets the org in view.
+  // The org in view, read from the URL, so the badge works in both places the
+  // org shell mounts it (the top bar, and the sidebar sheet on phones).
   const orgId = pathname.match(/^\/dashboard\/organizations\/([^/]+)/)?.[1];
 
   const [status, setStatus] = useState<Status | null>(null);

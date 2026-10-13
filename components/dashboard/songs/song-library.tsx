@@ -1,9 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react";
-import Link from "next/link";
 import {
-  ArrowLeft,
   ArrowUpDown,
   AudioLines,
   ChevronDown,
@@ -225,16 +223,6 @@ export function SongLibrary({ songs, orgId, orgName, canManage, songLimit, canUp
     <div className="mx-auto w-full max-w-screen-2xl px-4 py-6 sm:px-6 lg:px-8">
       {/* Header */}
       <div className="mb-6 flex flex-col gap-3">
-        <div className="flex items-center gap-2 text-sm text-muted-foreground mb-2">
-          <Link
-            href={`/dashboard/organizations/${orgId}`}
-            className="group inline-flex items-center gap-1.5 hover:text-foreground transition-colors"
-          >
-            <ArrowLeft className="h-3.5 w-3.5 transition-transform group-hover:-translate-x-1" />
-            {orgName}
-          </Link>
-        </div>
-
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div className="min-w-0">
             <h1 className="flex items-center gap-2.5 text-2xl font-bold tracking-tight">

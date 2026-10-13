@@ -4,8 +4,7 @@ export function SongLibrarySkeleton() {
   return (
     <div className="mx-auto w-full max-w-screen-2xl px-4 py-6 sm:px-6 lg:px-8">
       <div className="mb-6">
-        <div className="h-3 w-32 animate-pulse rounded bg-muted" />
-        <div className="mt-3 flex items-end justify-between gap-4">
+        <div className="flex items-end justify-between gap-4">
           <div>
             <div className="h-8 w-48 animate-pulse rounded bg-muted" />
             <div className="mt-2 h-3 w-64 animate-pulse rounded bg-muted/60" />

@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Plus } from "lucide-react"
+import { UserPlus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { InvitePersonModal } from "@/components/setup/invite-person-modal";
 import type { OrgPlan } from "@/lib/config/plans";
@@ -22,11 +22,12 @@ export function InviteMemberButton({ organizationId, organizationName, seatUsage
     <>
         <Button
           size="sm"
-          className="cursor-pointer shadow-lg shadow-primary/20 transition-all hover:scale-105 hover:shadow-primary/30"
+          variant="outline"
+          className="cursor-pointer transition-all"
           onClick={() => setInviteModalOpen(true)}
         >
-          <Plus className="mr-2 h-4 w-4" />
-          Invite Member
+          <UserPlus className="mr-2 h-4 w-4" />
+          Invite member
         </Button>
       <InvitePersonModal open={inviteModalOpen} onOpenChange={setInviteModalOpen} organizationId={organizationId} organizationName={organizationName} seatUsage={seatUsage} canUpgrade={canUpgrade}/>
     </>

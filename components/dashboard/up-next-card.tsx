@@ -105,7 +105,7 @@ export function UpNextCard({ upNext, service, href, today, now }: UpNextCardProp
   return (
     <Link
       href={href}
-      className="group block rounded-2xl border border-border bg-card p-4 transition-[border-color,box-shadow] duration-200 hover:border-foreground/15 hover:shadow-md focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none sm:p-5"
+      className="group block rounded-xl border border-border bg-card p-4 shadow-sm transition-[border-color,box-shadow] duration-200 hover:border-foreground/15 hover:shadow-md focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none sm:p-5"
     >
       <div className="flex flex-col gap-3.5 lg:flex-row lg:items-center lg:gap-6">
         <div className="flex min-w-0 items-center gap-3.5 lg:flex-1">

@@ -7,7 +7,6 @@ import { notFound } from "next/navigation";
 //   getServiceTypesByOrganization,
 // } from "@/lib/services/data"
 import { AnimatedSection } from "@/components/dashboard/animate-section";
-import { BackLink } from "@/components/dashboard/back-link-button";
 import { EventHeader } from "@/components/dashboard/events/event-header";
 import { EventPager } from "@/components/dashboard/events/event-pager";
 import { EventSetlistSection } from "@/components/dashboard/events/event-setlist-section";
@@ -173,16 +172,9 @@ export default async function EventDetailPage({
   }
 
   return (
-    <main className="mx-auto max-w-screen-2xl px-4 py-6 sm:px-6 sm:py-8">
+    <main className="mx-auto w-full max-w-screen-2xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
       <div className="space-y-6 sm:space-y-8">
         <AnimatedSection delay={0.05}>
-          <BackLink
-            href={`/dashboard/organizations/${orgId}`}
-            label={`Back to ${event.organization.name}`}
-          />
-        </AnimatedSection>
-
-        <AnimatedSection delay={0.1}>
           <EventHeader
             event={event}
             serviceType={event.serviceType}
@@ -203,51 +195,61 @@ export default async function EventDetailPage({
           />
         </AnimatedSection>
 
-        {canManage && (
-          <AnimatedSection delay={0.15}>
-            <SmartSchedulingActivity
-              enabled={event.smartSchedulingEnabled}
-              available={smartSchedulingAvailable}
-              items={smartSchedulingActivity}
-              timeZone={timeZone}
-              serviceColor={event.serviceType.color}
-            />
-          </AnimatedSection>
-        )}
-
-        <div className="grid gap-6 lg:grid-cols-3">
-          <div className="space-y-6 lg:col-span-2">
-            <EventSetlistSection
-              event={event}
-              orgId={orgId}
-              canManage={canManage}
-              canSaveKeys={isEventVocalist}
-              myKeys={myKeys}
-            />
+        {/* From lg, two columns that fill the width: the setlist with the chat
+            under it on the wide side, staffing (Smart Scheduling over the
+            Team) on the narrow one. Below lg each column wrapper is
+            `contents`, so the four cards stack in the order they always have:
+            Smart Scheduling, setlist, team, chat. */}
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] lg:items-start">
+          <div className="contents lg:block lg:space-y-6">
+            <div className="order-2 lg:order-none">
+              <EventSetlistSection
+                event={event}
+                orgId={orgId}
+                canManage={canManage}
+                canSaveKeys={isEventVocalist}
+                myKeys={myKeys}
+              />
+            </div>
+            <div className="order-4 lg:order-none">
+              <EventChatPanel
+                eventId={eventId}
+                serviceColor={event.serviceType.color}
+                currentUserId={user.id}
+                canPost={hasAssignment}
+                me={{
+                  firstName: user.firstName,
+                  lastName: user.lastName,
+                  userImageUrl: user.userImageUrl,
+                }}
+                initialMessages={initialMessages}
+              />
+            </div>
           </div>
-          <div className="space-y-6">
-            <EventAssignmentsCard
-              event={event}
-              currentUserId={user.id}
-              canManage={canManage}
-              members={members}
-              emailAllowance={emailAllowance}
-              smartSchedulingAvailable={smartSchedulingAvailable}
-              canUpgrade={membership.role === OrgRole.OWNER}
-              teamLeads={teamLeads}
-            />
-            <EventChatPanel
-              eventId={eventId}
-              serviceColor={event.serviceType.color}
-              currentUserId={user.id}
-              canPost={hasAssignment}
-              me={{
-                firstName: user.firstName,
-                lastName: user.lastName,
-                userImageUrl: user.userImageUrl,
-              }}
-              initialMessages={initialMessages}
-            />
+          <div className="contents lg:block lg:space-y-6">
+            {canManage && (
+              <AnimatedSection delay={0.15} className="order-1 lg:order-none">
+                <SmartSchedulingActivity
+                  enabled={event.smartSchedulingEnabled}
+                  available={smartSchedulingAvailable}
+                  items={smartSchedulingActivity}
+                  timeZone={timeZone}
+                  serviceColor={event.serviceType.color}
+                />
+              </AnimatedSection>
+            )}
+            <div className="order-3 lg:order-none">
+              <EventAssignmentsCard
+                event={event}
+                currentUserId={user.id}
+                canManage={canManage}
+                members={members}
+                emailAllowance={emailAllowance}
+                smartSchedulingAvailable={smartSchedulingAvailable}
+                canUpgrade={membership.role === OrgRole.OWNER}
+                teamLeads={teamLeads}
+              />
+            </div>
             {/* <EventStatusCard event={event} /> */}
           </div>
         </div>

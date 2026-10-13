@@ -4,15 +4,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 export default function Loading() {
   return (
     <div className="min-h-screen bg-muted/10">
-      <header className="sticky top-0 z-10 border-b bg-background/80 backdrop-blur">
+      <header className="sticky top-14 z-10 border-b bg-background/80 backdrop-blur">
         <div className="container mx-auto flex items-center justify-between gap-4 px-4 py-3">
-          <div className="flex min-w-0 items-center gap-3">
-            <Skeleton className="h-8 w-8 shrink-0 rounded-md" />
-            <div className="min-w-0 space-y-1.5">
-              <Skeleton className="h-3 w-20" />
-              <Skeleton className="h-3.5 w-48" />
-            </div>
-          </div>
+          <Skeleton className="h-3.5 w-48" />
           <Skeleton className="h-8 w-16 rounded-md" />
         </div>
       </header>

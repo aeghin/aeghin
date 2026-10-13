@@ -243,6 +243,7 @@ export const editServiceType = async (input: EditServiceTypeInput, touch: TagInv
 
         touch(`org-${organizationId}-st`);
         revalidatePath(`/dashboard/organizations/${organizationId}`);
+        revalidatePath(`/dashboard/organizations/${organizationId}/settings`);
         revalidatePath(`/dashboard/organizations/${organizationId}/events/create`);
 
         return { success: true, serviceType };

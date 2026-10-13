@@ -108,6 +108,7 @@ export const updateUserRole = async (data: UserRoleInput, touch: TagInvalidator 
         touch(`user-${userId}-orgs`);
         touch(`org-${organizationId}-activity`);
         revalidatePath(`/dashboard/organizations/${organizationId}`);
+        revalidatePath(`/dashboard/organizations/${organizationId}/members`);
 
         return { success: true, role: newRole.role };
 
@@ -232,6 +233,7 @@ export const removeMember = async (userId: string, organizationId: string, touch
         touch(`org-${organizationId}-activity`);
 
         revalidatePath(`/dashboard/organizations/${organizationId}`);
+        revalidatePath(`/dashboard/organizations/${organizationId}/members`);
 
         return { success: true };
 
@@ -303,6 +305,8 @@ export const updateVolunteerRoles = async (userId: string, organizationId: strin
     touch(`user-${userId}-orgs`);
     touch(`org-${organizationId}-members-list`);
     revalidatePath(`/dashboard/organizations/${organizationId}`);
+    revalidatePath(`/dashboard/organizations/${organizationId}/members`);
+    revalidatePath(`/dashboard/organizations/${organizationId}/keys`);
 
     return { success: true };
 
@@ -416,6 +420,7 @@ export const leaveOrganization = async (organizationId: string, touch: TagInvali
           touch(`user-${user.id}-memberships`);
           touch(`org-${organizationId}-activity`);
           revalidatePath(`/dashboard/organizations/${organizationId}`);
+          revalidatePath(`/dashboard/organizations/${organizationId}/members`);
 
         return { success: true }
 
@@ -491,6 +496,7 @@ export const assignOwnerRole = async (data: AssignOwnerInput, touch: TagInvalida
         touch(`user-${userId}-orgs`);
         touch(`org-${organizationId}-activity`);
         revalidatePath(`/dashboard/organizations/${organizationId}`);
+        revalidatePath(`/dashboard/organizations/${organizationId}/members`);
 
         return { success: true }
 

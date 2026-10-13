@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import Link from "next/link";
 import { animate, m, useMotionValue, useTransform } from "motion/react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -48,13 +47,11 @@ export default function MemberProfile({
   membership,
   stats,
   songs,
-  orgId,
   timeZone,
 }: {
   membership: MemberProfileData;
   stats: Record<RangeKey, RangeStats>;
   songs: MemberSong[];
-  orgId: string;
   /** The organization's zone, for the joined date and the year the stats count. */
   timeZone: string;
 }) {
@@ -75,7 +72,6 @@ export default function MemberProfile({
 
   const fullName = `${membership.user.firstName} ${membership.user.lastName}`;
   const nameInitial = `${membership.user.firstName.charAt(0)}${membership.user.lastName.charAt(0)}`;
-  const organizationName = membership.organization.name;
   const userImageUrl = membership.user.userImageUrl ?? undefined;
   const memberRole = getRoleConfig(membership.role);
   const RoleIcon = memberRole.icon;
@@ -87,23 +83,9 @@ export default function MemberProfile({
   
 
   return (
+    // The org and the way back to Members are in the shell's breadcrumb; the
+    // page opens straight on the person.
     <div className="min-h-screen bg-background text-foreground bg-[radial-gradient(1100px_480px_at_50%_-8%,rgba(255,255,255,0.9),rgba(255,255,255,0)_62%)] dark:bg-none">
-      <header className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-3.5 border-b border-border bg-background/85 px-[clamp(20px,5vw,56px)] py-3.5 backdrop-blur-[10px]">
-        <div className="flex items-center gap-2.5">
-          <span className="block size-2.5 rounded-full bg-primary" />
-          <span className="text-base font-bold tracking-[-0.01em]">
-            {organizationName}
-          </span>
-        </div>
-        <nav className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Link href={`/dashboard/organizations/${orgId}?tab=members`} className="transition-colors hover:text-foreground">
-            Members
-          </Link>
-          <span className="text-muted-foreground/50">/</span>
-          <span className="font-medium text-foreground">{fullName}</span>
-        </nav>
-      </header>
-
       <main className="mx-auto max-w-285 px-[clamp(20px,5vw,56px)] pb-[clamp(56px,8vw,96px)] pt-[clamp(32px,5.5vw,64px)]">
         <m.section
           initial={{ opacity: 0, y: 14 }}

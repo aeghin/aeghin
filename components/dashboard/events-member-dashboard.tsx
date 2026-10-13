@@ -195,11 +195,11 @@ interface MemberEventsDashboardProps {
 
 // Motion only scale-corrects borderRadius when it's a number or a px string —
 // a rem value is passed through uncorrected and the corners visibly stretch flat
-// while the fill slides between tabs. This is `--radius` (0.625rem) in px, so
+// while the fill slides between tabs. This is `--radius` (0.5rem) in px, so
 // keep it in sync by hand if that token ever changes.
 const TAB_FILL_RADIUS = {
-  borderTopLeftRadius: 10,
-  borderTopRightRadius: 10,
+  borderTopLeftRadius: 8,
+  borderTopRightRadius: 8,
 };
 
 // ─── Component ──────────────────────────────────────────────────
@@ -534,7 +534,7 @@ export function MemberEventsDashboard({
             )}
             <span className="relative flex items-center gap-2">
               <span className="h-2 w-2 rounded-full bg-emerald-500" />
-              My Schedule
+              My schedule
               <span
                 className={`rounded-full px-2 py-0.5 text-xs font-medium ${
                   activeTab === "schedule"
@@ -571,7 +571,7 @@ export function MemberEventsDashboard({
               )}
               <span className="relative flex items-center gap-2">
                 <span className="h-2 w-2 rounded-full bg-blue-500" />
-                All Events
+                All events
                 <span
                   className={`rounded-full px-2 py-0.5 text-xs font-medium ${
                     activeTab === "all"
@@ -643,7 +643,7 @@ export function MemberEventsDashboard({
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.1 }}
-                className="flex flex-col items-center justify-center rounded-2xl border border-border bg-card px-6 py-16 text-center"
+                className="flex flex-col items-center justify-center rounded-xl border border-border bg-card px-6 py-16 text-center"
               >
                 {/* A tint rather than a pale fill, so it holds in dark mode. */}
                 <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500/15">
@@ -703,7 +703,9 @@ export function MemberEventsDashboard({
                 <m.div
                   initial={isMounted ? { opacity: 0, y: 10 } : false}
                   animate={{ opacity: 1, y: 0 }}
+                  className="space-y-2"
                 >
+                  <p className="text-xs font-medium text-muted-foreground">Up next</p>
                   <UpNextCard
                     upNext={upNext}
                     service={getServiceType(upNext.event.serviceTypeId)}
@@ -720,7 +722,7 @@ export function MemberEventsDashboard({
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.1 }}
-                    className="flex flex-col items-center justify-center rounded-2xl border border-border bg-card px-6 py-16 text-center"
+                    className="flex flex-col items-center justify-center rounded-xl border border-border bg-card px-6 py-16 text-center"
                   >
                     <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-secondary">
                       <Calendar className="h-6 w-6 text-muted-foreground" />
@@ -743,6 +745,9 @@ export function MemberEventsDashboard({
                 <div
                   className={`flex flex-col gap-3 ${timeScope === "past" ? "opacity-60" : ""}`}
                 >
+                  {upNext && (
+                    <p className="pt-2 text-xs font-medium text-muted-foreground">Later</p>
+                  )}
                   {groupedSchedule
                     .flatMap(([key, dayEvents]) =>
                       dayEvents.map((event) => ({ key, event })),
@@ -816,7 +821,7 @@ function ExpiredInviteCard({
       initial={isMounted ? { opacity: 0, y: 20 } : false}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: isMounted ? index * 0.05 : 0 }}
-      className="space-y-2 rounded-2xl border border-border bg-muted/30 px-3.5 py-3 opacity-80 sm:px-4"
+      className="space-y-2 rounded-xl border border-border bg-muted/30 px-3.5 py-3 opacity-80 sm:px-4"
     >
       <div className="flex items-center gap-2">
         <ServiceBadge service={service} />
@@ -963,7 +968,7 @@ function PendingEventCard({
       initial={isMounted ? { opacity: 0, y: 20 } : false}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: isMounted ? index * 0.05 : 0 }}
-      className="relative overflow-hidden rounded-2xl border border-border bg-card"
+      className="relative overflow-hidden rounded-xl border border-border bg-card"
     >
       <span aria-hidden className={cn("absolute inset-y-0 left-0 w-[3px]", colors.solid)} />
 

@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Lock, Save, Sparkles } from "lucide-react";
+import { Lock, Save, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -81,26 +81,13 @@ export function SetlistEditor({
     setIsDirty(true)
   };
   
-  const handleBack = () => {
-    startTransition(() => {
-      router.push(backHref)
-    })
-  };
-
-
   return (
     <div className="min-h-screen bg-muted/10">
-      <header className="sticky top-0 z-10 border-b bg-background/80 backdrop-blur">
+      {/* Below the org top bar (h-14), which already says where this is and
+          links back to the event. */}
+      <header className="sticky top-14 z-10 border-b bg-background/80 backdrop-blur">
         <div className="container mx-auto flex items-center justify-between gap-4 px-4 py-3">
-          <div className="flex min-w-0 items-center gap-3">
-            <Button onClick={handleBack} variant="ghost" size="icon" aria-label="Back to event" className="cursor-pointer">
-                <ArrowLeft className="h-4 w-4" />
-            </Button>
-            <div className="min-w-0">
-              <p className="text-xs text-muted-foreground">Setlist Editor</p>
-              <h1 className="truncate text-sm font-semibold">{eventName}</h1>
-            </div>
-          </div>
+          <h1 className="min-w-0 truncate text-sm font-semibold">{eventName}</h1>
 
           <Button
             size="sm"

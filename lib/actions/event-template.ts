@@ -85,7 +85,7 @@ export const createEventTemplate = async (
         });
 
         touch(`org-${organizationId}-templates`);
-        revalidatePath(`/dashboard/organizations/${organizationId}`);
+        revalidatePath(`/dashboard/organizations/${organizationId}/templates`);
         revalidatePath(`/dashboard/organizations/${organizationId}/events/create`);
 
         return { success: true };
@@ -182,7 +182,7 @@ export const updateEventTemplate = async (
         });
 
         touch(`org-${organizationId}-templates`);
-        revalidatePath(`/dashboard/organizations/${organizationId}`);
+        revalidatePath(`/dashboard/organizations/${organizationId}/templates`);
         revalidatePath(`/dashboard/organizations/${organizationId}/events/create`);
 
         return { success: true };
@@ -237,7 +237,7 @@ export const deleteEventTemplate = async (
         });
 
         touch(`org-${organizationId}-templates`);
-        revalidatePath(`/dashboard/organizations/${organizationId}`);
+        revalidatePath(`/dashboard/organizations/${organizationId}/templates`);
         revalidatePath(`/dashboard/organizations/${organizationId}/events/create`);
 
         return { success: true };

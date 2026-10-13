@@ -112,7 +112,7 @@ export const saveSongKey = async (
     }
 
     touch(`user-${user.id}-keys-${organizationId}`);
-    revalidatePath(`/dashboard/organizations/${organizationId}`);
+    revalidatePath(`/dashboard/organizations/${organizationId}/keys`);
 
     return { success: true };
   } catch {
@@ -176,7 +176,7 @@ export const updateSongKey = async (
     }
 
     touch(`user-${user.id}-keys-${organizationId}`);
-    revalidatePath(`/dashboard/organizations/${organizationId}`);
+    revalidatePath(`/dashboard/organizations/${organizationId}/keys`);
 
     return { success: true };
   } catch {
@@ -208,7 +208,7 @@ export const deleteSongKey = async (
     }
 
     touch(`user-${user.id}-keys-${organizationId}`);
-    revalidatePath(`/dashboard/organizations/${organizationId}`);
+    revalidatePath(`/dashboard/organizations/${organizationId}/keys`);
 
     return { success: true };
   } catch {

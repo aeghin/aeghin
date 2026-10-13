@@ -1,8 +1,7 @@
-import { Building2, CalendarPlus } from "lucide-react";
+import { CalendarPlus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "../ui/button";
-import { cn } from "@/lib/utils";
-import { getRoleConfig, volunteerRoleConfig } from "@/lib/config/roles";
+import { volunteerRoleConfig } from "@/lib/config/roles";
 import { InviteMemberButton } from "./invite-person-button";
 import { OrgRole, VolunteerRole } from "@/generated/prisma/enums";
 import { getSeatUsage } from "@/lib/billing/limits";
@@ -26,13 +25,10 @@ interface OrganizationHeroProps {
 }
 
 export const OrganizationHero = async ({
-  organization: { id, name, description, logoUrl, memberships },
+  organization: { id, name, description, memberships },
   volunteerRoles,
 }: OrganizationHeroProps) => {
   const userRole = memberships[0].role;
-
-  const roleConfig = getRoleConfig(userRole);
-  const RoleIcon = roleConfig.icon;
 
   const canManage = userRole === OrgRole.OWNER || userRole === OrgRole.ADMIN;
 
@@ -40,36 +36,15 @@ export const OrganizationHero = async ({
   const seatUsage = canManage ? await getSeatUsage(id) : null;
 
   return (
-    // Tighter on phones, where a fixed p-8 and a 3xl name took half the screen.
-    <div className="relative overflow-hidden rounded-2xl border border-border/40 bg-linear-to-br from-card via-card to-primary/5 p-4 sm:p-6">
-      <div className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-primary/5 blur-3xl" />
-      <div className="pointer-events-none absolute -bottom-20 -left-20 h-48 w-48 rounded-full bg-primary/10 blur-3xl" />
-
-      <div className="relative flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
-        <div className="flex min-w-0 items-start gap-3 sm:gap-5">
-          <div className="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-linear-to-br from-primary/20 to-primary/10 text-primary shadow-lg shadow-primary/10 transition-transform hover:scale-105 sm:size-16 sm:rounded-2xl">
-            {logoUrl ? (
-              <img
-                src={logoUrl}
-                alt={`${name} logo`}
-                className="h-full w-full object-cover"
-              />
-            ) : (
-              <Building2 className="size-6 sm:size-8" />
-            )}
-          </div>
-          <div className="min-w-0 space-y-2 sm:space-y-3">
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-              <h1 className="text-xl font-bold tracking-tight text-balance sm:text-2xl">{name}</h1>
-              <Badge
-                variant="outline"
-                className={cn("text-xs font-medium", roleConfig.className)}
-              >
-                <RoleIcon className="mr-1 h-3 w-3" />
-                {roleConfig.label}
-              </Badge>
-            </div>
-            <p className="max-w-lg text-sm text-muted-foreground sm:text-base">{description}</p>
+    // Flat on the page, as in the design system. The org's logo and your
+    // role sit in the sidebar's switcher right beside this, so the header
+    // keeps only what's new here: the name as the page's title (the one place
+    // it shows on a phone), the description, your roles and the actions.
+    <div>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
+        <div className="min-w-0 space-y-2">
+            <h1 className="text-xl font-semibold tracking-tight text-balance sm:text-2xl">{name}</h1>
+            <p className="max-w-lg text-sm text-muted-foreground">{description}</p>
 
             {volunteerRoles.length > 0 ? (
               <div className="flex flex-wrap items-center gap-1.5">
@@ -92,30 +67,24 @@ export const OrganizationHero = async ({
                 No volunteer roles assigned yet
               </p>
             )}
-          </div>
         </div>
 
         {canManage && (
-          <div className="flex items-center gap-3">
-            <Button
-              variant="outline"
-              size="sm"
-              className="cursor-pointer bg-background/50 backdrop-blur-sm transition-all hover:bg-background hover:border-primary/30 hover:scale-105"
-              asChild
-            >
-              <Link
-                href={`/dashboard/organizations/${id}/events/create`}
-              >
-                <CalendarPlus className="mr-2 h-4 w-4" />
-                Create Event
-              </Link>
-            </Button>
+          <div className="flex items-center gap-2">
             <InviteMemberButton
               organizationId={id}
               organizationName={name}
               seatUsage={seatUsage}
               canUpgrade={userRole === OrgRole.OWNER}
             />
+            <Button size="sm" className="cursor-pointer transition-all" asChild>
+              <Link
+                href={`/dashboard/organizations/${id}/events/create`}
+              >
+                <CalendarPlus className="mr-2 h-4 w-4" />
+                Create event
+              </Link>
+            </Button>
           </div>
         )}
       </div>
