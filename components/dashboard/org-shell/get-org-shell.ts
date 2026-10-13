@@ -2,8 +2,8 @@ import "server-only";
 
 import { z } from "zod/v4";
 import { OrgRole } from "@/generated/prisma/enums";
-import { getRoleConfig, hasSingingRole } from "@/lib/config/roles";
-import { getOrgPlan } from "@/lib/billing/entitlements";
+import { getRoleConfig, hasSingingRole, volunteerRoleConfig } from "@/lib/config/roles";
+import { getSeatUsage, type SeatUsage } from "@/lib/billing/limits";
 import {
   getOrganizationDetailsById,
   getUserOrganizations,
@@ -62,19 +62,15 @@ export interface OrgShellOrganization {
 export interface OrgShell {
   organization: OrgShellOrganization;
   roleLabel: string;
-  /** "Pro plan" and so on; null on the free plan. */
-  planLabel: string | null;
+  /** "Lead Vocalist", "BGVs"…, in the order the person holds them. */
+  volunteerRoleLabels: string[];
   canManage: boolean;
+  isOwner: boolean;
   isVocalist: boolean;
+  /** For the sidebar's invite dialog; null for members, or when the plan has no cap. */
+  seatUsage: SeatUsage | null;
   organizations: OrgShellOrganization[];
 }
-
-const PLAN_LABELS = {
-  free: null,
-  starter: "Starter plan",
-  premium: "Premium plan",
-  pro: "Pro plan",
-} as const;
 
 /**
  * The org page and its sub-pages read the same cached services, so the shell
@@ -85,12 +81,13 @@ export async function getOrgShell(id: string): Promise<OrgShell | null> {
   const access = await getOrgAccess(id);
   if (!access) return null;
 
-  const { orgId, userId, canManage, isVocalist } = access;
+  const { orgId, userId, canManage, isOwner, isVocalist } = access;
 
-  const [organization, organizations, plan] = await Promise.all([
+  const [organization, organizations, roles, seatUsage] = await Promise.all([
     getOrganizationDetailsById(orgId, userId),
     getUserOrganizations(userId),
-    getOrgPlan(orgId),
+    userRoles(userId, orgId),
+    canManage ? getSeatUsage(orgId) : null,
   ]);
 
   if (!organization) return null;
@@ -102,9 +99,11 @@ export async function getOrgShell(id: string): Promise<OrgShell | null> {
       logoUrl: organization.logoUrl,
     },
     roleLabel: getRoleConfig(organization.memberships[0].role).label,
-    planLabel: PLAN_LABELS[plan],
+    volunteerRoleLabels: (roles?.volunteerRoles ?? []).map((role) => volunteerRoleConfig[role].label),
     canManage,
+    isOwner,
     isVocalist,
+    seatUsage,
     organizations: organizations.map(({ id, name, logoUrl }) => ({ id, name, logoUrl })),
   };
 }

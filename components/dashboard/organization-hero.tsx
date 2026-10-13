@@ -36,15 +36,19 @@ export const OrganizationHero = async ({
   const seatUsage = canManage ? await getSeatUsage(id) : null;
 
   return (
-    // Flat on the page, as in the design system. The org's logo and your
-    // role sit in the sidebar's switcher right beside this, so the header
-    // keeps only what's new here: the name as the page's title (the one place
-    // it shows on a phone), the description, your roles and the actions.
-    <div>
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
-        <div className="min-w-0 space-y-2">
-            <h1 className="text-xl font-semibold tracking-tight text-balance sm:text-2xl">{name}</h1>
-            <p className="max-w-lg text-sm text-muted-foreground">{description}</p>
+    <>
+      {/* From 768px up the sidebar carries all of this: the switcher names the
+          org and lists your roles, and Create event and Invite member sit
+          under it. The name stays as the page's heading for screen readers. */}
+      <h1 className="sr-only hidden md:block">{name}</h1>
+
+      {/* Below 768px the sidebar is a sheet, so the header is the org's one
+          compact row: the name with your roles beside it, the description and
+          the actions, ruled off from the section under it. */}
+      <div className="flex flex-col gap-3.5 border-b pb-5 sm:flex-row sm:items-start sm:justify-between sm:gap-6 md:hidden">
+        <div className="min-w-0 space-y-2 sm:space-y-1">
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-3">
+            <h1 className="text-2xl font-semibold tracking-tight text-balance">{name}</h1>
 
             {volunteerRoles.length > 0 ? (
               <div className="flex flex-wrap items-center gap-1.5">
@@ -54,7 +58,7 @@ export const OrganizationHero = async ({
                     <Badge
                       key={role}
                       variant="secondary"
-                      className="gap-1 px-2.5 py-1 text-xs font-medium"
+                      className="h-6 gap-1 rounded-md px-2 text-xs font-medium"
                     >
                       <span>{icon}</span>
                       {label}
@@ -67,10 +71,18 @@ export const OrganizationHero = async ({
                 No volunteer roles assigned yet
               </p>
             )}
+          </div>
+
+          {/* Two lines at most on a phone, one beside the buttons from 640px;
+              the full text is on hover. */}
+          <p title={description} className="line-clamp-2 text-sm text-muted-foreground sm:line-clamp-1">
+            {description}
+          </p>
         </div>
 
         {canManage && (
-          <div className="flex items-center gap-2">
+          // Side by side at equal widths on a phone.
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:shrink-0 sm:items-center">
             <InviteMemberButton
               organizationId={id}
               organizationName={name}
@@ -88,6 +100,6 @@ export const OrganizationHero = async ({
           </div>
         )}
       </div>
-    </div>
+    </>
   );
 };

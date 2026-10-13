@@ -8,6 +8,8 @@ import {
 // The org's overview sections — Events (the home, at the org's root URL),
 // Members, Blockouts, My keys, Invitations, Templates, Activity, Settings —
 // each its own route under this group, sharing the org header above them.
+// The header shows below 768px only, where the sidebar is a sheet; from there
+// up it's just the page's screen-reader heading, so the gap under it goes too.
 // Songs, event pages and member profiles sit outside the group, so they keep
 // their own full-page layouts without the header.
 export default function OrganizationOverviewLayout({
@@ -19,7 +21,7 @@ export default function OrganizationOverviewLayout({
 }) {
   return (
     <main className="mx-auto w-full max-w-screen-2xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
-      <div className="space-y-6 sm:space-y-8">
+      <div className="space-y-6 sm:space-y-8 md:space-y-0">
         <AnimatedSection delay={0.05}>
           <Suspense fallback={<OrgHeaderSkeleton />}>
             <OrgHeaderSection params={params} />

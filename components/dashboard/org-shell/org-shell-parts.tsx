@@ -11,7 +11,6 @@ import {
   NotificationsBellSkeleton,
 } from "@/components/dashboard/navbar/notifications-bell";
 import { PremiumNav } from "@/components/dashboard/navbar/premium-nav";
-import { ThemeSwitch } from "@/components/dashboard/navbar/theme-switch";
 import { getOrgShell } from "./get-org-shell";
 import { OrgBreadcrumb } from "./org-breadcrumb";
 import { OrgSidebar } from "./org-sidebar";
@@ -27,7 +26,7 @@ export function OrgSidebarSkeleton() {
   return (
     <SidebarContent className="pt-3">
       <SidebarMenu className="gap-0.5 px-2">
-        <SidebarMenuItem className="mb-3 flex h-12 items-center gap-2.5 px-2">
+        <SidebarMenuItem className="mb-3 flex h-12 items-center gap-2.5 px-2 group-data-[collapsible=icon]:px-0.5">
           <div className="size-8 shrink-0 animate-pulse rounded-lg bg-sidebar-accent" />
           <div className="h-4 w-28 animate-pulse rounded bg-sidebar-accent group-data-[collapsible=icon]:hidden" />
         </SidebarMenuItem>
@@ -79,13 +78,10 @@ export function OrgTopbar({ params }: { params: OrgParams }) {
       </Suspense>
 
       <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:gap-2">
-        <div className="hidden sm:block">
-          <PremiumNav />
-        </div>
+        <PremiumNav />
         <Suspense fallback={<NotificationsBellSkeleton />}>
           <NotificationsBell />
         </Suspense>
-        <ThemeSwitch className="hidden sm:inline-flex" />
         <UserButton appearance={{ elements: { avatarBox: { width: "32px", height: "32px" } } }} />
       </div>
     </header>

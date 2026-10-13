@@ -1,4 +1,15 @@
-import type { NavIconName } from "@/components/icons/nav-icons";
+import {
+  Activity,
+  Calendar,
+  CalendarOff,
+  LayoutTemplate,
+  Mail,
+  Mic2,
+  Music,
+  Settings,
+  Users,
+  type LucideIcon,
+} from "lucide-react";
 
 export type OrgNavKey =
   | "events"
@@ -14,7 +25,7 @@ export type OrgNavKey =
 export interface OrgNavItem {
   key: OrgNavKey;
   label: string;
-  icon: NavIconName;
+  icon: LucideIcon;
   group: "main" | "manage" | "footer";
   /** Owners and admins only — the same gate the section's page enforces. */
   adminOnly: boolean;
@@ -23,15 +34,15 @@ export interface OrgNavItem {
 }
 
 export const ORG_NAV: OrgNavItem[] = [
-  { key: "events", label: "Events", icon: "events", group: "main", adminOnly: false, vocalOnly: false },
-  { key: "songs", label: "Songs", icon: "songs", group: "main", adminOnly: false, vocalOnly: false },
-  { key: "members", label: "Members", icon: "members", group: "main", adminOnly: false, vocalOnly: false },
-  { key: "blockouts", label: "Blockouts", icon: "blockouts", group: "main", adminOnly: false, vocalOnly: false },
-  { key: "keys", label: "My keys", icon: "keys", group: "main", adminOnly: false, vocalOnly: true },
-  { key: "invitations", label: "Invitations", icon: "invitations", group: "manage", adminOnly: true, vocalOnly: false },
-  { key: "templates", label: "Templates", icon: "templates", group: "manage", adminOnly: true, vocalOnly: false },
-  { key: "activity", label: "Activity", icon: "activity", group: "manage", adminOnly: true, vocalOnly: false },
-  { key: "settings", label: "Settings", icon: "settings", group: "footer", adminOnly: false, vocalOnly: false },
+  { key: "events", label: "Events", icon: Calendar, group: "main", adminOnly: false, vocalOnly: false },
+  { key: "songs", label: "Songs", icon: Music, group: "main", adminOnly: false, vocalOnly: false },
+  { key: "members", label: "Members", icon: Users, group: "main", adminOnly: false, vocalOnly: false },
+  { key: "blockouts", label: "Blockouts", icon: CalendarOff, group: "main", adminOnly: false, vocalOnly: false },
+  { key: "keys", label: "My keys", icon: Mic2, group: "main", adminOnly: false, vocalOnly: true },
+  { key: "invitations", label: "Invitations", icon: Mail, group: "manage", adminOnly: true, vocalOnly: false },
+  { key: "templates", label: "Templates", icon: LayoutTemplate, group: "manage", adminOnly: true, vocalOnly: false },
+  { key: "activity", label: "Activity", icon: Activity, group: "manage", adminOnly: true, vocalOnly: false },
+  { key: "settings", label: "Settings", icon: Settings, group: "footer", adminOnly: false, vocalOnly: false },
 ];
 
 export function visibleOrgNav(canManage: boolean, isVocalist: boolean): OrgNavItem[] {

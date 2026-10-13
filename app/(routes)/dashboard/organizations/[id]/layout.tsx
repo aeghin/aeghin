@@ -20,7 +20,9 @@ export default function OrganizationLayout({
   params: Promise<{ id: string }>;
 }) {
   return (
-    <SidebarProvider>
+    // The icon rail is a touch wider than shadcn's 3rem, so its buttons can be
+    // 36px targets (see RAIL_TARGET in org-sidebar.tsx).
+    <SidebarProvider style={{ "--sidebar-width-icon": "3.25rem" } as React.CSSProperties}>
       <OrgSidebarFrame>
         <Suspense fallback={<OrgSidebarSkeleton />}>
           <OrgSidebarSection params={params} />

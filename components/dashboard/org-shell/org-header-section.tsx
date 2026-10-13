@@ -3,15 +3,16 @@ import { getOrganizationDetailsById } from "@/lib/services/organization";
 import { userRoles } from "@/lib/services/user";
 import { getOrgAccess } from "./get-org-shell";
 
-/** Holds the header's height while it resolves, so sections don't jump. */
+/** Holds the header's height while it resolves, so sections don't jump.
+ *  Phones only, like the header itself. */
 export function OrgHeaderSkeleton() {
   return (
-    <div className="flex items-start gap-3 sm:gap-4">
-      <div className="flex-1 space-y-2.5 pt-1">
-        <div className="h-6 w-56 animate-pulse rounded-md bg-muted" />
-        <div className="h-4 w-80 max-w-full animate-pulse rounded-md bg-muted" />
-        <div className="h-5 w-40 animate-pulse rounded-md bg-muted" />
+    <div className="space-y-2 border-b pb-5 sm:space-y-1 md:hidden">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+        <div className="h-8 w-56 animate-pulse rounded-md bg-muted" />
+        <div className="h-6 w-40 animate-pulse rounded-md bg-muted" />
       </div>
+      <div className="h-5 w-80 max-w-full animate-pulse rounded-md bg-muted" />
     </div>
   );
 }
