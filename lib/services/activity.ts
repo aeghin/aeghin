@@ -3,6 +3,7 @@ import "server-only";
 import prisma from "@/lib/prisma";
 import { cacheLife, cacheTag } from "next/cache";
 import { ActivityType } from "@/generated/prisma/enums";
+import { activityFilterTypes, type ActivityFilter } from "@/lib/activity-feed";
 
 export const ACTIVITY_PAGE_SIZE = 10;
 
@@ -32,11 +33,26 @@ export type ActivityItem = {
   createdAt: Date;
 };
 
+// The feed's rows for one chip. Filtered here rather than on the page, so a
+// page of "Invites" is ten invites, not whichever of the latest ten were.
+const feedWhere = (organizationId: string, filter: ActivityFilter) => ({
+  organizationId,
+  type:
+    filter === "all"
+      ? { notIn: ORG_FEED_EXCLUDED_TYPES }
+      : {
+          in: activityFilterTypes(filter).filter(
+            (type) => !ORG_FEED_EXCLUDED_TYPES.includes(type)
+          ),
+        },
+});
+
 // `page` is 1-based and must already be clamped to the real range — a page
 // below 1 would produce a negative skip.
 export const getOrganizationActivity = async (
   organizationId: string,
-  page: number
+  page: number,
+  filter: ActivityFilter = "all"
 ): Promise<ActivityItem[]> => {
   "use cache";
 
@@ -44,7 +60,7 @@ export const getOrganizationActivity = async (
   cacheTag(`org-${organizationId}-activity`);
 
   const rows = await prisma.activityLog.findMany({
-    where: { organizationId, type: { notIn: ORG_FEED_EXCLUDED_TYPES } },
+    where: feedWhere(organizationId, filter),
     // id is the unique tiebreak so the sort is total and a row can't drift
     // between pages when several share a createdAt.
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
@@ -70,7 +86,8 @@ export const getOrganizationActivity = async (
 // Cached apart from the rows so paging through the feed reuses a single count
 // instead of re-running it once per page.
 export const getOrganizationActivityPageCount = async (
-  organizationId: string
+  organizationId: string,
+  filter: ActivityFilter = "all"
 ): Promise<number> => {
   "use cache";
 
@@ -78,7 +95,7 @@ export const getOrganizationActivityPageCount = async (
   cacheTag(`org-${organizationId}-activity`);
 
   const total = await prisma.activityLog.count({
-    where: { organizationId, type: { notIn: ORG_FEED_EXCLUDED_TYPES } },
+    where: feedWhere(organizationId, filter),
   });
 
   return Math.ceil(total / ACTIVITY_PAGE_SIZE);

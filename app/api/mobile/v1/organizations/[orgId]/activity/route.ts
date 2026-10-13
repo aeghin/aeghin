@@ -2,6 +2,7 @@ import {
     getOrganizationActivity,
     getOrganizationActivityPageCount,
 } from "@/lib/services/activity";
+import { isActivityFilter } from "@/lib/activity-feed";
 import type { ActivityType } from "@/generated/prisma/enums";
 import {
     canManage,
@@ -30,11 +31,13 @@ type ActivityItem = {
 type Params = { orgId: string };
 
 /**
- * GET /api/mobile/v1/organizations/[orgId]/activity?page=1
+ * GET /api/mobile/v1/organizations/[orgId]/activity?page=1&filter=invites
  *
  * One page of the organization's feed, newest first. Owners and admins only,
  * as on the dashboard. The page is clamped into the real range the way the
- * dashboard's own `fetchActivityPage` clamps it.
+ * dashboard's own `fetchActivityPage` clamps it. `filter` is one of the
+ * dashboard's chips (`lib/activity-feed.ts`); missing or unknown is "all", so
+ * an app from before the chips gets the whole feed as it always did.
  */
 export const GET = route<Params>("GET .../activity", async (req, { params }) => {
     const clerkId = await clerkIdOf();
@@ -49,16 +52,22 @@ export const GET = route<Params>("GET .../activity", async (req, { params }) => 
 
     if (!canManage(membership.role)) return fail(403, "Forbidden");
 
-    const requested = Number(new URL(req.url).searchParams.get("page") ?? 1);
+    const query = new URL(req.url).searchParams;
 
-    const totalPages = await getOrganizationActivityPageCount(orgId);
+    const requested = Number(query.get("page") ?? 1);
+
+    const rawFilter = query.get("filter");
+
+    const filter = isActivityFilter(rawFilter) ? rawFilter : "all";
+
+    const totalPages = await getOrganizationActivityPageCount(orgId, filter);
 
     const page = Math.min(
         Math.max(Math.trunc(requested) || 1, 1),
         Math.max(totalPages, 1),
     );
 
-    const rows = await getOrganizationActivity(orgId, page);
+    const rows = await getOrganizationActivity(orgId, page, filter);
 
     const items: ActivityItem[] = rows.map((row) => ({
         ...row,

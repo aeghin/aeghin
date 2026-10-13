@@ -18,8 +18,7 @@ import {
   ZapOff,
   type LucideIcon,
 } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
-import { formatDateInZone, formatDateTimeInZone } from "@/lib/time-zone";
+import { formatDateTimeInZone } from "@/lib/time-zone";
 import { AnimatedInvitationRow } from "@/components/dashboard/animated-invitation-row";
 import { cn } from "@/lib/utils";
 import { ActivityType } from "@/generated/prisma/enums";
@@ -212,26 +211,20 @@ const describeActivity = (item: ActivityItem): ReactNode => {
   }
 };
 
-// Recent entries read best as relative ("3 hours ago"); older ones are clearer
-// as an absolute date. The exact timestamp is always available on hover. Dates
-// are on the organization's clock: this renders on the server too, whose own
-// zone is UTC and would put an evening entry on the next day.
-const formatActivityTime = (date: Date, timeZone: string) => {
-  const diffDays = (Date.now() - date.getTime()) / 86_400_000;
-  return diffDays < 7
-    ? formatDistanceToNow(date, { addSuffix: true })
-    : formatDateInZone(date, timeZone);
-};
-
 interface ActivityRowProps {
   item: ActivityItem;
+  /**
+   * When it happened, worded for the day heading above it — see
+   * `formatActivityStamp`. The exact timestamp is always on hover.
+   */
+  stamp: string;
   index: number;
   organizationId: string;
-  /** The organization's zone, for the dates. */
+  /** The organization's zone, for the hover timestamp. */
   timeZone: string;
 }
 
-export const ActivityRow = ({ item, index, organizationId, timeZone }: ActivityRowProps) => {
+export const ActivityRow = ({ item, stamp, index, organizationId, timeZone }: ActivityRowProps) => {
   const config = activityConfig[item.type];
   const Icon = config.icon;
 
@@ -255,7 +248,7 @@ export const ActivityRow = ({ item, index, organizationId, timeZone }: ActivityR
           className="text-xs text-muted-foreground"
           title={formatDateTimeInZone(item.createdAt, timeZone)}
         >
-          {formatActivityTime(item.createdAt, timeZone)}
+          {stamp}
           {supplementalDetail && ` · ${supplementalDetail}`}
         </p>
       </div>
