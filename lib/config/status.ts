@@ -54,14 +54,16 @@ export const statusStyles: Record<
     border: "border-red-500/40",
     bgSoft: "bg-red-500/2",
   },
+  // Red like a decline or a cancel: either way the spot is open again and
+  // somebody has to act on it.
   EXPIRED: {
     label: "Expired",
-    pill: "bg-slate-500/10 text-slate-600 border-slate-500/20 dark:text-slate-400",
-    dot: "bg-slate-500",
-    text: "text-slate-500",
-    ring: "ring-slate-500/50",
-    badgeBg: "bg-slate-500",
-    border: "border-slate-500/40",
-    bgSoft: "bg-slate-500/2",
+    pill: "bg-red-500/10 text-red-700 border-red-500/20 dark:text-red-500",
+    dot: "bg-red-500",
+    text: "text-red-500",
+    ring: "ring-red-500/60",
+    badgeBg: "bg-red-500",
+    border: "border-red-500/40",
+    bgSoft: "bg-red-500/2",
   },
 }

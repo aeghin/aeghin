@@ -3,7 +3,7 @@ import "server-only";
 import prisma from "@/lib/prisma";
 import { InvitationStatus } from "@/generated/prisma/enums";
 import { cacheLife, cacheTag } from "next/cache";
-import { staffingOf, staffingTallies } from "@/lib/staffing";
+import { roleMeterOf, staffingTallies } from "@/lib/staffing";
 import { parseRoleSpots } from "@/lib/role-spots";
 import { MAX_BEHIND_UTC_MS, floatingNow } from "@/lib/time-zone";
 import { getOrganizationTimeZone } from "@/lib/services/organization";
@@ -124,7 +124,7 @@ export const getUserEvents = async (organizationId: string, userId: string) => {
 
 // All events in the org, for owners/admins who oversee every event regardless
 // of assignment. Includes the caller's own assignment (if any) so their role
-// badge still shows, and each event's staffing for the meter. Tagged org-wide
+// badge still shows, and each event's role meter for its card. Tagged org-wide
 // so the list refreshes when events or anybody's answer to one change.
 export const getOrgEvents = async (organizationId: string, userId: string) => {
     "use cache"
@@ -165,7 +165,7 @@ export const getOrgEvents = async (organizationId: string, userId: string) => {
     return events.map((event) => ({
       ...event,
       roleSpots: parseRoleSpots(event.roleSpots),
-      staffing: staffingOf(event.rolesNeeded, parseRoleSpots(event.roleSpots), tallies.get(event.id)),
+      roleMeter: roleMeterOf(event.rolesNeeded, parseRoleSpots(event.roleSpots), tallies.get(event.id)),
     }));
 };
 

@@ -37,7 +37,7 @@ import {
   ScopeFilter,
 } from "@/components/dashboard/events/events-controls";
 import { UpNextCard, findUpNext } from "@/components/dashboard/up-next-card";
-import type { Staffing } from "@/lib/staffing";
+import type { RoleMeter } from "@/lib/staffing";
 import { getServiceColors as getColorClasses } from "@/lib/config/service-types-config";
 import {
   dayKey,
@@ -89,7 +89,7 @@ interface Event {
   rehearsalStart?: Date | string | null;
   rehearsalEnd?: Date | string | null;
   /** Only on All Events — see `getOrgEvents`. */
-  staffing?: Staffing;
+  roleMeter?: RoleMeter;
 }
 
 // ─── Color config ───────────────────────────────────────────────
@@ -778,7 +778,7 @@ export function MemberEventsDashboard({
                           today={todayKey}
                           now={churchNow}
                           highlight={key === nextKey}
-                          staffing={activeTab === "all" ? event.staffing : null}
+                          roleMeter={activeTab === "all" ? event.roleMeter : null}
                         />
                       </m.div>
                     ))}

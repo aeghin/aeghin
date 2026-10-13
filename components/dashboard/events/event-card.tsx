@@ -3,15 +3,12 @@ import type { ReactNode } from "react";
 import { Calendar, ChevronRight, Clock, MapPin, type LucideIcon } from "lucide-react";
 
 import { DateTile } from "@/components/dashboard/events/date-tile";
-import {
-  METER_MAX_WIDTH,
-  StaffingMeter,
-} from "@/components/dashboard/events/staffing-meter";
+import { StaffingMeter } from "@/components/dashboard/events/staffing-meter";
 import { VolunteerRole } from "@/generated/prisma/enums";
 import { volunteerRoleConfig } from "@/lib/config/roles";
 import { getServiceColors } from "@/lib/config/service-types-config";
 import { formatDateRange, formatTimeOn, isMultiDay } from "@/lib/event-format";
-import type { Staffing } from "@/lib/staffing";
+import type { RoleMeter } from "@/lib/staffing";
 import { cn } from "@/lib/utils";
 
 interface ServiceType {
@@ -35,8 +32,8 @@ interface EventCardProps {
   now: Date;
   /** The first day still to come, whose tile goes solid. */
   highlight?: boolean;
-  /** All Events only: how close the roster is to full. */
-  staffing?: Staffing | null;
+  /** All Events only: where each role on the roster stands. */
+  roleMeter?: RoleMeter | null;
 }
 
 /**
@@ -53,12 +50,12 @@ export function EventCard({
   today,
   now,
   highlight,
-  staffing,
+  roleMeter,
 }: EventCardProps) {
   const colors = getServiceColors(service?.color ?? "indigo");
   const time = formatTimeOn(event.dates, day, now);
   const meter =
-    staffing && staffing.needed > 0 ? <StaffingMeter staffing={staffing} /> : null;
+    roleMeter && roleMeter.roles > 0 ? <StaffingMeter meter={roleMeter} /> : null;
 
   return (
     <Link
@@ -97,7 +94,7 @@ export function EventCard({
       </div>
 
       {meter && (
-        <div className="hidden shrink-0 sm:block" style={{ width: METER_MAX_WIDTH }}>
+        <div className="hidden shrink-0 sm:block">
           {meter}
         </div>
       )}

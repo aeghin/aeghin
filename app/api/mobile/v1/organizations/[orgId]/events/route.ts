@@ -9,7 +9,7 @@ import {
     VolunteerRole,
 } from "@/generated/prisma/enums";
 import { createEvent } from "@/lib/actions/event";
-import { roleStaffingOf, staffingOf, staffingTallies } from "@/lib/staffing";
+import { roleMeterOf, roleStaffingOf, staffingOf, staffingTallies } from "@/lib/staffing";
 import { parseRoleSpots, type RoleSpots } from "@/lib/role-spots";
 import type { CreateEventInput } from "@/lib/validations/event";
 import {
@@ -82,6 +82,13 @@ type OrganizationEvent = {
      * filled or awaiting instead, so the three counts never overlap.
      */
     declinedRoleCount: number;
+    /**
+     * The card's meter as builds since 2026-10-13 draw it: one segment per
+     * role, worst first — a spot left open by a decline, cancel or expiry is
+     * red however many others accepted. Additive; the counts above stay for
+     * builds that read them.
+     */
+    roleMeter: { roles: number; filled: number; awaiting: number; needsAttention: number };
 };
 
 
@@ -232,6 +239,7 @@ export async function GET(
                 filledRoleCount: roleStaffing.filled,
                 awaitingRoleCount: roleStaffing.awaiting,
                 declinedRoleCount: roleStaffing.declined,
+                roleMeter: roleMeterOf(event.rolesNeeded, roleSpots, tally),
             };
         });
 

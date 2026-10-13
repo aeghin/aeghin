@@ -28,7 +28,31 @@ export type Staffing = {
  */
 export type RoleStaffing = Omit<Staffing, "needed">;
 
-type RoleCounts = { accepted: number; deciding: number; declined: number };
+/**
+ * The event card's meter: one segment per role, however many spots it has, so
+ * a big worship team doesn't grow a bar of dots and a glance says which roles
+ * are done. Each role takes one colour, worst first — a role with a problem
+ * reads red even with others on it accepted, because that is the one to look at.
+ * Event pages keep the per-person roster; this is only the card.
+ */
+export type RoleMeter = {
+  /** Roles the event needs. */
+  roles: number;
+  /** Every spot accepted and nobody on the role still deciding. */
+  filled: number;
+  /** Somebody still deciding, and no spot left open by a problem. */
+  awaiting: number;
+  /** A spot left open by somebody who declined, was canceled or let it expire. */
+  needsAttention: number;
+};
+
+type RoleCounts = {
+  accepted: number;
+  deciding: number;
+  declined: number;
+  /** Expired — by the sweep, or past the deadline before it — or canceled. */
+  lapsed: number;
+};
 
 type Tally = Map<VolunteerRole, RoleCounts>;
 
@@ -40,26 +64,48 @@ export async function staffingTallies(
   organizationId: string,
   now: Date,
 ): Promise<Map<string, Tally>> {
-  const rows = await prisma.eventAssignment.groupBy({
-    by: ["eventId", "role", "status"],
-    where: {
-      organizationId,
-      OR: [
-        { status: InvitationStatus.ACCEPTED },
-        // Past its deadline is nobody deciding, even before the hourly sweep
-        // writes EXPIRED.
-        { status: InvitationStatus.PENDING, expiresAt: { gt: now } },
-        { status: InvitationStatus.DECLINED },
-      ],
-    },
-    _count: { _all: true },
-  });
+  const [rows, lapsedRows] = await Promise.all([
+    prisma.eventAssignment.groupBy({
+      by: ["eventId", "role", "status"],
+      where: {
+        organizationId,
+        OR: [
+          { status: InvitationStatus.ACCEPTED },
+          // Past its deadline is nobody deciding, even before the hourly sweep
+          // writes EXPIRED.
+          { status: InvitationStatus.PENDING, expiresAt: { gt: now } },
+          { status: InvitationStatus.DECLINED },
+        ],
+      },
+      _count: { _all: true },
+    }),
+    // Its own query: a pending row past its deadline is lapsed, and grouping by
+    // status alone can't tell it from one still inside its window.
+    prisma.eventAssignment.groupBy({
+      by: ["eventId", "role"],
+      where: {
+        organizationId,
+        OR: [
+          { status: { in: [InvitationStatus.EXPIRED, InvitationStatus.CANCELED] } },
+          { status: InvitationStatus.PENDING, expiresAt: { lte: now } },
+        ],
+      },
+      _count: { _all: true },
+    }),
+  ]);
 
   const tallies = new Map<string, Tally>();
 
+  const countsFor = (eventId: string, role: VolunteerRole) => {
+    const tally = tallies.get(eventId) ?? new Map<VolunteerRole, RoleCounts>();
+    const counts = tally.get(role) ?? { accepted: 0, deciding: 0, declined: 0, lapsed: 0 };
+    tally.set(role, counts);
+    tallies.set(eventId, tally);
+    return counts;
+  };
+
   for (const row of rows) {
-    const tally = tallies.get(row.eventId) ?? new Map<VolunteerRole, RoleCounts>();
-    const counts = tally.get(row.role) ?? { accepted: 0, deciding: 0, declined: 0 };
+    const counts = countsFor(row.eventId, row.role);
 
     if (row.status === InvitationStatus.ACCEPTED) {
       counts.accepted += row._count._all;
@@ -68,15 +114,16 @@ export async function staffingTallies(
     } else {
       counts.deciding += row._count._all;
     }
+  }
 
-    tally.set(row.role, counts);
-    tallies.set(row.eventId, tally);
+  for (const row of lapsedRows) {
+    countsFor(row.eventId, row.role).lapsed += row._count._all;
   }
 
   return tallies;
 }
 
-const NOBODY: RoleCounts = { accepted: 0, deciding: 0, declined: 0 };
+const NOBODY: RoleCounts = { accepted: 0, deciding: 0, declined: 0, lapsed: 0 };
 
 /** One event's spots, from its roles, their counts and its entry in {@link staffingTallies}. */
 export function staffingOf(
@@ -122,4 +169,37 @@ export function roleStaffingOf(
   }
 
   return staffing;
+}
+
+/**
+ * One event's {@link RoleMeter}. Worst first: a spot still open after a
+ * decline, cancel or expiry is red whoever else accepted; then anybody
+ * deciding is amber; then every spot accepted is green; else grey, nobody
+ * asked. A replacement who accepted or is deciding closes the problem, so a
+ * role refilled after a decline doesn't stay red.
+ */
+export function roleMeterOf(
+  rolesNeeded: VolunteerRole[],
+  spots: RoleSpots,
+  tally: Tally | undefined,
+): RoleMeter {
+  const meter: RoleMeter = { roles: 0, filled: 0, awaiting: 0, needsAttention: 0 };
+
+  for (const role of new Set(rolesNeeded)) {
+    const counts = tally?.get(role) ?? NOBODY;
+    const needed = spotsFor(spots, role);
+    const stillOpen = counts.accepted + counts.deciding < needed;
+
+    meter.roles += 1;
+
+    if (counts.accepted >= needed && counts.deciding === 0) {
+      meter.filled += 1;
+    } else if (stillOpen && counts.declined + counts.lapsed > 0) {
+      meter.needsAttention += 1;
+    } else if (counts.deciding > 0) {
+      meter.awaiting += 1;
+    }
+  }
+
+  return meter;
 }
