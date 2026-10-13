@@ -2,8 +2,9 @@ import "server-only";
 
 import prisma from "@/lib/prisma";
 import { type VolunteerRole } from "@/generated/prisma/enums";
+import EventReplacementEmail from "@/components/email/event-replacement-template";
 import EventShortageEmail from "@/components/email/event-shortage-template";
-import { formatEventWhen } from "@/lib/email/event-when";
+import { formatEventShort, formatEventWhen } from "@/lib/email/event-when";
 import { organizationSender } from "@/lib/email/organization";
 import { sendEmailBatches } from "@/lib/email/send";
 import { teamOfRole, volunteerRoleConfig } from "@/lib/config/roles";
@@ -146,5 +147,133 @@ export async function notifyDeclineShortage({
     );
   } catch (err) {
     console.error(`Failed to notify about a decline on event ${eventId}`, err);
+  }
+}
+
+/**
+ * Tells whoever runs a role's team what Smart Scheduling did with a declined
+ * spot: that it invited somebody in the decliner's place (`invited`), and later
+ * that the somebody said yes (`accepted`). The same people "Pianist needed"
+ * reaches, on the same footing — whoever covers the team on this event, else
+ * the team's lead for the service type, else the creator, then the owners, with
+ * the sender and Also notify copied in.
+ *
+ * Nobody is asked to act, which is why this is separate from
+ * `notifyDeclineShortage`. The decliner and the replacement are left out even
+ * when they run the team: each already has their own news.
+ *
+ * Best effort: the answer has committed, so a failure is logged and never
+ * becomes the caller's error.
+ */
+export async function notifyReplacement({
+  kind,
+  organizationId,
+  eventId,
+  role,
+  inviterId,
+  replacement,
+  decliner,
+}: {
+  kind: "invited" | "accepted";
+  organizationId: string;
+  eventId: string;
+  role: VolunteerRole;
+  /** Who sent the declined invitation, which the replacement's row inherits. */
+  inviterId: string | null;
+  replacement: { userId: string; firstName: string; lastName: string };
+  /** Who declined. Only known on the decline itself. */
+  decliner: { userId: string; name: string } | null;
+}): Promise<void> {
+  try {
+    const event = await prisma.event.findUnique({
+      where: { id: eventId },
+      select: {
+        name: true,
+        createdById: true,
+        serviceTypeId: true,
+        dates: { select: { startTime: true, endTime: true } },
+        teamLeads: {
+          where: { category: teamOfRole(role) },
+          select: { userId: true },
+        },
+        organization: { select: { name: true, logoUrl: true } },
+      },
+    });
+
+    if (!event) return;
+
+    const directory = await loadStaffingDirectory(organizationId);
+
+    if (!directory) return;
+
+    const audience = roleAudience(directory, {
+      serviceTypeId: event.serviceTypeId,
+      createdById: event.createdById,
+      role,
+      coverId: event.teamLeads[0]?.userId ?? null,
+      inviterId,
+    });
+
+    const leftOut = new Set([replacement.userId, decliner?.userId]);
+
+    const recipients = [...audience.owners, ...audience.copied].filter(
+      ({ person }) => !leftOut.has(person.userId),
+    );
+
+    if (recipients.length === 0) return;
+
+    const { organization } = event;
+    const roleLabel = volunteerRoleConfig[role].label;
+    const replacementName = `${replacement.firstName} ${replacement.lastName}`;
+    const serviceTypeName = directory.serviceTypeNames.get(event.serviceTypeId);
+    const when = formatEventWhen(event.dates);
+    const label = kind === "invited" ? "replacement invited" : "replacement accepted";
+
+    const subject =
+      kind === "invited"
+        ? `${roleLabel} replacement invited: ${event.name}`
+        : `${roleLabel} filled: ${event.name}`;
+
+    await sendEmailBatches(
+      label,
+      recipients.map(({ person, reason }) => ({
+        from: organizationSender(organization.name),
+        to: person.email,
+        subject,
+        react: EventReplacementEmail({
+          kind,
+          recipientName: person.firstName,
+          eventName: event.name,
+          organizationName: organization.name,
+          logoUrl: organization.logoUrl,
+          roleLabel,
+          replacementName,
+          replacementFirstName: replacement.firstName,
+          declinedByName: decliner?.name ?? null,
+          eventDate: when?.date ?? null,
+          eventTime: when?.time ?? null,
+          viewLink: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/organizations/${organizationId}/events/${eventId}`,
+          footer: reasonLine(reason, organization.name, role, serviceTypeName),
+        }),
+      })),
+    );
+
+    const happened =
+      kind === "invited"
+        ? `${decliner?.name ?? "Somebody"} declined. Smart Scheduling invited ${replacementName} in their place.`
+        : `${replacementName} accepted the invitation Smart Scheduling sent.`;
+
+    await sendPushNotices(
+      label,
+      recipients.map(({ person }) => ({
+        email: person.email,
+        title: subject,
+        subtitle: organization.name,
+        body: [happened, formatEventShort(event.dates)].filter(Boolean).join("\n"),
+        data: { type: "event", organizationId, eventId },
+      })),
+    );
+  } catch (err) {
+    console.error(`Failed to tell the team about a replacement on event ${eventId}`, err);
   }
 }

@@ -64,7 +64,7 @@ import { organizationSender } from "@/lib/email/organization";
 import { sendEmailBatches } from "@/lib/email/send";
 import { assignmentPush } from "@/lib/push/notices";
 import { sendPushNotices } from "@/lib/push/send";
-import { notifyDeclineShortage } from "@/lib/notifications/declines";
+import { notifyDeclineShortage, notifyReplacement } from "@/lib/notifications/declines";
 import {
   notifyCoverChanges,
   notifyEventCovers,
@@ -824,6 +824,26 @@ export const acceptEventInvitation = async (
 
     await syncEventNotifications(eventId, touch);
 
+    // Smart Scheduling's pick, not anybody's: whoever runs the team hears the
+    // spot it offered is taken.
+    if (event.autoAssigned) {
+      after(() =>
+        notifyReplacement({
+          kind: "accepted",
+          organizationId,
+          eventId,
+          role: event.role,
+          inviterId: event.assignedById,
+          replacement: {
+            userId: user.id,
+            firstName: user.firstName,
+            lastName: user.lastName,
+          },
+          decliner: null,
+        }),
+      );
+    }
+
     return { success: true };
 
   } catch {
@@ -1070,6 +1090,20 @@ export const declineEventInvitation = async (
               invitedByName: null,
             }),
           ]),
+        );
+
+        // Whoever runs the team hears what Smart Scheduling did with the spot,
+        // though nobody has to act on it.
+        after(() =>
+          notifyReplacement({
+            kind: "invited",
+            organizationId,
+            eventId,
+            role: assignment.role,
+            inviterId: assignment.assignedById,
+            replacement,
+            decliner: { userId: user.id, name: declinerName },
+          }),
         );
       } else if (outcome.status === "NO_QUALIFIED_MEMBERS") {
         await logActivity({
