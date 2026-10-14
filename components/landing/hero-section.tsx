@@ -3,6 +3,7 @@ import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { ArrowRight, Sparkles } from "lucide-react"
 import { AppBadges } from "@/components/landing/app-badges"
+import { HeroHighlights, HeroHighlightsRail } from "@/components/landing/hero-highlights"
 import eventPage from "@/public/landing/event-page.png"
 
 export function HeroSection() {
@@ -27,7 +28,7 @@ export function HeroSection() {
           <h1 className="text-4xl font-bold tracking-tight sm:text-6xl lg:text-7xl text-balance leading-[1.1]">
             Your worship team, scheduled.
             <span className="block bg-gradient-to-r from-primary via-primary to-primary/70 bg-clip-text text-transparent">
-              Without the group texts.
+              Without the hassle.
             </span>
           </h1>
 
@@ -68,13 +69,15 @@ export function HeroSection() {
           <div className="overflow-hidden rounded-xl border border-border bg-card shadow-2xl shadow-primary/10 [mask-image:linear-gradient(to_bottom,black_70%,transparent)] md:rounded-2xl">
             <Image
               src={eventPage}
-              alt="An Aeghin event page for Communion Sunday, showing the date, rehearsal, Smart Scheduling auto-fill, and the band roster"
+              alt="An Aeghin event page for Communion Sunday, with the church's sidebar, a five-song setlist, the team chat, Smart Scheduling auto-fill, and the team roster"
               placeholder="blur"
               sizes="(min-width: 1024px) 1024px, 100vw"
               className="h-auto w-full"
             />
           </div>
+          <HeroHighlights />
         </div>
+        <HeroHighlightsRail />
       </div>
     </section>
   )
