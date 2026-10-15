@@ -78,7 +78,7 @@ export const GET = route<Params>("GET .../invitations", async (_req, { params })
 /**
  * POST /api/mobile/v1/organizations/[orgId]/invitations
  *
- * Invites one person by email: `{ email, phoneNumber, volunteerRoles }`.
+ * Invites one person by email: `{ email, volunteerRoles }`.
  *
  * The organization comes from the path, so a caller cannot invite into
  * somebody else's organization by editing the payload. The action is the
