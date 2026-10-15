@@ -234,6 +234,8 @@ export type SongKeyEntry = {
     defaultKeyQuality: KeyQuality
     spotifyUrl: string | null
     youtubeUrl: string | null
+    /** The library song's themes, for My keys' search and Theme filter. */
+    themes: string[]
   } | null
 }
 

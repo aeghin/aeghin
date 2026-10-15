@@ -34,11 +34,13 @@ type SongKey = {
     keyQuality: string;
     notes: string | null;
     updatedAt: string;
-    /** The library's own key, for the "library Bb" line under a differing entry. */
+    /** The library's own key, for the key dialog's "The library has it in Bb". */
     libraryPitch: string | null;
     libraryKeyQuality: string | null;
     spotifyUrl: string | null;
     youtubeUrl: string | null;
+    /** The library song's themes, for My keys' search and Theme filter. Empty once the song is gone. */
+    themes: string[];
 };
 
 type Params = { orgId: string };
@@ -75,6 +77,7 @@ export const GET = route<Params>("GET .../song-keys", async (_req, { params }) =
         libraryKeyQuality: row.song?.defaultKeyQuality ?? null,
         spotifyUrl: row.song?.spotifyUrl ?? null,
         youtubeUrl: row.song?.youtubeUrl ?? null,
+        themes: row.song?.themes ?? [],
     }));
 
     return json({ songKeys });

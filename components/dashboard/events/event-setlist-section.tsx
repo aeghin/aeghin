@@ -8,14 +8,14 @@ import { formatKey } from "@/lib/constants/key";
 import { InvitationStatus } from "@/generated/prisma/enums";
 import { volunteerRoleConfig } from "@/lib/config/roles";
 import { SongVocalistAssign } from "./song-vocalist-assign";
-import { SongKeySaveButton } from "./song-key-save-button";
+import { SongKeyCard } from "./song-key-card";
 import type { EventDetails, SetlistSong, SongKeyEntry } from "@/lib/types";
 
 interface EventSetlistSectionProps {
   event: EventDetails
   orgId: string
   canManage: boolean
-  /** The caller sings on this event, so each row offers a one-tap save. */
+  /** The caller sings on this event, so each row gets a ⋮ with its key card. */
   canSaveKeys: boolean
   myKeys: SongKeyEntry[]
 }
@@ -51,7 +51,7 @@ export function EventSetlistSection({
     myKeys.flatMap((k) =>
       k.songId === null
         ? []
-        : [[k.songId, { pitch: k.pitch, keyQuality: k.keyQuality }] as const],
+        : [[k.songId, { pitch: k.pitch, keyQuality: k.keyQuality, notes: k.notes }] as const],
     ),
   );
 
@@ -127,28 +127,38 @@ export function EventSetlistSection({
                   (song.attachments && song.attachments.length > 0),
               );
               // An empty people cell still costs a gap, so skip it outright.
-              const showPeople = canManage || canSaveKeys || assigned.length > 0;
+              const showPeople = canManage || assigned.length > 0;
 
               return (
                 // Mobile: two grid rows — the title owns the first, every control
-                // sits on the second. From sm up the inner wrapper becomes
-                // `display: contents` and its children rejoin the flex row, so
-                // the desktop layout is byte-for-byte what it was.
+                // sits on the second, and a singer's ⋮ gets a column of its own.
+                // From sm up the inner wrapper becomes `display: contents` and
+                // its children rejoin the flex row.
                 <div
                   key={song.id}
-                  className="group grid grid-cols-[1.5rem_1fr] items-center gap-x-3 gap-y-2 rounded-lg px-3 py-2.5 transition-colors hover:bg-muted/50 sm:flex sm:gap-3"
+                  className={cn(
+                    "group grid items-center gap-x-3 gap-y-2 rounded-lg px-3 py-2.5 transition-colors hover:bg-muted/50 sm:flex sm:gap-3",
+                    canSaveKeys ? "grid-cols-[1.5rem_1fr_auto]" : "grid-cols-[1.5rem_1fr]",
+                  )}
                 >
                   <span className="col-start-1 row-start-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-muted text-[11px] font-bold text-muted-foreground">
                     {idx + 1}
                   </span>
 
-                  <div className="col-start-2 row-start-1 min-w-0 max-sm:pr-20">
-                    <p className="text-sm font-medium leading-tight truncate">
+                  {/* On mobile the key sits at the end of the title line and the
+                      tempo at the end of the artist line, as on the phone. */}
+                  <div className="col-start-2 row-start-1 min-w-0">
+                    <p className="text-sm font-medium leading-tight truncate max-sm:pr-12">
                       {song.title}
                     </p>
-                    <p className="text-xs text-muted-foreground truncate">
-                      {song.artist}
-                    </p>
+                    <div className="flex items-baseline gap-2">
+                      <p className="min-w-0 flex-1 text-xs text-muted-foreground truncate">
+                        {song.artist}
+                      </p>
+                      <span className="shrink-0 font-mono text-xs text-muted-foreground sm:hidden">
+                        {song.bpm} bpm · {song.timeSignature}
+                      </span>
+                    </div>
                   </div>
 
                   <div className="col-start-2 row-start-2 flex flex-wrap items-center justify-end gap-x-3 gap-y-2 sm:contents">
@@ -210,36 +220,38 @@ export function EventSetlistSection({
                           canManage={canManage}
                           serviceColor={event.serviceType.color}
                         />
-                        {canSaveKeys && (
-                          <SongKeySaveButton
-                            organizationId={orgId}
-                            songId={song.songId}
-                            title={song.title}
-                            artist={song.artist}
-                            pitch={song.pitch}
-                            keyQuality={song.keyQuality}
-                            savedKey={myKeyBySongId.get(song.songId) ?? null}
-                          />
-                        )}
                       </div>
                     )}
                   </div>
 
                   {/* Last in the DOM for the desktop row, but placed back up on
                       the title line on mobile. */}
-                  <div className="col-start-2 row-start-1 flex shrink-0 items-center gap-2 justify-self-end">
+                  <div className="col-start-2 row-start-1 flex shrink-0 items-center gap-2 justify-self-end max-sm:self-start">
                     <Badge
                       variant="outline"
                       className="text-xs font-mono px-2 py-0"
                     >
                       {formatKey(song.pitch, song.keyQuality)}
-                      {/* Mobile folds bpm into the chip; sm+ keeps its own column. */}
-                      <span className="text-muted-foreground sm:hidden">· {song.bpm}</span>
                     </Badge>
-                    <span className="hidden text-[13px] text-muted-foreground font-mono w-16 text-right sm:inline">
-                      {song.bpm} bpm
+                    <span className="hidden text-[13px] text-muted-foreground font-mono w-28 text-right sm:inline">
+                      {song.bpm} bpm · {song.timeSignature}
                     </span>
                   </div>
+
+                  {canSaveKeys && (
+                    <div className="col-start-3 row-start-1 flex shrink-0 items-center">
+                      <SongKeyCard
+                        organizationId={orgId}
+                        songId={song.songId}
+                        title={song.title}
+                        artist={song.artist}
+                        pitch={song.pitch}
+                        keyQuality={song.keyQuality}
+                        savedKey={myKeyBySongId.get(song.songId) ?? null}
+                        serviceColor={serviceColor}
+                      />
+                    </div>
+                  )}
                 </div>
               );
             })}

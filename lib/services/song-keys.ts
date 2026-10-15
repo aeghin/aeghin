@@ -47,6 +47,7 @@ export const getUserSongKeys = async (
           defaultKeyQuality: true,
           spotifyUrl: true,
           youtubeUrl: true,
+          themes: true,
         },
       },
     },
