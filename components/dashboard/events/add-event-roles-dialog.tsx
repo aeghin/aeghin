@@ -32,8 +32,6 @@ interface AddEventRolesDialogProps {
   eventId: string;
   /** Roles already on the event — shown as locked in */
   existingRoles: VolunteerRole[];
-  /** How many org members hold each role, for the "N available" hint */
-  memberCountByRole: Record<string, number>;
   serviceColor: string;
   className?: string;
 }
@@ -42,7 +40,6 @@ export function AddEventRolesDialog({
   organizationId,
   eventId,
   existingRoles,
-  memberCountByRole,
   serviceColor,
   className,
 }: AddEventRolesDialogProps) {
@@ -111,7 +108,6 @@ export function AddEventRolesDialog({
           {volunteerRoleEntries.map(([role, config]) => {
             const alreadyOnEvent = existing.has(role);
             const isSelected = selectedSet.has(role);
-            const availableCount = memberCountByRole[role] || 0;
 
             return (
               <button
@@ -139,11 +135,13 @@ export function AddEventRolesDialog({
                 <span className="text-xl">{config.icon}</span>
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-medium">{config.label}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {alreadyOnEvent
-                      ? "Already on this event"
-                      : `${availableCount} available`}
-                  </p>
+                  {/* Only picks roles: who can fill one is the invite
+                      dialog's question, asked with the availability check. */}
+                  {alreadyOnEvent && (
+                    <p className="text-xs text-muted-foreground">
+                      Already on this event
+                    </p>
+                  )}
                 </div>
                 <div
                   className={cn(

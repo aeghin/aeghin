@@ -37,7 +37,7 @@ import {
 import { EventVolunteerRowMenu } from "./event-volunteer-row-menu";
 import { EmailTeamDialog } from "./email-team-dialog";
 import { AddEventRolesDialog } from "./add-event-roles-dialog";
-import { InviteToEventDialog, type RoleHolder } from "./invite-to-event-dialog";
+import { InviteToEventDialog, type EventPlace } from "./invite-to-event-dialog";
 import { EventRoleRemoveButton } from "./event-role-remove-button";
 import { roleStanding } from "@/lib/role-spots";
 import { EventSmartSchedulingToggle } from "./event-smart-scheduling-toggle";
@@ -68,8 +68,8 @@ interface EventAssignmentsCardProps {
   canUpgrade: boolean;
   /**
    * Who handles each team on this event — whoever covers it here, else the
-   * service type's lead. Named in the invite dialog when a second invite is
-   * about to go into one of its roles. Empty for members.
+   * service type's lead. Named in the invite dialog, over the member list, so
+   * nobody staffs a team twice. Empty for members.
    */
   teamLeads: Partial<Record<Team, EventTeamLead>>;
 }
@@ -136,35 +136,21 @@ export function EventAssignmentsCard({
   ]);
 
   // One role per member (unique eventId+userId), so anyone still live on the
-  // event can't be invited into another role. A lapsed invite isn't live —
-  // it can't be accepted anymore, so re-inviting is what unsticks it.
-  const unavailableUserIds = event.assignments
-    .filter(
-      (a) =>
-        a.status === InvitationStatus.ACCEPTED ||
-        (a.status === InvitationStatus.PENDING && a.expiresAt > now),
-    )
-    .map((a) => a.userId);
-
-  // Who is already live on each role, for the invite dialog's warning.
-  const holdersFor = (role: VolunteerRole): RoleHolder[] =>
+  // event can't be invited into another role; the invite picker names the
+  // role they hold. A lapsed invite isn't live — it can't be accepted anymore,
+  // so re-inviting is what unsticks it.
+  const onEvent: Record<string, EventPlace> = Object.fromEntries(
     event.assignments
       .filter(
         (a) =>
-          a.role === role &&
-          (a.status === InvitationStatus.ACCEPTED ||
-            (a.status === InvitationStatus.PENDING && a.expiresAt > now)),
+          a.status === InvitationStatus.ACCEPTED ||
+          (a.status === InvitationStatus.PENDING && a.expiresAt > now),
       )
-      .map((a) => ({
-        name:
-          a.userId === currentUserId
-            ? "You"
-            : `${a.user.firstName} ${a.user.lastName}`,
-        confirmed: a.status === InvitationStatus.ACCEPTED,
-        invitedBy: a.assignedBy
-          ? `${a.assignedBy.firstName} ${a.assignedBy.lastName}`
-          : null,
-      }));
+      .map((a) => [
+        a.userId,
+        { role: a.role, confirmed: a.status === InvitationStatus.ACCEPTED },
+      ]),
+  );
 
   const leadFor = (role: VolunteerRole) => {
     const team = teamOfRole(role);
@@ -190,12 +176,9 @@ export function EventAssignmentsCard({
   const filledSpots = standings.reduce((sum, s) => sum + Math.min(s.accepted, s.needed), 0);
 
   const membersByRole: Record<string, TeamMember[]> = {};
-  const memberCountByRole: Record<string, number> = {};
 
   for (const role of ROLE_ORDER) {
-    const eligible = members.filter((m) => m.volunteerRoles.includes(role));
-    membersByRole[role] = eligible;
-    memberCountByRole[role] = eligible.length;
+    membersByRole[role] = members.filter((m) => m.volunteerRoles.includes(role));
   }
 
   // Times are stored as wall-clock with Z, so the day key comes off the ISO string
@@ -313,7 +296,6 @@ export function EventAssignmentsCard({
             organizationId={event.organizationId}
             eventId={event.id}
             existingRoles={[...rosterRoles]}
-            memberCountByRole={memberCountByRole}
             serviceColor={serviceColor}
             className={actionClass}
           />
@@ -400,10 +382,9 @@ export function EventAssignmentsCard({
                                 eventId={event.id}
                                 role={group.role}
                                 members={membersByRole[group.role] || []}
-                                unavailableUserIds={unavailableUserIds}
+                                onEvent={onEvent}
                                 eventDates={eventDates}
                                 serviceColor={event.serviceType.color}
-                                holders={holdersFor(group.role)}
                                 teamLead={leadFor(group.role)}
                                 spots={{ needed, open }}
                               />
@@ -424,11 +405,10 @@ export function EventAssignmentsCard({
                             eventId={event.id}
                             role={group.role}
                             members={membersByRole[group.role] || []}
-                            unavailableUserIds={unavailableUserIds}
+                            onEvent={onEvent}
                             eventDates={eventDates}
                             variant="row"
                             serviceColor={event.serviceType.color}
-                            holders={holdersFor(group.role)}
                             teamLead={leadFor(group.role)}
                             spots={{ needed, open }}
                           />
@@ -548,12 +528,11 @@ export function EventAssignmentsCard({
                             eventId={event.id}
                             role={group.role}
                             members={membersByRole[group.role] || []}
-                            unavailableUserIds={unavailableUserIds}
+                            onEvent={onEvent}
                             eventDates={eventDates}
                             variant="row"
                             rowLabel={openLabel}
                             serviceColor={event.serviceType.color}
-                            holders={holdersFor(group.role)}
                             teamLead={leadFor(group.role)}
                             spots={{ needed, open }}
                           />

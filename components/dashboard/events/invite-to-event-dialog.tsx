@@ -59,13 +59,10 @@ export type InviteEventDate = {
   endTime: string;
 };
 
-/** Somebody already live on the role being invited into. */
-export type RoleHolder = {
-  name: string;
-  /** Confirmed, or still deciding. */
+/** A member's live place on the event: the role they hold, and whether they've said yes. */
+export type EventPlace = {
+  role: VolunteerRole;
   confirmed: boolean;
-  /** Who invited them, or null once that person has left. */
-  invitedBy: string | null;
 };
 
 interface InviteToEventDialogProps {
@@ -74,14 +71,15 @@ interface InviteToEventDialogProps {
   role: VolunteerRole;
   /** Org members who hold this volunteer role */
   members: InviteMember[];
-  /** Anyone still live on this event — one role per member, so they can't be re-invited */
-  unavailableUserIds: string[];
+  /**
+   * Anyone still live on this event, by user id — one role per member, so
+   * they can't be re-invited, and their row says which role they hold.
+   */
+  onEvent: Record<string, EventPlace>;
   eventDates: InviteEventDate[];
   /** Renders the trigger as a full row instead of a compact button */
   variant?: "row" | "compact";
   serviceColor: string;
-  /** Anybody already live on this role, so the dialog can say who is there. */
-  holders?: RoleHolder[];
   /**
    * How many the role needs and how many of those are open. Every invite is
    * somebody wanted there, so one past the open spots simply adds a spot.
@@ -90,8 +88,8 @@ interface InviteToEventDialogProps {
   /** The row trigger's line, for a role that's partly filled. */
   rowLabel?: string;
   /**
-   * Who handles the team on this event, named in that warning: its lead, or
-   * whoever covers it for this event only. Null when there's none, or it's you.
+   * Who handles the team on this event, named over the member list: its lead,
+   * or whoever covers it for this event only. Null when there's none, or it's you.
    */
   teamLead?: { name: string; team: string; cover: boolean } | null;
 }
@@ -119,11 +117,10 @@ export function InviteToEventDialog({
   eventId,
   role,
   members,
-  unavailableUserIds,
+  onEvent,
   eventDates,
   variant = "compact",
   serviceColor,
-  holders = [],
   teamLead = null,
   spots,
   rowLabel = "No one assigned yet",
@@ -147,7 +144,6 @@ export function InviteToEventDialog({
   const [isSending, startSending] = useTransition();
 
   const roleInfo = volunteerRoleConfig[role];
-  const unavailable = new Set(unavailableUserIds);
   const selectedSet = new Set(selected);
 
   const handleOpenChange = async (next: boolean) => {
@@ -232,17 +228,28 @@ export function InviteToEventDialog({
     });
   };
 
-  const query = search.trim().toLowerCase();
-  const filtered = query
-    ? members.filter(
-        (member) =>
-          `${member.user.firstName} ${member.user.lastName}`
-            .toLowerCase()
-            .includes(query) || member.user.email.toLowerCase().includes(query),
-      )
-    : members;
+  // Who can be picked, then who can with a warning, then who can't. Ticking
+  // never moves a card.
+  const rank = (member: InviteMember) =>
+    onEvent[member.userId] || blockouts[member.userId]
+      ? 2
+      : conflicts[member.userId]
+        ? 1
+        : 0;
 
-  const invitableCount = members.filter((m) => !unavailable.has(m.userId)).length;
+  const query = search.trim().toLowerCase();
+  const filtered = (
+    query
+      ? members.filter(
+          (member) =>
+            `${member.user.firstName} ${member.user.lastName}`
+              .toLowerCase()
+              .includes(query) || member.user.email.toLowerCase().includes(query),
+        )
+      : [...members]
+  ).sort((a, b) => rank(a) - rank(b));
+
+  const invitableCount = members.filter((m) => !onEvent[m.userId]).length;
 
   return (
     <>
@@ -337,32 +344,14 @@ export function InviteToEventDialog({
             </DialogDescription>
           </DialogHeader>
 
-          {holders.length > 0 && (
-            <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3 text-sm dark:border-amber-500/20 dark:bg-amber-500/5">
-              <p className="flex items-center gap-1.5 font-medium text-amber-800 dark:text-amber-300">
-                <TriangleAlert className="h-4 w-4 shrink-0" />
-                Already on this role
-              </p>
-              <ul className="mt-1.5 space-y-0.5 text-amber-900/90 dark:text-amber-200/90">
-                {holders.map((holder) => (
-                  <li key={holder.name}>
-                    <span className="font-medium">{holder.name}</span>
-                    {holder.confirmed
-                      ? " — confirmed"
-                      : holder.invitedBy
-                        ? ` — invited by ${holder.invitedBy}, waiting for an answer`
-                        : " — waiting for an answer"}
-                  </li>
-                ))}
-              </ul>
-              {teamLead && (
-                <p className="mt-1.5 text-xs text-amber-800/80 dark:text-amber-300/80">
-                  {teamLead.cover
-                    ? `${teamLead.name} is covering ${teamLead.team} for this event and is asked to fill its roles.`
-                    : `${teamLead.name} leads ${teamLead.team} and is asked to fill its roles.`}
-                </p>
-              )}
-            </div>
+          {/* Who is on the role already reads off the greyed cards below, so
+              only the team's lead is said up here. */}
+          {teamLead && (
+            <p className="text-xs text-muted-foreground">
+              {teamLead.cover
+                ? `${teamLead.name} is covering ${teamLead.team} for this event and is asked to fill its roles.`
+                : `${teamLead.name} leads ${teamLead.team} and is asked to fill its roles.`}
+            </p>
           )}
 
           {members.length > 5 && (
@@ -385,7 +374,8 @@ export function InviteToEventDialog({
           ) : filtered.length > 0 ? (
             <div className="grid max-h-[50vh] gap-3 overflow-y-auto pr-1 sm:grid-cols-2">
               {filtered.map((member) => {
-                const isOnEvent = unavailable.has(member.userId);
+                const place = onEvent[member.userId];
+                const isOnEvent = !!place;
                 const isSelected = selectedSet.has(member.userId);
                 const conflict = conflicts[member.userId];
                 const blockout = blockouts[member.userId];
@@ -440,9 +430,10 @@ export function InviteToEventDialog({
                         <p className="truncate text-xs text-muted-foreground">
                           {member.user.email}
                         </p>
-                        {isOnEvent ? (
+                        {place ? (
                           <p className="mt-0.5 text-xs text-muted-foreground">
-                            Already on this event
+                            {volunteerRoleConfig[place.role].label} ·{" "}
+                            {place.confirmed ? "confirmed" : "invited"}
                           </p>
                         ) : blockout ? (
                           <p className="mt-0.5 flex items-center gap-1 text-xs text-red-600 dark:text-red-400">
