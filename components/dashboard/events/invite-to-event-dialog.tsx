@@ -249,7 +249,10 @@ export function InviteToEventDialog({
       : [...members]
   ).sort((a, b) => rank(a) - rank(b));
 
-  const invitableCount = members.filter((m) => !onEvent[m.userId]).length;
+  // Who can still be ticked: a blockout has no override, so it isn't available.
+  const invitableCount = members.filter(
+    (m) => !onEvent[m.userId] && !blockouts[m.userId],
+  ).length;
 
   return (
     <>
