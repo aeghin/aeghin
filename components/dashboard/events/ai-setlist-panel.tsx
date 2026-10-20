@@ -3,10 +3,11 @@
 import { useEffect, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
-import { ArrowUp, Check, Music, Sparkles, Square } from "lucide-react";
+import { ArrowUp, Check, Globe, ListMusic, Music, Sparkles, Square } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { AgentSources, AgentStep } from "@/components/ai-chat/agent-steps";
 import { Markdown } from "@/components/ai-chat/markdown";
 import { cn } from "@/lib/utils";
 import { colorClasses } from "@/lib/config/service-types-config";
@@ -129,11 +130,19 @@ export function AiSetlistPanel({
                     switch (part.state) {
                       case "input-streaming":
                       case "input-available":
-                        return (
-                          <BuildingIndicator
+                        return isStreaming ? (
+                          <AgentStep
                             key={i}
-                            label="Building setlist…"
-                            accent={serviceColors.badgeText}
+                            icon={ListMusic}
+                            title="Building the setlist"
+                            status="running"
+                          />
+                        ) : (
+                          <AgentStep
+                            key={i}
+                            icon={ListMusic}
+                            title="Stopped before the setlist was built"
+                            status="error"
                           />
                         );
                       case "output-available":
@@ -147,35 +156,69 @@ export function AiSetlistPanel({
                         );
                       case "output-error":
                         return (
-                          <p key={i} className="text-xs text-destructive">
-                            Couldn&apos;t build that setlist. Try rephrasing.
-                          </p>
+                          <AgentStep
+                            key={i}
+                            icon={ListMusic}
+                            title="Couldn't build that setlist. Try rephrasing."
+                            status="error"
+                          />
                         );
                     }
                   }
 
                   if (part.type === "tool-web_search") {
+                    const query =
+                      typeof part.input?.query === "string"
+                        ? ` for “${part.input.query}”`
+                        : "";
+
                     switch (part.state) {
                       case "input-streaming":
                       case "input-available":
-                        return (
-                          <BuildingIndicator
+                        return isStreaming ? (
+                          <AgentStep
                             key={i}
-                            label="Searching the web…"
-                            accent={serviceColors.badgeText}
+                            icon={Globe}
+                            title={`Searching the web${query}`}
+                            status="running"
+                          />
+                        ) : (
+                          <AgentStep
+                            key={i}
+                            icon={Globe}
+                            title="Search stopped"
+                            status="error"
                           />
                         );
                       case "output-available":
-                        return (
-                          <p key={i} className="text-xs text-muted-foreground">
-                            Searched the web
-                            {typeof part.input?.query === "string"
-                              ? ` for “${part.input.query}”`
-                              : ""}
-                          </p>
+                        return part.output.length > 0 ? (
+                          <AgentStep
+                            key={i}
+                            icon={Globe}
+                            title={`Searched the web${query}`}
+                            description={`${part.output.length} ${
+                              part.output.length === 1 ? "result" : "results"
+                            }`}
+                          >
+                            <AgentSources sources={part.output} />
+                          </AgentStep>
+                        ) : (
+                          <AgentStep
+                            key={i}
+                            icon={Globe}
+                            title={`Searched the web${query}`}
+                            description="No results"
+                          />
                         );
                       case "output-error":
-                        return null;
+                        return (
+                          <AgentStep
+                            key={i}
+                            icon={Globe}
+                            title="Web search failed"
+                            status="error"
+                          />
+                        );
                     }
                   }
 
@@ -185,9 +228,7 @@ export function AiSetlistPanel({
             ))
           )}
 
-          {showBusy && (
-            <BuildingIndicator label="Thinking…" accent={serviceColors.badgeText} />
-          )}
+          {showBusy && <AgentStep icon={Sparkles} title="Thinking" status="running" />}
           {timedOut && (
             <p className="text-xs text-destructive">
               That timed out before finishing. Try again, or narrow the request.
@@ -349,15 +390,6 @@ function UserBubble({ text, solid }: { text: string; solid: string }) {
       >
         {text}
       </div>
-    </div>
-  );
-}
-
-function BuildingIndicator({ label, accent }: { label: string; accent: string }) {
-  return (
-    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-      <Sparkles className={cn("h-3.5 w-3.5 animate-pulse", accent)} />
-      {label}
     </div>
   );
 }

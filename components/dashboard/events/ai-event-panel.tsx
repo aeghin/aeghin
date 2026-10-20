@@ -12,13 +12,17 @@ import {
   Loader2,
   MapPin,
   Pencil,
+  RotateCcw,
   Sparkles,
   Square,
   TriangleAlert,
+  UserSearch,
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { Trace, TraceDescription, TraceLine, TraceTitle } from "@/components/ui/trace";
+import { AgentStep } from "@/components/ai-chat/agent-steps";
 import { Markdown } from "@/components/ai-chat/markdown";
 import { cn } from "@/lib/utils";
 import { getServiceColors } from "@/lib/config/service-types-config";
@@ -174,17 +178,56 @@ export function AiEventPanel({
                   switch (part.state) {
                     case "input-streaming":
                     case "input-available":
-                      return <Busy key={i} label="Checking who's available…" />;
+                      return isStreaming ? (
+                        <AgentStep
+                          key={i}
+                          icon={UserSearch}
+                          title="Checking who's available"
+                          status="running"
+                        />
+                      ) : (
+                        <AgentStep
+                          key={i}
+                          icon={UserSearch}
+                          title="Stopped while checking who's available"
+                          status="error"
+                        />
+                      );
                     case "output-available":
                       return (
-                        <p key={i} className="text-xs text-muted-foreground">
-                          Checked availability across{" "}
-                          {part.output.roles.length} role
-                          {part.output.roles.length === 1 ? "" : "s"}
-                        </p>
+                        <AgentStep
+                          key={i}
+                          icon={UserSearch}
+                          title="Checked who's available"
+                          description={`${part.output.roles.length} ${
+                            part.output.roles.length === 1 ? "role" : "roles"
+                          }`}
+                        >
+                          <Trace>
+                            {part.output.roles.map((r) => (
+                              <TraceLine key={r.role} className="text-xs">
+                                <TraceTitle>{volunteerRoleConfig[r.role].label}</TraceTitle>
+                                <TraceDescription>
+                                  {`${r.totalQualified} free${
+                                    r.excluded.length > 0
+                                      ? ` · ${r.excluded.length} unavailable`
+                                      : ""
+                                  }`}
+                                </TraceDescription>
+                              </TraceLine>
+                            ))}
+                          </Trace>
+                        </AgentStep>
                       );
                     case "output-error":
-                      return null;
+                      return (
+                        <AgentStep
+                          key={i}
+                          icon={UserSearch}
+                          title="Couldn't check who's available"
+                          status="error"
+                        />
+                      );
                   }
                 }
 
@@ -192,7 +235,21 @@ export function AiEventPanel({
                   switch (part.state) {
                     case "input-streaming":
                     case "input-available":
-                      return <Busy key={i} label="Building the draft…" />;
+                      return isStreaming ? (
+                        <AgentStep
+                          key={i}
+                          icon={CalendarDays}
+                          title="Building the draft"
+                          status="running"
+                        />
+                      ) : (
+                        <AgentStep
+                          key={i}
+                          icon={CalendarDays}
+                          title="Stopped before the draft was built"
+                          status="error"
+                        />
+                      );
                     case "output-available":
                       return part.output.ok ? (
                         <DraftCard
@@ -202,15 +259,20 @@ export function AiEventPanel({
                           onRefine={onRefine}
                         />
                       ) : (
-                        <p key={i} className="text-xs text-muted-foreground">
-                          Adjusting: {part.output.error}
-                        </p>
+                        // The server turned the draft down; the agent fixes it
+                        // and proposes again, so this is a step, not a failure.
+                        <AgentStep key={i} icon={RotateCcw} title="Adjusting the draft">
+                          {part.output.error}
+                        </AgentStep>
                       );
                     case "output-error":
                       return (
-                        <p key={i} className="text-xs text-destructive">
-                          Couldn&apos;t build that draft. Try rephrasing.
-                        </p>
+                        <AgentStep
+                          key={i}
+                          icon={CalendarDays}
+                          title="Couldn't build that draft. Try rephrasing."
+                          status="error"
+                        />
                       );
                   }
                 }
@@ -220,7 +282,7 @@ export function AiEventPanel({
             </div>
           ))}
 
-          {showBusy && <Busy label="Thinking…" />}
+          {showBusy && <AgentStep icon={Sparkles} title="Thinking" status="running" />}
           {timedOut && (
             <p className="text-xs text-destructive">
               That timed out before finishing. Try again, or narrow the request.
@@ -587,15 +649,6 @@ function DraftCard({
           )}
         </Button>
       )}
-    </div>
-  );
-}
-
-function Busy({ label }: { label: string }) {
-  return (
-    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-      <Sparkles className="h-3.5 w-3.5 animate-pulse text-primary" />
-      {label}
     </div>
   );
 }
