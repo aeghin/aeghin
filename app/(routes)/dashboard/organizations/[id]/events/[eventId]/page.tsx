@@ -62,13 +62,25 @@ export default async function EventDetailPage({
   const canManage = membership.role === OrgRole.ADMIN || membership.role === OrgRole.OWNER;
 
   
-  const hasAssignment = event.assignments.some(
+  const ownSpot = event.assignments.find(
     (e) => e.userId === user.id && e.status === InvitationStatus.ACCEPTED,
   );
+  const hasAssignment = !!ownSpot;
 
   const hasAccess = canManage || hasAssignment;
 
   if (!hasAccess) notFound();
+
+  // The church's clock, which event times are written in: what "today" is,
+  // which blocks are over, and whether it has started.
+  const now = floatingNow(timeZone);
+
+  // "Can't make it" sits in the header's ⋮ until the event starts; the action
+  // holds to the same rule. Only a manager can still open it afterwards.
+  const withdraw =
+    ownSpot && !event.dates.some((date) => date.startTime.getTime() <= now.getTime())
+      ? { roleLabel: volunteerRoleConfig[ownSpot.role].label, stays: canManage }
+      : undefined;
 
   // Prev/next follow the same rule as the guard above, so a step never 404s.
   const adjacent = await getAdjacentEvents(eventId, orgId, user.id, canManage);
@@ -180,9 +192,8 @@ export default async function EventDetailPage({
             serviceType={event.serviceType}
             canManage={canManage}
             teamLeads={editTeamLeads}
-            // The church's clock, which event times are written in: what
-            // "today" is and which blocks are over.
-            now={floatingNow(timeZone)}
+            withdraw={withdraw}
+            now={now}
             pager={
               <EventPager
                 organizationId={orgId}
@@ -243,6 +254,7 @@ export default async function EventDetailPage({
                 event={event}
                 currentUserId={user.id}
                 canManage={canManage}
+                canWithdraw={!!withdraw}
                 members={members}
                 emailAllowance={emailAllowance}
                 smartSchedulingAvailable={smartSchedulingAvailable}

@@ -386,12 +386,15 @@ model EventAssignment {
   // Claims for what the cron sends on its own schedule, so each goes out once
   // however many ticks race for it. `chatPushedAt` is the last chat push that
   // rang, and silences the next for a minute; `reminderSentAt` is the day-before reminder, cleared
-  // when the event moves; `midwayNudgedAt` and `nudgedAt` are the halfway and
-  // day-before "still need your answer", both cleared on a re-invite.
-  chatPushedAt   DateTime?
-  reminderSentAt DateTime?
-  midwayNudgedAt DateTime?
-  nudgedAt       DateTime?
+  // when the event moves; `rehearsalReminderSentAt` is the day before the
+  // rehearsal, cleared when the rehearsal moves; `midwayNudgedAt` and
+  // `nudgedAt` are the halfway and day-before "still need your answer". A
+  // re-invite clears all four.
+  chatPushedAt            DateTime?
+  reminderSentAt          DateTime?
+  rehearsalReminderSentAt DateTime?
+  midwayNudgedAt          DateTime?
+  nudgedAt                DateTime?
 
   // When the sweep turned this EXPIRED. Its push is held for the manager's
   // morning when that was overnight, so the cron reads the lapse back from here.

@@ -6,15 +6,18 @@ import prisma from "@/lib/prisma";
 import {
     acceptEventInvitation,
     declineEventInvitation,
+    withdrawFromEvent,
 } from "@/lib/actions/event";
 
 
 /**
  * Wire contract for answering an invitation from the phone. The Expo app posts
  * `{ action }` and reads back the status the assignment now holds — see
- * `useRespondToInvitation` in `src/hooks/use-events.ts`.
+ * `useRespondToInvitation` and `useWithdrawFromEvent` in
+ * `src/hooks/use-events.ts`. `withdraw` is "Can't make it", for an invitation
+ * already accepted.
  */
-type RespondAction = "accept" | "decline";
+type RespondAction = "accept" | "decline" | "withdraw";
 
 type RespondBody = {
     action: RespondAction;
@@ -24,7 +27,7 @@ type RespondBody = {
 const NO_STORE = { "Cache-Control": "private, no-store" };
 
 const isRespondAction = (value: unknown): value is RespondAction =>
-    value === "accept" || value === "decline";
+    value === "accept" || value === "decline" || value === "withdraw";
 
 /**
  * Route-handler-safe cache expiry, for the actions called below.
@@ -41,7 +44,8 @@ const expireTag = (tag: string) => {
 /**
  * POST /api/mobile/v1/organizations/[orgId]/events/[eventId]/respond
  *
- * Accepts or declines the caller's own invitation to one event.
+ * Accepts or declines the caller's own invitation to one event, or takes them
+ * off one they had accepted.
  *
  * The work itself belongs to the server actions the dashboard's pending cards
  * already call, and this route calls those rather than repeating them: a
@@ -104,7 +108,7 @@ export async function POST(
 
         if (!isRespondAction(action)) {
             return NextResponse.json(
-                { error: "Expected an action of \"accept\" or \"decline\"." },
+                { error: "Expected an action of \"accept\", \"decline\" or \"withdraw\"." },
                 { status: 400, headers: NO_STORE },
             );
         };
@@ -112,13 +116,16 @@ export async function POST(
         const result =
             action === "accept"
                 ? await acceptEventInvitation(orgId, eventId, expireTag)
-                : await declineEventInvitation(orgId, eventId, expireTag);
+                : action === "decline"
+                    ? await declineEventInvitation(orgId, eventId, expireTag)
+                    : await withdrawFromEvent(orgId, eventId, expireTag);
 
-        // Both actions answer a miss the same way, and every cause of one is a
+        // The actions answer a miss the same way, and every cause of one is a
         // conflict rather than a fault: the invitation expired, somebody
-        // already answered it, or it was withdrawn. The app shows the message.
+        // already answered it, it was withdrawn, or the event has started.
+        // The app shows the message.
         if (!result.success) {
-            // Both actions turn a thrown error into this same shape, so without
+            // The actions turn a thrown error into this same shape, so without
             // a line here a real fault inside one leaves no trace at all — only
             // a 409 the app reports as a conflict it isn't.
             console.error(

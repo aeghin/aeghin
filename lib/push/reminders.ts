@@ -2,9 +2,11 @@ import "server-only";
 
 import prisma from "@/lib/prisma";
 import { InvitationStatus } from "@/generated/prisma/enums";
+import EventRehearsalReminderEmail from "@/components/email/event-rehearsal-reminder-template";
 import EventReminderEmail from "@/components/email/event-reminder-template";
 import { volunteerRoleConfig } from "@/lib/config/roles";
 import { formatEventShort, formatEventWhen, formatRehearsal } from "@/lib/email/event-when";
+import { dayKey } from "@/lib/event-format";
 import { organizationSender } from "@/lib/email/organization";
 import { sendEmailBatches } from "@/lib/email/send";
 import type { SendCount } from "@/lib/notifications/unanswered";
@@ -199,6 +201,160 @@ export async function sendDayBeforeReminders(now: Date): Promise<SendCount> {
 
       await sendEmailBatches("day-before reminder", emails);
       await sendPushNotices("day-before reminder", notices);
+
+      count.emails += emails.length;
+      count.pushes += notices.length;
+    }
+
+    if (rows.length < REMINDER_PAGE) return count;
+
+    after = rows[rows.length - 1].id;
+  }
+}
+
+/**
+ * Reminds everybody who accepted an event, the day before its rehearsal:
+ * "Tomorrow: rehearsal for Sunday Service".
+ *
+ * Planned and claimed exactly as the day-before reminder is, on the
+ * rehearsal's time of day instead of the event's: by email and push together,
+ * inside waking hours on each person's clock, the email alone for somebody
+ * whose phone has never reported a zone. Claimed on `rehearsalReminderSentAt`,
+ * which moving the rehearsal clears.
+ *
+ * Only for a rehearsal on an earlier day than the event. One on the event's
+ * own day is still ahead when "Tomorrow: Sunday Service" goes, and that
+ * reminder already lists it, so this would be the same news twice.
+ *
+ * Returns how many of each were sent.
+ */
+export async function sendRehearsalReminders(now: Date): Promise<SendCount> {
+  const count: SendCount = { pushes: 0, emails: 0 };
+  let after: string | undefined;
+
+  for (;;) {
+    const rows = await prisma.eventAssignment.findMany({
+      where: {
+        ...(after ? { id: { gt: after } } : {}),
+        status: InvitationStatus.ACCEPTED,
+        rehearsalReminderSentAt: null,
+        event: {
+          rehearsalStart: {
+            gt: now,
+            lte: new Date(now.getTime() + REMINDER_HORIZON_MS),
+          },
+        },
+      },
+      select: {
+        id: true,
+        role: true,
+        user: { select: { email: true, firstName: true } },
+        event: {
+          select: {
+            id: true,
+            name: true,
+            location: true,
+            organizationId: true,
+            rehearsalStart: true,
+            rehearsalEnd: true,
+            dates: { select: { startTime: true, endTime: true } },
+            organization: { select: { name: true, logoUrl: true, timeZone: true } },
+          },
+        },
+      },
+      orderBy: { id: "asc" },
+      take: REMINDER_PAGE,
+    });
+
+    if (rows.length === 0) return count;
+
+    const zones = await zonesByEmail(rows.map((row) => row.user.email));
+
+    const due = rows.flatMap((row) => {
+      const { rehearsalStart, dates } = row.event;
+
+      if (!rehearsalStart || dates.length === 0) return [];
+      if (dayKey(rehearsalStart) >= dayKey(firstStartOf(dates))) return [];
+
+      const phoneZone = zones.get(row.user.email);
+      const clock = phoneZone ?? zoneOrFallback(row.event.organization.timeZone);
+
+      try {
+        const sendAt = inZone(wakingSameDay(daysBefore(rehearsalStart, 1)), clock);
+
+        return isDue(sendAt, now, clock) ? [{ row, phoneZone, rehearsalStart }] : [];
+      } catch {
+        // A zone this runtime can't resolve: no reminder, rather than no tick.
+        return [];
+      }
+    });
+
+    if (due.length > 0) {
+      const claimed = await prisma.eventAssignment.updateManyAndReturn({
+        where: {
+          id: { in: due.map(({ row }) => row.id) },
+          status: InvitationStatus.ACCEPTED,
+          rehearsalReminderSentAt: null,
+        },
+        data: { rehearsalReminderSentAt: now },
+        select: { id: true },
+      });
+
+      const claimedIds = new Set(claimed.map((row) => row.id));
+
+      const sending = due
+        .filter(({ row }) => claimedIds.has(row.id))
+        .map((item) => ({
+          ...item,
+          rehearsal: formatRehearsal(item.rehearsalStart, item.row.event.rehearsalEnd) ?? "",
+        }));
+
+      const emails = sending.map(({ row: { event, role, user }, rehearsal }) => {
+        const when = formatEventWhen(event.dates);
+
+        return {
+          from: organizationSender(event.organization.name),
+          to: user.email,
+          subject: `Tomorrow: rehearsal for ${event.name}`,
+          react: EventRehearsalReminderEmail({
+            recipientName: user.firstName,
+            eventName: event.name,
+            organizationName: event.organization.name,
+            logoUrl: event.organization.logoUrl,
+            roleLabel: volunteerRoleConfig[role].label,
+            rehearsal,
+            eventDate: when?.date ?? null,
+            eventTime: when?.time ?? null,
+            location: event.location,
+            viewLink: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/organizations/${event.organizationId}/events/${event.id}`,
+          }),
+        };
+      });
+
+      const notices: PushNotice[] = sending
+        .filter(({ phoneZone }) => phoneZone)
+        .map(({ row: { event, role, user }, rehearsal }) => ({
+          email: user.email,
+          title: `Tomorrow: rehearsal for ${event.name}`,
+          subtitle: event.organization.name,
+          body: [
+            `Rehearsal ${rehearsal}`,
+            [volunteerRoleConfig[role].label, formatEventShort(event.dates)]
+              .filter(Boolean)
+              .join(" · "),
+            event.location,
+          ]
+            .filter(Boolean)
+            .join("\n"),
+          data: {
+            type: "event",
+            organizationId: event.organizationId,
+            eventId: event.id,
+          },
+        }));
+
+      await sendEmailBatches("rehearsal reminder", emails);
+      await sendPushNotices("rehearsal reminder", notices);
 
       count.emails += emails.length;
       count.pushes += notices.length;

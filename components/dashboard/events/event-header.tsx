@@ -51,6 +51,8 @@ interface EventHeaderProps {
     choices: TeamLeadChoices
     picks: TeamLeadPicks
   }
+  /** The viewer's own accepted spot, until the event starts: "Can't Make It" in the ⋮. */
+  withdraw?: { roleLabel: string; stays: boolean }
   /** The organization's clock, floating like event times. */
   now: Date
   /** The previous/next pager, drawn as the card's footer. */
@@ -68,10 +70,12 @@ export function EventHeader({
   serviceType,
   canManage,
   teamLeads,
+  withdraw,
   now,
   pager,
 }: EventHeaderProps) {
   const serviceColors = getServiceColors(serviceType.color);
+  const menu = canManage || !!withdraw;
 
   // The day it's on, as the Upcoming card picks it: the first block not over
   // yet, or the first block once the whole event has been.
@@ -110,7 +114,7 @@ export function EventHeader({
       </div>
 
       {
-        canManage &&
+        menu &&
         <EventDeleteMenu
         eventId={event.id}
         organizationId={serviceType.organizationId}
@@ -131,6 +135,8 @@ export function EventHeader({
             })),
         }}
         teamLeads={teamLeads}
+        canManage={canManage}
+        withdraw={withdraw}
         />
       }
 
@@ -139,7 +145,7 @@ export function EventHeader({
           "flex flex-col gap-4 lg:flex-row lg:items-start lg:gap-8",
           // The ⋮ menu is absolutely placed at right-4: beside the title on a
           // phone, above the tiles once they move up beside it.
-          canManage && "lg:pr-10",
+          menu && "lg:pr-10",
         )}
       >
         <div className="min-w-0 space-y-3.5 lg:flex-1">
@@ -159,7 +165,7 @@ export function EventHeader({
               className={cn("w-[3px] self-stretch rounded-full", serviceColors.solid)}
             />
 
-            <div className={cn("min-w-0 flex-1 space-y-2", canManage && "pr-10 lg:pr-0")}>
+            <div className={cn("min-w-0 flex-1 space-y-2", menu && "pr-10 lg:pr-0")}>
               <h1 className="text-xl font-bold tracking-tight text-balance sm:text-2xl">
                 {event.name}
               </h1>

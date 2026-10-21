@@ -89,6 +89,7 @@ import { Resend } from "resend";
 import { revalidatePath, updateTag } from "next/cache";
 
 import { currentUser } from "@/lib/services/user";
+import { floatingNow, zoneOrFallback } from "@/lib/time-zone";
 
 import { after } from "next/server";
 
@@ -854,6 +855,326 @@ export const acceptEventInvitation = async (
 
 }
 
+/** What both answers read off the assignment before changing it. */
+const OPENED_SPOT_SELECT = {
+  id: true,
+  role: true,
+  assignedById: true,
+  expiresAt: true,
+  event: {
+    select: {
+      name: true,
+      smartSchedulingEnabled: true,
+      createdById: true,
+      dates: { select: { startTime: true, endTime: true } },
+    },
+  },
+  // Entitlements are read here, before the answer commits, so nothing
+  // after it can fail on a plan lookup.
+  organization: { select: { name: true, logoUrl: true, entitlements: true, timeZone: true } },
+} satisfies Prisma.EventAssignmentSelect;
+
+/** What the decline and the back-out read before they commit, and hand on. */
+type OpenedSpot = Prisma.EventAssignmentGetPayload<{ select: typeof OPENED_SPOT_SELECT }>;
+
+/**
+ * Said under each activity line a back-out writes. Those lines read "declined",
+ * the same as for an invitation turned down, because the activity types are
+ * shared with installed apps that can't render a new one.
+ */
+const BACKED_OUT_NOTE = "Accepted earlier, then couldn't make it";
+
+/**
+ * Everything a spot coming open sets off, the same whether somebody declined
+ * their invitation or backed out after accepting: Smart Scheduling looks for
+ * a replacement, whoever runs the role hears what happened, the activity feed
+ * says so, and the bell is reconciled.
+ *
+ * Runs after the status change has committed, so the caller's answer stands
+ * whatever happens here. Not exported: a "use server" module may only export
+ * async functions meant to be called from the client.
+ */
+const refillOpenedSpot = async ({
+  organizationId,
+  eventId,
+  user,
+  assignment,
+  backedOut,
+  touch,
+}: {
+  organizationId: string;
+  eventId: string;
+  user: { id: string; firstName: string; lastName: string };
+  assignment: OpenedSpot;
+  /** They had accepted. Changes the wording, never who hears. */
+  backedOut: boolean;
+  touch: TagInvalidator;
+}): Promise<void> => {
+
+  const declinerName = `${user.firstName} ${user.lastName}`;
+  const roleLabel = volunteerRoleConfig[assignment.role].label;
+  const eventName = assignment.event.name;
+  const note = backedOut ? BACKED_OUT_NOTE : undefined;
+
+  // Every invite is somebody wanted there, so a decline leaves its spot open
+  // even when somebody else on the role accepted. Only a spot already covered
+  // — an invite sent past the role's count — has nothing to fill and nobody
+  // to tell.
+  const roster = await prisma.event.findUnique({
+    where: { id: eventId },
+    select: {
+      roleSpots: true,
+      assignments: {
+        where: { role: assignment.role },
+        select: { role: true, status: true, expiresAt: true },
+      },
+    },
+  });
+
+  if (
+    roster &&
+    roleStanding(assignment.role, parseRoleSpots(roster.roleSpots), roster.assignments, new Date())
+      .open === 0
+  ) {
+    await syncEventNotifications(eventId, touch);
+
+    return;
+  }
+
+  /**
+   * Tells whoever owns this role that it is still open — whoever covers its
+   * team on this event, else the team's lead for the event's service type,
+   * else the event's creator — and copies in whoever follows it.
+   * Scheduled rather than awaited: the answer has committed and the
+   * volunteer is owed it now.
+   */
+  const notifyShortage = (reason: string) => {
+    after(() =>
+      notifyDeclineShortage({
+        organizationId,
+        organization: assignment.organization,
+        eventId,
+        eventName,
+        createdById: assignment.event.createdById,
+        dates: assignment.event.dates,
+        role: assignment.role,
+        inviterId: assignment.assignedById,
+        declinerName,
+        backedOut,
+        reason,
+      }),
+    );
+  };
+
+  // Paused rather than off when the plan doesn't include it: the event keeps
+  // its setting, and picks up again if the organization upgrades.
+  const autoFillPaused =
+    assignment.event.smartSchedulingEnabled &&
+    !smartSchedulingIncluded(assignment.organization.entitlements);
+
+  if (!assignment.event.smartSchedulingEnabled || autoFillPaused) {
+    await logActivity({
+      organizationId,
+      eventId,
+      eventName,
+      type: ActivityType.SMART_FILL_SKIPPED,
+      actorName: declinerName,
+      targetName: roleLabel,
+      detail: note,
+    });
+
+    notifyShortage(
+      autoFillPaused
+        ? "Auto-fill is paused because this organization's plan doesn't include Smart Scheduling, so no replacement was invited."
+        : "Auto-fill is off for this event, so no replacement was invited.",
+    );
+
+    touch(`org-${organizationId}-activity`);
+    touch(`event-${eventId}-org-${organizationId}-activity`);
+
+    await syncEventNotifications(eventId, touch);
+
+    return;
+  }
+
+  // Smart scheduling: auto-invite the next best available member into the
+  // role just vacated. Best-effort and isolated — if anything here fails, the
+  // answer the user already committed must still stand.
+  try {
+    const outcome = await findBestReplacement({
+      organizationId,
+      eventId,
+      declinedRole: assignment.role,
+    });
+
+    if (outcome.status === "FOUND") {
+      const replacement = outcome.candidate;
+
+      // Keep the slot's original deadline; fall back to a fresh window only
+      // if that deadline has already passed.
+      const replacementExpiry =
+        assignment.expiresAt > new Date()
+          ? assignment.expiresAt
+          : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+      await prisma.eventAssignment.create({
+        data: {
+          eventId,
+          userId: replacement.userId,
+          role: assignment.role,
+          assignedById: assignment.assignedById,
+          organizationId,
+          status: InvitationStatus.PENDING,
+          autoAssigned: true,
+          expiresAt: replacementExpiry,
+        },
+      });
+
+      await logActivity({
+        organizationId,
+        eventId,
+        eventName,
+        type: ActivityType.AUTO_INVITE_SENT,
+        actorName: declinerName,
+        targetName: `${replacement.firstName} ${replacement.lastName}`,
+        detail: note ? `${roleLabel} · ${note}` : roleLabel,
+      });
+
+      touch(`user-${replacement.userId}-events-${organizationId}`);
+      touch(`event-${eventId}-org-${organizationId}-details`);
+      touch(`org-${organizationId}-events`);
+
+      const replacementWhen = formatEventWhen(assignment.event.dates);
+
+      after(async () => {
+        await resend.emails.send({
+          from: organizationSender(assignment.organization.name),
+          to: replacement.email,
+          subject: `You're invited to serve: ${assignment.event.name}`,
+          react: EventAssignmentEmail({
+            recipientName: replacement.firstName,
+            eventName: assignment.event.name,
+            organizationName: assignment.organization.name,
+            logoUrl: assignment.organization.logoUrl,
+            roleLabel,
+            // Smart Scheduling picked them, not a person — the inherited
+            // sender is whoever invited the one who declined.
+            kind: "replacement",
+            invitedByName: null,
+            eventDate: replacementWhen?.date ?? null,
+            eventTime: replacementWhen?.time ?? null,
+            startsAt: eventStartAt(assignment.event.dates, assignment.organization.timeZone),
+            expiresAt: replacementExpiry,
+            viewLink: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/organizations/${organizationId}`,
+          }),
+        });
+      });
+
+      after(() =>
+        sendPushNotices("declineEventInvitation replacement", [
+          assignmentPush({
+            email: replacement.email,
+            eventName,
+            eventId,
+            organizationName: assignment.organization.name,
+            organizationId,
+            roleLabel,
+            when: formatEventShort(assignment.event.dates),
+            kind: "replacement",
+            invitedByName: null,
+          }),
+        ]),
+      );
+
+      // Whoever runs the team hears what Smart Scheduling did with the spot,
+      // though nobody has to act on it.
+      after(() =>
+        notifyReplacement({
+          kind: "invited",
+          organizationId,
+          eventId,
+          role: assignment.role,
+          inviterId: assignment.assignedById,
+          replacement,
+          decliner: { name: declinerName, backedOut },
+        }),
+      );
+    } else if (outcome.status === "NO_QUALIFIED_MEMBERS") {
+      await logActivity({
+        organizationId,
+        eventId,
+        eventName,
+        type: ActivityType.SMART_FILL_NO_CANDIDATES,
+        actorName: declinerName,
+        targetName: roleLabel,
+        detail: note,
+      });
+
+      notifyShortage(
+        `Nobody in ${assignment.organization.name} has the ${roleLabel} role, so there was no one to invite.`,
+      );
+    } else if (outcome.status === "ALL_UNAVAILABLE") {
+      const breakdown = [
+        `${outcome.qualified} qualified`,
+        outcome.conflicting > 0 && `${outcome.conflicting} double-booked`,
+        outcome.blocked > 0 && `${outcome.blocked} on blockout`,
+        outcome.alreadyAssigned > 0 &&
+          `${outcome.alreadyAssigned} already on this event`,
+      ].filter(Boolean);
+
+      await logActivity({
+        organizationId,
+        eventId,
+        eventName,
+        type: ActivityType.SMART_FILL_ALL_UNAVAILABLE,
+        actorName: declinerName,
+        targetName: roleLabel,
+        detail: [...breakdown, note].filter(Boolean).join(" · "),
+      });
+
+      notifyShortage(
+        `Everyone qualified is unavailable — ${breakdown.join(", ")}.`,
+      );
+    } else {
+      await logActivity({
+        organizationId,
+        eventId,
+        eventName,
+        type: ActivityType.SMART_FILL_FAILED,
+        actorName: declinerName,
+        targetName: roleLabel,
+        detail: note,
+      });
+
+      notifyShortage(
+        "Smart Scheduling could not look for a replacement. The role needs filling by hand.",
+      );
+    }
+  } catch {
+    // Swallow: smart-fill is best-effort; the answer already committed.
+    await logActivity({
+      organizationId,
+      eventId,
+      eventName,
+      type: ActivityType.SMART_FILL_FAILED,
+      actorName: declinerName,
+      targetName: roleLabel,
+      detail: note,
+    });
+
+    notifyShortage(
+      "Smart Scheduling hit an error looking for a replacement. The role needs filling by hand.",
+    );
+  }
+
+  touch(`org-${organizationId}-activity`);
+  touch(`event-${eventId}-org-${organizationId}-activity`);
+
+  // Runs after smart-fill, not before: a replacement invited into the slot
+  // closes the hole this opened, and the count has to reflect that.
+  await syncEventNotifications(eventId, touch);
+};
+
 export const declineEventInvitation = async (
   organizationId: string,
   eventId: string,
@@ -879,23 +1200,7 @@ export const declineEventInvitation = async (
         // this covers the window before the next tick.
         expiresAt: { gt: new Date() },
       },
-      select: {
-        id: true,
-        role: true,
-        assignedById: true,
-        expiresAt: true,
-        event: {
-          select: {
-            name: true,
-            smartSchedulingEnabled: true,
-            createdById: true,
-            dates: { select: { startTime: true, endTime: true } },
-          },
-        },
-        // Entitlements are read here, before the decline commits, so nothing
-        // after it can fail on a plan lookup.
-        organization: { select: { name: true, logoUrl: true, entitlements: true, timeZone: true } },
-      },
+      select: OPENED_SPOT_SELECT,
     });
 
     if (!assignment) {
@@ -905,277 +1210,39 @@ export const declineEventInvitation = async (
       };
     }
 
-    await prisma.eventAssignment.update({
+    // Still pending at the moment of writing, so two taps landing together
+    // decline once and ask Smart Scheduling for one replacement, not two.
+    const { count } = await prisma.eventAssignment.updateMany({
       where: {
         id: assignment.id,
         organizationId,
+        status: InvitationStatus.PENDING,
       },
       data: {
         status: InvitationStatus.DECLINED
       }
     });
 
+    if (count === 0) {
+      return {
+        success: false,
+        error: await explainInviteMiss(organizationId, eventId, user.id),
+      };
+    }
+
     touch(`user-${user.id}-events-${organizationId}`);
     touch(`event-${eventId}-org-${organizationId}-details`);
     touch(`org-${organizationId}-acceptance-stats`);
     touch(`org-${organizationId}-events`);
 
-    const declinerName = `${user.firstName} ${user.lastName}`;
-    const roleLabel = volunteerRoleConfig[assignment.role].label;
-    const eventName = assignment.event.name;
-
-    // Every invite is somebody wanted there, so a decline leaves its spot open
-    // even when somebody else on the role accepted. Only a spot already covered
-    // — an invite sent past the role's count — has nothing to fill and nobody
-    // to tell.
-    const roster = await prisma.event.findUnique({
-      where: { id: eventId },
-      select: {
-        roleSpots: true,
-        assignments: {
-          where: { role: assignment.role },
-          select: { role: true, status: true, expiresAt: true },
-        },
-      },
+    await refillOpenedSpot({
+      organizationId,
+      eventId,
+      user,
+      assignment,
+      backedOut: false,
+      touch,
     });
-
-    if (
-      roster &&
-      roleStanding(assignment.role, parseRoleSpots(roster.roleSpots), roster.assignments, new Date())
-        .open === 0
-    ) {
-      await syncEventNotifications(eventId, touch);
-
-      return { success: true };
-    }
-
-    /**
-     * Tells whoever owns this role that it is still open — whoever covers its
-     * team on this event, else the team's lead for the event's service type,
-     * else the event's creator — and copies in whoever follows it.
-     * Scheduled rather than awaited: the decline has committed and the
-     * volunteer is owed their answer now.
-     */
-    const notifyShortage = (reason: string) => {
-      after(() =>
-        notifyDeclineShortage({
-          organizationId,
-          organization: assignment.organization,
-          eventId,
-          eventName,
-          createdById: assignment.event.createdById,
-          dates: assignment.event.dates,
-          role: assignment.role,
-          inviterId: assignment.assignedById,
-          declinerName,
-          reason,
-        }),
-      );
-    };
-
-    // Paused rather than off when the plan doesn't include it: the event keeps
-    // its setting, and picks up again if the organization upgrades.
-    const autoFillPaused =
-      assignment.event.smartSchedulingEnabled &&
-      !smartSchedulingIncluded(assignment.organization.entitlements);
-
-    if (!assignment.event.smartSchedulingEnabled || autoFillPaused) {
-      await logActivity({
-        organizationId,
-        eventId,
-        eventName,
-        type: ActivityType.SMART_FILL_SKIPPED,
-        actorName: declinerName,
-        targetName: roleLabel,
-      });
-
-      notifyShortage(
-        autoFillPaused
-          ? "Auto-fill is paused because this organization's plan doesn't include Smart Scheduling, so no replacement was invited."
-          : "Auto-fill is off for this event, so no replacement was invited.",
-      );
-
-      touch(`org-${organizationId}-activity`);
-      touch(`event-${eventId}-org-${organizationId}-activity`);
-
-      await syncEventNotifications(eventId, touch);
-
-      return { success: true };
-    }
-
-    // Smart scheduling: auto-invite the next best available member into the
-    // role just vacated. Best-effort and isolated — if anything here fails, the
-    // decline the user already committed must still succeed.
-    try {
-      const outcome = await findBestReplacement({
-        organizationId,
-        eventId,
-        declinedRole: assignment.role,
-      });
-
-      if (outcome.status === "FOUND") {
-        const replacement = outcome.candidate;
-
-        // Keep the slot's original deadline; fall back to a fresh window only
-        // if that deadline has already passed.
-        const replacementExpiry =
-          assignment.expiresAt > new Date()
-            ? assignment.expiresAt
-            : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-
-        await prisma.eventAssignment.create({
-          data: {
-            eventId,
-            userId: replacement.userId,
-            role: assignment.role,
-            assignedById: assignment.assignedById,
-            organizationId,
-            status: InvitationStatus.PENDING,
-            autoAssigned: true,
-            expiresAt: replacementExpiry,
-          },
-        });
-
-        await logActivity({
-          organizationId,
-          eventId,
-          eventName,
-          type: ActivityType.AUTO_INVITE_SENT,
-          actorName: declinerName,
-          targetName: `${replacement.firstName} ${replacement.lastName}`,
-          detail: roleLabel,
-        });
-
-        touch(`user-${replacement.userId}-events-${organizationId}`);
-        touch(`event-${eventId}-org-${organizationId}-details`);
-        touch(`org-${organizationId}-events`);
-
-        const replacementWhen = formatEventWhen(assignment.event.dates);
-
-        after(async () => {
-          await resend.emails.send({
-            from: organizationSender(assignment.organization.name),
-            to: replacement.email,
-            subject: `You're invited to serve: ${assignment.event.name}`,
-            react: EventAssignmentEmail({
-              recipientName: replacement.firstName,
-              eventName: assignment.event.name,
-              organizationName: assignment.organization.name,
-              logoUrl: assignment.organization.logoUrl,
-              roleLabel,
-              // Smart Scheduling picked them, not a person — the inherited
-              // sender is whoever invited the one who declined.
-              kind: "replacement",
-              invitedByName: null,
-              eventDate: replacementWhen?.date ?? null,
-              eventTime: replacementWhen?.time ?? null,
-              startsAt: eventStartAt(assignment.event.dates, assignment.organization.timeZone),
-              expiresAt: replacementExpiry,
-              viewLink: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/organizations/${organizationId}`,
-            }),
-          });
-        });
-
-        after(() =>
-          sendPushNotices("declineEventInvitation replacement", [
-            assignmentPush({
-              email: replacement.email,
-              eventName,
-              eventId,
-              organizationName: assignment.organization.name,
-              organizationId,
-              roleLabel,
-              when: formatEventShort(assignment.event.dates),
-              kind: "replacement",
-              invitedByName: null,
-            }),
-          ]),
-        );
-
-        // Whoever runs the team hears what Smart Scheduling did with the spot,
-        // though nobody has to act on it.
-        after(() =>
-          notifyReplacement({
-            kind: "invited",
-            organizationId,
-            eventId,
-            role: assignment.role,
-            inviterId: assignment.assignedById,
-            replacement,
-            decliner: { userId: user.id, name: declinerName },
-          }),
-        );
-      } else if (outcome.status === "NO_QUALIFIED_MEMBERS") {
-        await logActivity({
-          organizationId,
-          eventId,
-          eventName,
-          type: ActivityType.SMART_FILL_NO_CANDIDATES,
-          actorName: declinerName,
-          targetName: roleLabel,
-        });
-
-        notifyShortage(
-          `Nobody in ${assignment.organization.name} has the ${roleLabel} role, so there was no one to invite.`,
-        );
-      } else if (outcome.status === "ALL_UNAVAILABLE") {
-        const breakdown = [
-          `${outcome.qualified} qualified`,
-          outcome.conflicting > 0 && `${outcome.conflicting} double-booked`,
-          outcome.blocked > 0 && `${outcome.blocked} on blockout`,
-          outcome.alreadyAssigned > 0 &&
-            `${outcome.alreadyAssigned} already on this event`,
-        ].filter(Boolean);
-
-        await logActivity({
-          organizationId,
-          eventId,
-          eventName,
-          type: ActivityType.SMART_FILL_ALL_UNAVAILABLE,
-          actorName: declinerName,
-          targetName: roleLabel,
-          detail: breakdown.join(" · "),
-        });
-
-        notifyShortage(
-          `Everyone qualified is unavailable — ${breakdown.join(", ")}.`,
-        );
-      } else {
-        await logActivity({
-          organizationId,
-          eventId,
-          eventName,
-          type: ActivityType.SMART_FILL_FAILED,
-          actorName: declinerName,
-          targetName: roleLabel,
-        });
-
-        notifyShortage(
-          "Smart Scheduling could not look for a replacement. The role needs filling by hand.",
-        );
-      }
-    } catch {
-      // Swallow: smart-fill is best-effort; the decline already committed.
-      await logActivity({
-        organizationId,
-        eventId,
-        eventName,
-        type: ActivityType.SMART_FILL_FAILED,
-        actorName: declinerName,
-        targetName: roleLabel,
-      });
-
-      notifyShortage(
-        "Smart Scheduling hit an error looking for a replacement. The role needs filling by hand.",
-      );
-    }
-
-    touch(`org-${organizationId}-activity`);
-    touch(`event-${eventId}-org-${organizationId}-activity`);
-
-    // Runs after smart-fill, not before: a replacement invited into the slot
-    // closes the hole this decline opened, and the count has to reflect that.
-    await syncEventNotifications(eventId, touch);
 
     return { success: true };
 
@@ -1184,6 +1251,134 @@ export const declineEventInvitation = async (
     return { success: false, error: "Unable to decline Invite" };
 
   };
+};
+
+/**
+ * Takes somebody off an event they had accepted: "Can't make it".
+ *
+ * Their row turns DECLINED, which is what an invitation turned down reads as,
+ * so the spot is open again on every count, and then the decline's whole
+ * follow-up runs — Smart Scheduling's replacement, "Pianist needed" to whoever
+ * runs the role, the activity feed, the bell. The songs they were down to
+ * sing on this event's setlist come off with them.
+ *
+ * Their own, and only until the event starts on the church's clock: after
+ * that the spot can't be filled, and the people running it need telling in
+ * person. Somebody backed out can be invited again like anyone who declined.
+ */
+export const withdrawFromEvent = async (
+  organizationId: string,
+  eventId: string,
+  touch: TagInvalidator = updateTag,
+): Promise<ActionResponse> => {
+
+  try {
+
+    const user = await currentUser();
+
+    if (!user) return { success: false, error: "Unauthorized" };
+
+    const assignment = await prisma.eventAssignment.findUnique({
+      where: {
+        eventId_userId: { eventId, userId: user.id },
+        organizationId,
+        status: InvitationStatus.ACCEPTED,
+      },
+      select: OPENED_SPOT_SELECT,
+    });
+
+    if (!assignment) {
+      return {
+        success: false,
+        error: await explainWithdrawMiss(organizationId, eventId, user.id),
+      };
+    }
+
+    const now = floatingNow(zoneOrFallback(assignment.organization.timeZone));
+
+    if (assignment.event.dates.some((date) => date.startTime.getTime() <= now.getTime())) {
+      return {
+        success: false,
+        error: "This event has already started. Let whoever runs your team know.",
+      };
+    }
+
+    const withdrawn = await prisma.$transaction(async (tx) => {
+      // Still accepted at the moment of writing, so a second tap is turned
+      // away rather than asking Smart Scheduling for a second replacement.
+      const { count } = await tx.eventAssignment.updateMany({
+        where: {
+          id: assignment.id,
+          organizationId,
+          status: InvitationStatus.ACCEPTED,
+        },
+        data: { status: InvitationStatus.DECLINED },
+      });
+
+      if (count === 0) return false;
+
+      await tx.setlistSongAssignment.deleteMany({
+        where: { userId: user.id, setlistSong: { eventId } },
+      });
+
+      return true;
+    });
+
+    if (!withdrawn) {
+      return {
+        success: false,
+        error: await explainWithdrawMiss(organizationId, eventId, user.id),
+      };
+    }
+
+    touch(`user-${user.id}-events-${organizationId}`);
+    touch(`user-${user.id}-songs-${organizationId}`);
+    touch(`event-${eventId}-org-${organizationId}-details`);
+    touch(`org-${organizationId}-acceptance-stats`);
+    touch(`org-${organizationId}-events`);
+
+    await refillOpenedSpot({
+      organizationId,
+      eventId,
+      user,
+      assignment,
+      backedOut: true,
+      touch,
+    });
+
+    return { success: true };
+
+  } catch {
+
+    return { success: false, error: "Unable to take you off this event. Try again." };
+
+  };
+};
+
+/** Why "Can't make it" found nothing to take them off, in words they can act on. */
+const explainWithdrawMiss = async (
+  organizationId: string,
+  eventId: string,
+  userId: string,
+): Promise<string> => {
+
+  const row = await prisma.eventAssignment.findUnique({
+    where: { eventId_userId: { eventId, userId } },
+    select: { status: true, organizationId: true },
+  });
+
+  if (!row || row.organizationId !== organizationId) {
+    return "Unable to find this event";
+  }
+
+  if (
+    row.status === InvitationStatus.DECLINED ||
+    row.status === InvitationStatus.CANCELED
+  ) {
+    return "You're no longer on this event";
+  }
+
+  return "You haven't accepted this event";
 };
 
 export const cancelUserEventAssignment = async (userId: string, organizationId: string, eventId: string, touch: TagInvalidator = updateTag): Promise<ActionResponse> => {
@@ -1233,20 +1428,28 @@ export const cancelUserEventAssignment = async (userId: string, organizationId: 
 
     if (!assignment) return { success: false, error: "Unable to find this assignment" };
 
-    await prisma.eventAssignment.update({
-      where: {
-        eventId_userId: {
-          eventId,
-          userId
+    // Off the event means off its songs too: the setlist reads its singers
+    // without looking at their status, so a row left behind still shows them.
+    await prisma.$transaction([
+      prisma.eventAssignment.update({
+        where: {
+          eventId_userId: {
+            eventId,
+            userId
+          },
+          organizationId
         },
-        organizationId
-      },
-      data: {
-        status: InvitationStatus.CANCELED
-      }
-    }); 
+        data: {
+          status: InvitationStatus.CANCELED
+        }
+      }),
+      prisma.setlistSongAssignment.deleteMany({
+        where: { userId, setlistSong: { eventId } },
+      }),
+    ]);
 
     touch(`user-${userId}-events-${organizationId}`);
+    touch(`user-${userId}-songs-${organizationId}`);
     touch(`event-${eventId}-org-${organizationId}-details`);
     touch(`org-${organizationId}-events`);
 
@@ -1259,12 +1462,16 @@ export const cancelUserEventAssignment = async (userId: string, organizationId: 
     if (heldTheSpot) {
       const { name: organizationName, logoUrl } = userMembership.organization;
       const when = formatEventWhen(assignment.event.dates);
+      // Somebody still deciding was never on the team: their invitation was withdrawn.
+      const accepted = assignment.status === InvitationStatus.ACCEPTED;
 
       after(async () => {
         await resend.emails.send({
           from: organizationSender(organizationName),
           to: assignment.user.email,
-          subject: `Removed: ${assignment.event.name}`,
+          subject: accepted
+            ? `Removed: ${assignment.event.name}`
+            : `Invitation withdrawn: ${assignment.event.name}`,
           react: EventRemovedEmail({
             recipientName: assignment.user.firstName,
             eventName: assignment.event.name,
@@ -1272,7 +1479,7 @@ export const cancelUserEventAssignment = async (userId: string, organizationId: 
             logoUrl,
             removedByName: `${user.firstName} ${user.lastName}`,
             roleLabel: volunteerRoleConfig[assignment.role].label,
-            accepted: assignment.status === InvitationStatus.ACCEPTED,
+            accepted,
             eventDate: when?.date ?? null,
             eventTime: when?.time ?? null,
             viewLink: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/organizations/${organizationId}`,
@@ -1281,8 +1488,6 @@ export const cancelUserEventAssignment = async (userId: string, organizationId: 
       });
 
       const shortWhen = formatEventShort(assignment.event.dates);
-      // Somebody still deciding was never on the team: their invitation was withdrawn.
-      const accepted = assignment.status === InvitationStatus.ACCEPTED;
 
       // To their organization rather than the event: they can't open it now.
       after(() =>
@@ -1421,9 +1626,12 @@ export const resendEventInvitation = async (
           expiresAt: resentExpiry,
           assignedById: user.id,
           autoAssigned: false,
-          // A new window earns its own "still need your answer".
+          // A new window earns its own "still need your answer", and a new
+          // yes its own reminders.
           midwayNudgedAt: null,
           nudgedAt: null,
+          reminderSentAt: null,
+          rehearsalReminderSentAt: null,
         },
       });
 
@@ -2074,6 +2282,10 @@ export const inviteMembersToEvent = async (
             expiresAt: expiry,
             midwayNudgedAt: null,
             nudgedAt: null,
+            // Somebody who backed out and is asked again hears the reminders
+            // again once they say yes.
+            reminderSentAt: null,
+            rehearsalReminderSentAt: null,
           },
         });
       }
@@ -2608,6 +2820,11 @@ export const editEventDetails = async (
 
       const scheduleChanged = !sameSchedule(event.dates, nextDates);
 
+      const rehearsalMoved =
+        nextRehearsal !== undefined &&
+        (event.rehearsalStart?.getTime() !== nextRehearsal.rehearsalStart?.getTime() ||
+          event.rehearsalEnd?.getTime() !== nextRehearsal.rehearsalEnd?.getTime());
+
       await prisma.$transaction(async (tx) => {
         await tx.event.update({
           where: { id: eventId },
@@ -2626,6 +2843,14 @@ export const editEventDetails = async (
           await tx.eventAssignment.updateMany({
             where: { eventId, reminderSentAt: { not: null } },
             data: { reminderSentAt: null },
+          });
+        }
+
+        // The same for a rehearsal reminder sent about the old rehearsal.
+        if (rehearsalMoved) {
+          await tx.eventAssignment.updateMany({
+            where: { eventId, rehearsalReminderSentAt: { not: null } },
+            data: { rehearsalReminderSentAt: null },
           });
         }
 

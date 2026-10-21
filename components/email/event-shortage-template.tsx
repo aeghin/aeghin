@@ -19,6 +19,8 @@ interface EventShortageEmailProps {
   organizationName: string;
   logoUrl: string | null;
   declinedByName: string;
+  /** They had accepted, then said they can't make it, rather than declining. */
+  backedOut?: boolean;
   roleLabel: string;
   /** Why the slot is still open — worded per smart-fill outcome by the caller. */
   reason: string;
@@ -43,6 +45,7 @@ export default function EventShortageEmail({
   organizationName,
   logoUrl,
   declinedByName,
+  backedOut = false,
   roleLabel,
   reason,
   eventDate,
@@ -78,15 +81,17 @@ export default function EventShortageEmail({
                 </Section>
               )}
               <Text className="text-2xl font-bold tracking-tight text-gray-900 m-0">
-                {headsUp ? "Heads-up: Invitation Declined" : "Invitation Declined"}
+                {`${headsUp ? "Heads-up: " : ""}${backedOut ? "Can't Make It" : "Invitation Declined"}`}
               </Text>
             </Section>
 
             <Section className="px-8 py-6 text-center">
 
               <Text className="m-0 mb-6 text-sm text-gray-600">
-                Hi {recipientName}, {declinedByName} can&apos;t make it as{" "}
-                {roleLabel}. {headsUp ?? reason}
+                {backedOut
+                  ? `Hi ${recipientName}, ${declinedByName} had accepted but can't make it as ${roleLabel} anymore. `
+                  : `Hi ${recipientName}, ${declinedByName} can't make it as ${roleLabel}. `}
+                {headsUp ?? reason}
               </Text>
 
               <Section className="rounded-xl border border-gray-200 p-4 mb-4">

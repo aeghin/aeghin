@@ -17,6 +17,7 @@ import {
 } from "@/lib/notifications/audience";
 import { loadStaffingDirectory } from "@/lib/notifications/directory";
 import { sendPushNotices } from "@/lib/push/send";
+import { parseRoleSpots, roleStanding } from "@/lib/role-spots";
 
 /**
  * An assignment on an upcoming event, as the caller read it before deleting it.
@@ -51,9 +52,9 @@ export type DepartureReason = "left" | "removed" | "deleted";
  * in. Resolved after the departure, so somebody who is the one leaving falls
  * through to the next in line.
  *
- * A role somebody else has already confirmed is skipped: the same rule the
- * decline and expired-invite emails follow, and the reason a departure can
- * send nothing at all.
+ * A role whose spots are all still covered — every one accepted or still
+ * being decided — is skipped: the same rule the decline and expired-invite
+ * emails follow, and the reason a departure can send nothing at all.
  *
  * Best effort, like the other staffing mail: the departure has committed, so a
  * failure is logged and never becomes the caller's error.
@@ -102,10 +103,10 @@ export async function notifyDeparture({
           serviceTypeId: true,
           dates: { select: { startTime: true, endTime: true } },
           teamLeads: { select: { category: true, userId: true } },
-          // Whoever is still confirmed, after the departure.
+          roleSpots: true,
+          // Who is still on it, after the departure.
           assignments: {
-            where: { status: InvitationStatus.ACCEPTED },
-            select: { role: true },
+            select: { role: true, status: true, expiresAt: true },
           },
         },
       }),
@@ -174,7 +175,10 @@ export async function notifyDeparture({
 
       if (!event) continue;
 
-      if (event.assignments.some((assignment) => assignment.role === spot.role)) {
+      if (
+        roleStanding(spot.role, parseRoleSpots(event.roleSpots), event.assignments, now)
+          .open === 0
+      ) {
         continue;
       }
 
@@ -262,7 +266,7 @@ export async function notifyDeparture({
         subtitle: organizationName,
         body:
           vacated.length === 1
-            ? `${happened}. ${vacated[0].headsUp ?? `Nobody else is confirmed as ${vacated[0].roleLabel}.`}`
+            ? `${happened}. ${vacated[0].headsUp ?? "Their spot needs filling."}`
             : `${happened}, leaving ${vacated.length} upcoming events short.${owns ? "" : " Others have been asked to fill them."}`,
         // Several events open on All, where each one's staffing shows: they
         // may not be on the manager's own schedule.

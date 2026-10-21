@@ -58,6 +58,11 @@ interface EventAssignmentsCardProps {
   event: EventDetails;
   currentUserId: string;
   canManage: boolean;
+  /**
+   * The viewer can still say "Can't Make It" from the header's ⋮, so a
+   * manager's own accepted row has no remove, which would skip telling their lead.
+   */
+  canWithdraw: boolean;
   /** Org roster for the invite pickers — empty for members, who can't invite */
   members: TeamMember[];
   /** This month's group emails — null for members, who can't send them */
@@ -111,6 +116,7 @@ export function EventAssignmentsCard({
   event,
   currentUserId,
   canManage,
+  canWithdraw,
   members,
   emailAllowance,
   smartSchedulingAvailable,
@@ -512,7 +518,10 @@ export function EventAssignmentsCard({
                                 />
                                 {assignmentStyles.label}
                               </span>
-                              {canManage && <EventVolunteerRowMenu assignedUserId={assignment.userId} eventId={assignment.eventId} organizationId={assignment.organizationId} isExpired={isExpired} isEnded={isDeclined} />}
+                              {canManage &&
+                                !(isCurrentUser && canWithdraw && assignment.status === InvitationStatus.ACCEPTED) && (
+                                  <EventVolunteerRowMenu assignedUserId={assignment.userId} eventId={assignment.eventId} organizationId={assignment.organizationId} isExpired={isExpired} isEnded={isDeclined} />
+                                )}
                             </div>
                           );
                         })}

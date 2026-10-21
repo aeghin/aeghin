@@ -1,6 +1,6 @@
 "use client";
 
-import { MoreVertical, RefreshCw, Trash2 } from "lucide-react";
+import { MoreVertical, RefreshCw, Trash2, UserRoundMinus } from "lucide-react";
 import { useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -62,7 +62,7 @@ export const EventVolunteerRowMenu = ({ assignedUserId, eventId, organizationId,
       const result = await deleteEventInvite(organizationId, eventId, assignedUserId);
 
       if (result.success) {
-        toast.success(isExpired ? "Expired Invite Removed" : "Invite Removed", { position: "top-center" });
+        toast.success("Person Removed", { position: "top-center" });
       } else {
         toast.error(result.error, { position: "top-center" });
       };
@@ -98,14 +98,14 @@ export const EventVolunteerRowMenu = ({ assignedUserId, eventId, organizationId,
               Resend Invitation
             </DropdownMenuItem>
             <DropdownMenuItem disabled={isPending} onClick={deleteInvite} className="cursor-pointer text-destructive focus:text-destructive">
-              <Trash2 className="mr-2 h-4 w-4" />
-              Delete Expired Invite
+              <UserRoundMinus className="mr-2 h-4 w-4" />
+              Remove Person
             </DropdownMenuItem>
           </>
         ) : isEnded ? (
           <DropdownMenuItem disabled={isPending} onClick={deleteInvite} className="cursor-pointer text-destructive focus:text-destructive">
-            <Trash2 className="mr-2 h-4 w-4" />
-            Delete Invite
+            <UserRoundMinus className="mr-2 h-4 w-4" />
+            Remove Person
           </DropdownMenuItem>
         ) : (
           <DropdownMenuItem disabled={isPending} onClick={removeUserAssignment} className="cursor-pointer text-destructive focus:text-destructive">

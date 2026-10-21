@@ -30,6 +30,8 @@ interface EventReplacementEmailProps {
   replacementFirstName: string;
   /** Who declined. Only `invited` names them; the accepted row doesn't record it. */
   declinedByName: string | null;
+  /** They had accepted, then said they can't make it, rather than declining. */
+  backedOut?: boolean;
   // Preformatted by `formatEventWhen`, which pins UTC. Null when the event
   // carried no dates.
   eventDate: string | null;
@@ -54,6 +56,7 @@ export default function EventReplacementEmail({
   replacementName,
   replacementFirstName,
   declinedByName,
+  backedOut = false,
   eventDate,
   eventTime,
   viewLink,
@@ -98,7 +101,7 @@ export default function EventReplacementEmail({
 
               <Text className="m-0 mb-6 text-sm text-gray-600">
                 {invited
-                  ? `Hi ${recipientName}, ${declinedByName ?? "Somebody"} declined ${roleLabel}. Smart Scheduling invited ${replacementName} in their place.`
+                  ? `Hi ${recipientName}, ${declinedByName ?? "Somebody"} ${backedOut ? `can't make it as ${roleLabel} anymore` : `declined ${roleLabel}`}. Smart Scheduling invited ${replacementName} in their place.`
                   : `Hi ${recipientName}, ${replacementName} accepted the ${roleLabel} invitation Smart Scheduling sent after a decline.`}
               </Text>
 

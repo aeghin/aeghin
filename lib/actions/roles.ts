@@ -184,6 +184,16 @@ export const removeMember = async (userId: string, organizationId: string, touch
                     event: { dates: { some: { endTime: { gte: ahead } } } },
                 },
             }),
+            // And off those events' songs. Past setlists keep them: that's
+            // what they sang.
+            prisma.setlistSongAssignment.deleteMany({
+                where: {
+                    userId,
+                    setlistSong: {
+                        event: { organizationId, dates: { some: { endTime: { gte: ahead } } } },
+                    },
+                },
+            }),
             prisma.blockoutDate.deleteMany({
                 where: { userId, organizationId },
             }),
@@ -223,6 +233,7 @@ export const removeMember = async (userId: string, organizationId: string, touch
         touch(`user-${userId}-roles`);
         touch(`user-${userId}-orgs`);
         touch(`user-${userId}-events-${organizationId}`);
+        touch(`user-${userId}-songs-${organizationId}`);
         touch(`user-${userId}-blockouts-${organizationId}`);
         touch(`org-${organizationId}-events`);
         touch(`org-${organizationId}-members-list`);
@@ -378,6 +389,15 @@ export const leaveOrganization = async (organizationId: string, touch: TagInvali
               event: { dates: { some: { endTime: { gte: ahead } } } },
           },
       }),
+      // And off those events' songs, as removeMember does.
+      prisma.setlistSongAssignment.deleteMany({
+          where: {
+              userId: user.id,
+              setlistSong: {
+                  event: { organizationId, dates: { some: { endTime: { gte: ahead } } } },
+              },
+          },
+      }),
       prisma.blockoutDate.deleteMany({
           where: { userId: user.id, organizationId },
       }),
@@ -412,6 +432,7 @@ export const leaveOrganization = async (organizationId: string, touch: TagInvali
           touch(`user-${user.id}-roles`);
           touch(`user-${user.id}-orgs`);
           touch(`user-${user.id}-events-${organizationId}`);
+          touch(`user-${user.id}-songs-${organizationId}`);
           touch(`user-${user.id}-blockouts-${organizationId}`);
           touch(`org-${organizationId}-events`);
           touch(`org-${organizationId}-members-list`);

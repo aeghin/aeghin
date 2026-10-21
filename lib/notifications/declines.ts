@@ -35,6 +35,7 @@ export async function notifyDeclineShortage({
   role,
   inviterId,
   declinerName,
+  backedOut,
   reason,
 }: {
   organizationId: string;
@@ -47,6 +48,8 @@ export async function notifyDeclineShortage({
   /** Who sent the declined invitation: copied in when somebody else is asked. */
   inviterId: string | null;
   declinerName: string;
+  /** They had accepted and then said they can't make it. */
+  backedOut: boolean;
   /** Why nobody was invited in their place, worded per smart-fill outcome. */
   reason: string;
 }): Promise<void> {
@@ -84,6 +87,8 @@ export async function notifyDeclineShortage({
 
     if (!directory) return;
 
+    // A team lead who declines or backs out of their own team is still the one
+    // asked to fill it: finding their replacement is their job.
     const audience = roleAudience(directory, {
       serviceTypeId: event.serviceTypeId,
       createdById,
@@ -122,6 +127,7 @@ export async function notifyDeclineShortage({
           organizationName: organization.name,
           logoUrl: organization.logoUrl,
           declinedByName: declinerName,
+          backedOut,
           roleLabel,
           reason,
           eventDate: when?.date ?? null,
@@ -141,7 +147,7 @@ export async function notifyDeclineShortage({
         // who's only copied in to go and fill it.
         title: headsUp ? `Heads-up: ${subject}` : subject,
         subtitle: organization.name,
-        body: `${declinerName} declined. ${headsUp ?? reason}`,
+        body: `${declinerName} ${backedOut ? "can't make it anymore" : "declined"}. ${headsUp ?? reason}`,
         data: { type: "event", organizationId, eventId },
       })),
     );
@@ -159,8 +165,9 @@ export async function notifyDeclineShortage({
  * the sender and Also notify copied in.
  *
  * Nobody is asked to act, which is why this is separate from
- * `notifyDeclineShortage`. The decliner and the replacement are left out even
- * when they run the team: each already has their own news.
+ * `notifyDeclineShortage`. The replacement is left out even when they run the
+ * team: they have their own invitation. The one who declined or backed out is
+ * not — a lead who leaves their own team still owns filling it.
  *
  * Best effort: the answer has committed, so a failure is logged and never
  * becomes the caller's error.
@@ -182,7 +189,7 @@ export async function notifyReplacement({
   inviterId: string | null;
   replacement: { userId: string; firstName: string; lastName: string };
   /** Who declined. Only known on the decline itself. */
-  decliner: { userId: string; name: string } | null;
+  decliner: { name: string; backedOut: boolean } | null;
 }): Promise<void> {
   try {
     const event = await prisma.event.findUnique({
@@ -214,10 +221,8 @@ export async function notifyReplacement({
       inviterId,
     });
 
-    const leftOut = new Set([replacement.userId, decliner?.userId]);
-
     const recipients = [...audience.owners, ...audience.copied].filter(
-      ({ person }) => !leftOut.has(person.userId),
+      ({ person }) => person.userId !== replacement.userId,
     );
 
     if (recipients.length === 0) return;
@@ -250,6 +255,7 @@ export async function notifyReplacement({
           replacementName,
           replacementFirstName: replacement.firstName,
           declinedByName: decliner?.name ?? null,
+          backedOut: decliner?.backedOut ?? false,
           eventDate: when?.date ?? null,
           eventTime: when?.time ?? null,
           viewLink: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/organizations/${organizationId}/events/${eventId}`,
@@ -260,7 +266,7 @@ export async function notifyReplacement({
 
     const happened =
       kind === "invited"
-        ? `${decliner?.name ?? "Somebody"} declined. Smart Scheduling invited ${replacementName} in their place.`
+        ? `${decliner?.name ?? "Somebody"} ${decliner?.backedOut ? "can't make it anymore" : "declined"}. Smart Scheduling invited ${replacementName} in their place.`
         : `${replacementName} accepted the invitation Smart Scheduling sent.`;
 
     await sendPushNotices(

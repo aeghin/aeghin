@@ -18,7 +18,7 @@ import {
     sendNoAnswerAlerts,
     type SendCount,
 } from "@/lib/notifications/unanswered";
-import { sendDayBeforeReminders } from "@/lib/push/reminders";
+import { sendDayBeforeReminders, sendRehearsalReminders } from "@/lib/push/reminders";
 import { checkPushReceipts } from "@/lib/push/send";
 import {
     forgetOldPushClaims,
@@ -357,6 +357,20 @@ export async function GET(req: Request) {
             );
         }
 
+        // "Tomorrow: rehearsal for Sunday Service", timed the same way.
+        let rehearsal: SendCount = { pushes: 0, emails: 0 };
+        let rehearsalFailed = false;
+
+        try {
+            rehearsal = await sendRehearsalReminders(now);
+        } catch (err) {
+            rehearsalFailed = true;
+            console.error(
+                "GET /api/cron/expire-invitations: rehearsal reminders failed —",
+                err,
+            );
+        }
+
         // An unanswered invitation, from both ends: the invitee's reminders,
         // the managers' "no answer yet" the day before it closes, and the
         // invitee's notice once it has. Email and push go together, timed
@@ -486,6 +500,8 @@ export async function GET(req: Request) {
             pushesFailed,
             dayBefore,
             dayBeforeFailed,
+            rehearsal,
+            rehearsalFailed,
             unanswered,
             unansweredFailed,
             receipts,
