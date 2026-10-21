@@ -87,3 +87,13 @@ export const PLAN_PRICES = {
   premium: "$49.99",
   pro: "$79.99",
 };
+
+/**
+ * A drafted email for a church that has outgrown Pro, asking for what we need
+ * to set up a bigger plan. The pricing page and the support page link here.
+ */
+export const LARGER_PLAN_MAILTO = `mailto:support@aeghin.com?subject=${encodeURIComponent(
+  "A plan for a larger church",
+)}&body=${encodeURIComponent(
+  "Church name:\nPeople on your teams:\nCampuses:\nAnything else we should know:\n",
+)}`;

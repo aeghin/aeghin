@@ -1,7 +1,7 @@
 import Link from "next/link"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
-import { ArrowRight, Sparkles } from "lucide-react"
+import { ArrowRight } from "lucide-react"
 import { AppBadges } from "@/components/landing/app-badges"
 import { HeroHighlights, HeroHighlightsRail } from "@/components/landing/hero-highlights"
 import eventPage from "@/public/landing/event-page.png"
@@ -18,12 +18,6 @@ export function HeroSection() {
 
       <div className="mx-auto max-w-7xl px-6 lg:px-8">
         <div className="mx-auto max-w-5xl text-center">
-          {/* Badge */}
-          <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-5 py-2 mb-8">
-            <Sparkles className="h-4 w-4 text-primary" />
-            <span className="text-sm font-medium text-foreground">Now with AI event and setlist drafting</span>
-          </div>
-
           {/* Headline */}
           <h1 className="text-4xl font-bold tracking-tight sm:text-6xl lg:text-7xl text-balance leading-[1.1]">
             Your worship team, scheduled.

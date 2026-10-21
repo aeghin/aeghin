@@ -1,88 +1,80 @@
-import { Button } from "@/components/ui/button"
+import { Button, buttonVariants } from "@/components/ui/button"
 import { Check, Sparkles } from "lucide-react"
 import Link from "next/link"
-import { PLAN_LIMITS, PLAN_PRICES, formatStorage } from "@/lib/config/plans"
+import { LARGER_PLAN_MAILTO, PLAN_LIMITS, PLAN_PRICES, formatStorage, type OrgPlan } from "@/lib/config/plans"
 
-const plans = [
+const unlimited = (limit: number | null) => (limit === null ? "Unlimited" : String(limit))
+
+// The same rows in the same order on every card, so the plans compare at a glance.
+const limitRows: { label: string; value: (plan: OrgPlan) => string }[] = [
+  { label: "Members", value: (plan) => String(PLAN_LIMITS[plan].members) },
+  { label: "Songs", value: (plan) => unlimited(PLAN_LIMITS[plan].songs) },
+  { label: "Service types", value: (plan) => unlimited(PLAN_LIMITS[plan].serviceTypes) },
+  { label: "Storage", value: (plan) => formatStorage(PLAN_LIMITS[plan].storage) },
+  { label: "Group emails a month", value: (plan) => String(PLAN_LIMITS[plan].bulkEmails) },
+]
+
+// What each plan adds beyond its numbers. `includes` names the plan it builds on.
+const plans: {
+  plan: OrgPlan
+  name: string
+  price: string
+  description: string
+  includes?: string
+  features: string[]
+  popular: boolean
+}[] = [
   {
+    plan: "free",
     name: "Free",
     price: "$0",
-    period: "/month",
     description: "Core scheduling for your team",
     features: [
-      "Create organizations, invite members, schedule events",
-      `Up to ${PLAN_LIMITS.free.members} members per organization`,
-      `Event templates and ${PLAN_LIMITS.free.serviceTypes} service types`,
-      "Blockout dates",
-      `Song library of up to ${PLAN_LIMITS.free.songs} songs, with charts and audio`,
-      `${formatStorage(PLAN_LIMITS.free.storage)} of storage for charts and audio`,
-      "Setlists, per-song assignments, and a vocalist key journal",
-      "Event chat, email, and push notifications in the mobile app",
-      "Staffing alerts when an event fills or someone drops out",
-      `${PLAN_LIMITS.free.bulkEmails} group emails a month`,
+      "Scheduling, setlists and event chat",
+      "Mobile app with day-before reminders",
+      "Staffing alerts when a spot opens or fills",
     ],
-    cta: "Get started free",
     popular: false,
   },
   {
+    plan: "starter",
     name: "Starter",
     price: PLAN_PRICES.starter,
-    period: "/month",
     description: "Room to grow past the Free limits",
-    features: [
-      "Everything in Free",
-      `Up to ${PLAN_LIMITS.starter.members} members per organization`,
-      `Up to ${PLAN_LIMITS.starter.songs} songs in your library`,
-      `${PLAN_LIMITS.starter.serviceTypes} service types`,
-      `${formatStorage(PLAN_LIMITS.starter.storage)} of storage for charts and audio`,
-      `${PLAN_LIMITS.starter.bulkEmails} group emails a month`,
-    ],
-    cta: "Get started free",
+    includes: "Everything in Free",
+    features: [],
     popular: false,
   },
   {
+    plan: "premium",
     name: "Premium",
     price: PLAN_PRICES.premium,
-    period: "/month",
     description: "Bigger teams, plus Smart Scheduling and AI setlists",
+    includes: "Everything in Starter, plus",
     features: [
-      "Everything in Starter",
-      `Up to ${PLAN_LIMITS.premium.members} members, unlimited songs and service types`,
-      "Smart Scheduling and last-call staffing alerts",
-      `${formatStorage(PLAN_LIMITS.premium.storage)} of storage for charts and audio`,
-      `${PLAN_LIMITS.premium.bulkEmails} group emails a month`,
-      `AI setlist generation (${PLAN_LIMITS.premium.aiRuns} requests a month)`,
-      "Matches themes, keys, and tempo arc",
-      "Works strictly from your song catalog",
-      "Apply proposals straight into the editor",
+      "Smart Scheduling refills declined spots",
+      "Last calls before an event that isn't staffed",
+      `AI setlists from your song library, ${PLAN_LIMITS.premium.aiRuns} a month`,
     ],
-    cta: "Get started free",
     popular: true,
   },
   {
+    plan: "pro",
     name: "Pro",
     price: PLAN_PRICES.pro,
-    period: "/month",
     description: "Drafts whole events, and researches beyond your catalog",
+    includes: "Everything in Premium, plus",
     features: [
-      "Everything in Premium",
-      `Up to ${PLAN_LIMITS.pro.members} members per organization`,
-      `${formatStorage(PLAN_LIMITS.pro.storage)} of storage for charts and audio`,
-      `${PLAN_LIMITS.pro.bulkEmails} group emails a month`,
-      "AI event drafting with volunteer picks",
-      "Upgraded, more capable AI model",
-      "Web search for songs and artists",
-      "Suggests songs you don't own yet",
-      "Deeper music-theory reasoning",
+      "AI drafts whole events and picks who's available",
+      "A smarter AI that can search the web for songs",
     ],
-    cta: "Get started free",
     popular: false,
   },
 ]
 
 export function PricingSection() {
   return (
-    <section id="pricing" className="py-28 md:py-36">
+    <section id="pricing" className="pt-28 pb-12 md:pt-36 md:pb-16">
       <div className="mx-auto max-w-7xl px-6 lg:px-8">
         <div className="mx-auto max-w-2xl text-center mb-20">
           <p className="text-sm font-semibold text-primary mb-4 tracking-wide uppercase">Pricing</p>
@@ -110,39 +102,70 @@ export function PricingSection() {
                 </div>
               )}
 
-              <div className="mb-8">
+              <div>
                 <h3 className="text-xl font-semibold mb-2">{plan.name}</h3>
                 <div className="flex items-baseline gap-1">
                   <span className="text-5xl font-bold">{plan.price}</span>
-                  {plan.period && <span className="text-muted-foreground">{plan.period}</span>}
+                  <span className="text-muted-foreground">/month</span>
                 </div>
                 <p className="mt-3 text-sm text-muted-foreground md:min-h-10">{plan.description}</p>
               </div>
 
-              <ul className="space-y-4 mb-8 flex-1">
-                {plan.features.map((feature) => (
-                  <li key={feature} className="flex items-start gap-3 text-sm">
-                    <Check className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
-                    <span>{feature}</span>
-                  </li>
-                ))}
-              </ul>
-
-              <Link href="/sign-up">
+              <Link href="/sign-up" className="mt-6">
                 <Button
                   className={`w-full h-12 ${plan.popular ? "shadow-lg shadow-primary/25" : ""}`}
                   variant={plan.popular ? "default" : "outline"}
                 >
-                  {plan.cta}
+                  Get started free
                 </Button>
               </Link>
+
+              <dl className="my-6 divide-y divide-border border-y border-border text-sm">
+                {limitRows.map((row) => (
+                  <div key={row.label} className="flex items-baseline justify-between gap-3 py-2.5">
+                    <dt className="text-muted-foreground">{row.label}</dt>
+                    <dd className="font-semibold tabular-nums">{row.value(plan.plan)}</dd>
+                  </div>
+                ))}
+              </dl>
+
+              <div>
+                {plan.includes && <p className="text-sm font-medium">{plan.includes}</p>}
+                {plan.features.length > 0 && (
+                  <ul className={`space-y-3 ${plan.includes ? "mt-3" : ""}`}>
+                    {plan.features.map((feature) => (
+                      <li key={feature} className="flex items-start gap-3 text-sm">
+                        <Check className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
+                        <span>{feature}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
             </div>
           ))}
         </div>
 
-        <p className="mt-10 text-center text-sm text-muted-foreground">
+        <div className="mt-8 max-w-6xl xl:max-w-7xl mx-auto flex flex-col gap-4 rounded-2xl border border-border bg-card p-8 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 className="text-base font-semibold">
+              More than {PLAN_LIMITS.pro.members} people, or several campuses?
+            </h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Email us about your church, and we&apos;ll set up a plan with the room you need.
+            </p>
+          </div>
+          <a href={LARGER_PLAN_MAILTO} className={buttonVariants({ variant: "outline", className: "h-12 px-6 shrink-0" })}>
+            Email us
+          </a>
+        </div>
+
+        <p className="mx-auto mt-10 max-w-3xl text-center text-sm text-muted-foreground text-balance">
           Sign up free, then upgrade from your organization&apos;s dashboard. Paid plans are per organization and can be
-          started by an owner. Use one organization for your whole church. AI usage is subject to plan limits.
+          started by an owner. Use one organization for your whole church.{" "}
+          <Link href="/support#billing" className="whitespace-nowrap font-medium text-foreground underline underline-offset-4">
+            How limits work
+          </Link>
         </p>
       </div>
     </section>

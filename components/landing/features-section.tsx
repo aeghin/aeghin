@@ -1,13 +1,7 @@
 import {
-  Activity,
-  BellRing,
   CalendarCheck,
   CalendarOff,
-  Mail,
-  MessageSquare,
-  Mic2,
   Music,
-  Repeat,
   Smartphone,
   Sparkles,
   Users,
@@ -37,22 +31,10 @@ const features = [
     description: `${ROLE_ORDER.length} roles across ${teamList}, from pianist and BGVs to camera, lighting, and projection. People are only scheduled for the roles they actually serve in.`,
   },
   {
-    icon: Repeat,
-    title: "Event Templates",
-    description:
-      "Save your weekly service once — roles, location, time blocks, and rehearsal — then spin up the next one without retyping it.",
-  },
-  {
     icon: Music,
     title: "Song Library",
     description:
-      "Keep your songs with their key, BPM, time signature, and themes. Attach charts and audio, and link straight to Spotify or YouTube.",
-  },
-  {
-    icon: Mic2,
-    title: "Key Journal",
-    description:
-      "Singers save the key they sang each song in, one tap from the event's setlist, so nobody has to work it out again before rehearsal.",
+      "Keep your songs with their key, BPM, time signature, and themes. Attach charts and audio, link to Spotify or YouTube, and let singers save the key they sing each song in.",
   },
   {
     icon: CalendarOff,
@@ -61,34 +43,10 @@ const features = [
       "Members mark the dates they're away. Those dates are blocked everywhere scheduling happens, so nobody gets assigned while on vacation.",
   },
   {
-    icon: BellRing,
-    title: "Staffing Alerts",
-    description:
-      "Leads hear when an event is fully staffed, or when someone declines or drops out and leaves a gap. On Premium and Pro, a last call goes out 3 days and 1 day before an event with open roles.",
-  },
-  {
-    icon: MessageSquare,
-    title: "Event Chat",
-    description:
-      "Every event gets its own realtime thread for the volunteers serving on it. Details stay with the event instead of scattered in group texts.",
-  },
-  {
     icon: Smartphone,
     title: "Mobile App",
     description:
       "Volunteers accept or decline, chat, and open the setlist from their phone, with a push reminder the day before they serve and a nudge before an invite expires.",
-  },
-  {
-    icon: Mail,
-    title: "Invites & Group Email",
-    description:
-      "Invite members by email, and reach your whole organization, or just the people serving on an event, in one send.",
-  },
-  {
-    icon: Activity,
-    title: "Activity Log",
-    description:
-      "See who was invited, who declined, and who Smart Scheduling brought in, so admins always know how a roster got the way it is.",
   },
 ]
 
@@ -106,7 +64,7 @@ export function FeaturesSection() {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {features.map((feature) => (
             <div
               key={feature.title}

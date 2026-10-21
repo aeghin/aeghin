@@ -4,7 +4,7 @@ import { ArrowRight } from "lucide-react"
 
 export function CTASection() {
   return (
-    <section className="py-28 md:py-36">
+    <section className="pt-12 pb-28 md:pt-16 md:pb-36">
       <div className="mx-auto max-w-7xl px-6 lg:px-8">
         <div className="relative rounded-3xl overflow-hidden">
           {/* Background */}

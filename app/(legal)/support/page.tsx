@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { PLAN_LIMITS, PLAN_NAMES, PLAN_PRICES, formatStorage, type OrgPlan } from "@/lib/config/plans";
+import { LARGER_PLAN_MAILTO, PLAN_LIMITS, PLAN_NAMES, PLAN_PRICES, formatStorage, type OrgPlan } from "@/lib/config/plans";
 
 const PLANS: OrgPlan[] = ["free", "starter", "premium", "pro"];
 
@@ -103,7 +103,7 @@ export default function SupportPage() {
         </li>
       </ul>
 
-      <h2>Billing and subscriptions</h2>
+      <h2 id="billing">Billing and subscriptions</h2>
       <p>
         Paid plans are purchased on <a href="https://aeghin.com">aeghin.com</a>: owners upgrade
         with the Upgrade button in the top bar or from Plan &amp; usage in the organization&apos;s Settings tab, and manage an
@@ -145,8 +145,10 @@ export default function SupportPage() {
         automatic emails never count. Monthly counts start over on the 1st (UTC). A plan applies
         to an organization rather than to an individual, so upgrading unlocks the paid features
         for everyone in that organization — including in the mobile app, where the features are
-        available but not sold. Only an organization owner can change a plan. For refunds or
-        billing problems, email <a href="mailto:support@aeghin.com">support@aeghin.com</a>.
+        available but not sold. Only an organization owner can change a plan. Churches with
+        more than {PLAN_LIMITS.pro.members} people or several campuses can{" "}
+        <a href={LARGER_PLAN_MAILTO}>email us about a larger plan</a>. For refunds or billing
+        problems, email <a href="mailto:support@aeghin.com">support@aeghin.com</a>.
       </p>
 
       <h2>Deleting your account</h2>
