@@ -3,6 +3,7 @@ import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 import { getPlanUsage } from "@/lib/billing/limits";
 import {
+  LARGER_PLAN_MAILTO,
   NEXT_PLAN,
   PLAN_LIMITS,
   PLAN_NAMES,
@@ -105,7 +106,7 @@ export const PlanUsageSection = async ({ organizationId, isOwner }: PlanUsageSec
         )}
       </div>
 
-      {nextPlan && (
+      {nextPlan ? (
         <div className="mt-5">
           {isOwner ? (
             <UpgradePlanButton orgId={organizationId} plan={nextPlan} />
@@ -113,6 +114,16 @@ export const PlanUsageSection = async ({ organizationId, isOwner }: PlanUsageSec
             <p className="text-xs text-muted-foreground">Only an owner can change the plan.</p>
           )}
         </div>
+      ) : (
+        isOwner && (
+          <p className="mt-5 text-xs text-muted-foreground">
+            Need more members or storage?{" "}
+            <a href={LARGER_PLAN_MAILTO} className="font-medium text-foreground underline underline-offset-4">
+              Email us about a larger plan
+            </a>
+            .
+          </p>
+        )
       )}
     </section>
   );

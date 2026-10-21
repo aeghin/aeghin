@@ -153,6 +153,7 @@ export function InvitePersonModal({
             organizationName={organizationName}
             canUpgrade={canUpgrade}
             upgradeTo={seatUsage ? NEXT_PLAN[seatUsage.plan] : undefined}
+            contact
             onClose={handleClose}
           />
         </DialogContent>

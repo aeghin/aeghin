@@ -11,7 +11,7 @@ import { toast } from "sonner";
 import { useUploadThing } from "@/lib/uploadthing";
 import { addSongAttachments, deleteSongAttachment } from "@/lib/actions/song";
 import { startPlanCheckout } from "@/lib/actions/billing";
-import { PLAN_LIMITS, PLAN_NAMES, formatStorage, type PaidPlan } from "@/lib/config/plans";
+import { LARGER_PLAN_MAILTO, PLAN_LIMITS, PLAN_NAMES, formatStorage, type PaidPlan } from "@/lib/config/plans";
 
 import type { SongAttachment, StorageUsage } from "@/lib/types";
 
@@ -224,6 +224,11 @@ export const SongAttachments = ({ songId, organizationId, attachments, storage }
             ) : (
                 <p className="text-xs text-muted-foreground">Ask an owner to upgrade for more room.</p>
             ))}
+            {storage && isShort && !nextPlan && storage.canUpgrade && (
+                <a href={LARGER_PLAN_MAILTO} className="text-xs font-medium underline underline-offset-4">
+                    Email us about more storage
+                </a>
+            )}
         </div>
     );
 };

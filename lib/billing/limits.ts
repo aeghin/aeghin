@@ -70,12 +70,15 @@ async function getMemberSeats(
 
 /**
  * What a dashboard refusal says after the rule: the plan that lifts the limit,
- * or who to ask for it, since only an owner can upgrade.
+ * or who to ask for it, since only an owner can upgrade. Past Pro, a church
+ * emails us about a larger plan.
  */
 function upgradeSentence(plan: OrgPlan, isOwner: boolean, action: string): string {
   const next = NEXT_PLAN[plan];
 
-  if (next === null) return "";
+  if (next === null) {
+    return isOwner ? "Email us about a larger plan." : "Ask an owner about a larger plan.";
+  }
 
   return isOwner
     ? `Upgrade to ${PLAN_NAMES[next]} to ${action}.`

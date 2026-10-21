@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cancelOrgInvite, resendInvitation } from "@/lib/actions/invitation";
 import { startPlanCheckout } from "@/lib/actions/billing";
-import type { PaidPlan } from "@/lib/config/plans";
+import { LARGER_PLAN_MAILTO, type PaidPlan } from "@/lib/config/plans";
 import { InvitationStatus } from "@/generated/prisma/enums";
 
 interface InvitationActionsMenuProps {
@@ -65,6 +65,12 @@ export const InvitationActionsMenu = ({
         toast.error(result.error, {
           position: "top-center",
           action: { label: "Upgrade", onClick: handleUpgrade },
+        });
+      } else if (result.code === "MEMBER_LIMIT" && canUpgrade) {
+        // Pro is the top plan; past its limit, a church asks us for a larger one.
+        toast.error(result.error, {
+          position: "top-center",
+          action: { label: "Email us", onClick: () => { window.location.href = LARGER_PLAN_MAILTO; } },
         });
       } else {
         toast.error(`${result.error}`, { position: "top-center" });

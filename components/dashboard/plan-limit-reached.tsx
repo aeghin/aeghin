@@ -1,13 +1,13 @@
 "use client";
 
 import { useTransition } from "react";
-import { Check, Sparkles, type LucideIcon } from "lucide-react";
+import { Check, Mail, Sparkles, type LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { DialogDescription, DialogFooter, DialogTitle } from "@/components/ui/dialog";
 import { startPlanCheckout } from "@/lib/actions/billing";
-import { PLAN_LIMITS, PLAN_NAMES, PLAN_PRICES, formatStorage, type PaidPlan } from "@/lib/config/plans";
+import { LARGER_PLAN_MAILTO, PLAN_LIMITS, PLAN_NAMES, PLAN_PRICES, formatStorage, type PaidPlan } from "@/lib/config/plans";
 
 // What the limit screens say each paid plan adds. Keep it to what the plan does today.
 const PLAN_PERKS: Record<PaidPlan, string[]> = {
@@ -47,6 +47,9 @@ interface PlanLimitReachedProps {
   canUpgrade: boolean;
   // The plan that lifts this limit. Null when none does, like Pro's allowances.
   upgradeTo?: PaidPlan | null;
+  // When no plan lifts it but a larger plan from us would, like Pro's members:
+  // owners get an email to us instead of an upgrade.
+  contact?: boolean;
   onClose: () => void;
 }
 
@@ -63,11 +66,13 @@ export function PlanLimitReached({
   organizationName,
   canUpgrade,
   upgradeTo = "premium",
+  contact = false,
   onClose,
 }: PlanLimitReachedProps) {
   const [isUpgrading, startUpgrade] = useTransition();
 
   const offersUpgrade = upgradeTo !== null && canUpgrade;
+  const offersContact = upgradeTo === null && contact && canUpgrade;
 
   const handleUpgrade = () => {
     if (!organizationId || upgradeTo === null) return;
@@ -116,6 +121,14 @@ export function PlanLimitReached({
         </div>
       )}
 
+      {upgradeTo === null && contact && (
+        <p className="text-center text-sm text-muted-foreground">
+          {canUpgrade
+            ? "Need room for more people? Email us about your church, and we'll set up a larger plan."
+            : `Ask an owner of ${organizationName ?? "your organization"} to email us about a larger plan.`}
+        </p>
+      )}
+
       {hint && (
         <p className="text-center text-xs text-muted-foreground">{hint}</p>
       )}
@@ -128,8 +141,14 @@ export function PlanLimitReached({
 
       <DialogFooter className="gap-2 sm:justify-center">
         <Button variant="outline" onClick={onClose} className="w-full cursor-pointer sm:w-auto">
-          {offersUpgrade ? "Not now" : "Close"}
+          {offersUpgrade || offersContact ? "Not now" : "Close"}
         </Button>
+        {offersContact && (
+          <a href={LARGER_PLAN_MAILTO} className={buttonVariants({ className: "w-full cursor-pointer sm:w-auto" })}>
+            <Mail className="mr-2 h-4 w-4" />
+            Email us
+          </a>
+        )}
         {offersUpgrade && (
           <Button onClick={handleUpgrade} disabled={isUpgrading} className="w-full cursor-pointer sm:w-auto">
             <Sparkles className="mr-2 h-4 w-4" />
