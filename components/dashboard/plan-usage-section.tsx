@@ -7,6 +7,7 @@ import {
   NEXT_PLAN,
   PLAN_LIMITS,
   PLAN_NAMES,
+  SUPPORT_EMAIL,
   formatResetDate,
   formatStorage,
   type OrgPlan,
@@ -117,11 +118,11 @@ export const PlanUsageSection = async ({ organizationId, isOwner }: PlanUsageSec
       ) : (
         isOwner && (
           <p className="mt-5 text-xs text-muted-foreground">
-            Need more members or storage?{" "}
+            Need more members or storage? Email{" "}
             <a href={LARGER_PLAN_MAILTO} className="font-medium text-foreground underline underline-offset-4">
-              Email us about a larger plan
-            </a>
-            .
+              {SUPPORT_EMAIL}
+            </a>{" "}
+            about a larger plan.
           </p>
         )
       )}

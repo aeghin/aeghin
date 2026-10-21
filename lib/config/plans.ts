@@ -88,11 +88,14 @@ export const PLAN_PRICES = {
   pro: "$79.99",
 };
 
+/** Where churches reach us, shown as text too for anyone without a mail app. */
+export const SUPPORT_EMAIL = "support@aeghin.com";
+
 /**
  * A drafted email for a church that has outgrown Pro, asking for what we need
  * to set up a bigger plan. The pricing page and the support page link here.
  */
-export const LARGER_PLAN_MAILTO = `mailto:support@aeghin.com?subject=${encodeURIComponent(
+export const LARGER_PLAN_MAILTO = `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(
   "A plan for a larger church",
 )}&body=${encodeURIComponent(
   "Church name:\nPeople on your teams:\nCampuses:\nAnything else we should know:\n",

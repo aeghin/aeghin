@@ -6,6 +6,7 @@ import {
   NEXT_PLAN,
   PLAN_LIMITS,
   PLAN_NAMES,
+  SUPPORT_EMAIL,
   formatResetDate,
   formatStorage,
   usageMonth,
@@ -77,7 +78,7 @@ function upgradeSentence(plan: OrgPlan, isOwner: boolean, action: string): strin
   const next = NEXT_PLAN[plan];
 
   if (next === null) {
-    return isOwner ? "Email us about a larger plan." : "Ask an owner about a larger plan.";
+    return isOwner ? `Email ${SUPPORT_EMAIL} about a larger plan.` : "Ask an owner about a larger plan.";
   }
 
   return isOwner

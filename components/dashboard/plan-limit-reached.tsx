@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { DialogDescription, DialogFooter, DialogTitle } from "@/components/ui/dialog";
 import { startPlanCheckout } from "@/lib/actions/billing";
-import { LARGER_PLAN_MAILTO, PLAN_LIMITS, PLAN_NAMES, PLAN_PRICES, formatStorage, type PaidPlan } from "@/lib/config/plans";
+import { LARGER_PLAN_MAILTO, PLAN_LIMITS, PLAN_NAMES, PLAN_PRICES, SUPPORT_EMAIL, formatStorage, type PaidPlan } from "@/lib/config/plans";
 
 // What the limit screens say each paid plan adds. Keep it to what the plan does today.
 const PLAN_PERKS: Record<PaidPlan, string[]> = {
@@ -124,7 +124,7 @@ export function PlanLimitReached({
       {upgradeTo === null && contact && (
         <p className="text-center text-sm text-muted-foreground">
           {canUpgrade
-            ? "Need room for more people? Email us about your church, and we'll set up a larger plan."
+            ? `Need room for more people? Email ${SUPPORT_EMAIL} about your church, and we'll set up a larger plan.`
             : `Ask an owner of ${organizationName ?? "your organization"} to email us about a larger plan.`}
         </p>
       )}

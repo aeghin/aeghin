@@ -2,8 +2,8 @@
 
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { AudioLines, FileText, Sparkles, Trash2, Upload } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { AudioLines, FileText, Mail, Sparkles, Trash2, Upload } from "lucide-react";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -225,7 +225,11 @@ export const SongAttachments = ({ songId, organizationId, attachments, storage }
                 <p className="text-xs text-muted-foreground">Ask an owner to upgrade for more room.</p>
             ))}
             {storage && isShort && !nextPlan && storage.canUpgrade && (
-                <a href={LARGER_PLAN_MAILTO} className="text-xs font-medium underline underline-offset-4">
+                <a
+                    href={LARGER_PLAN_MAILTO}
+                    className={buttonVariants({ variant: "outline", size: "sm", className: "gap-2" })}
+                >
+                    <Mail className="h-3.5 w-3.5" />
                     Email us about more storage
                 </a>
             )}
