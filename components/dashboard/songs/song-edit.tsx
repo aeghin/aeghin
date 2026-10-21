@@ -116,7 +116,7 @@ export const EditSongDetails = ({ song, orgId, storage }: EditSongDetailsProps) 
                             <span className="font-semibold text-foreground">{song.title}</span>
                             {" by "}
                             <span className="font-semibold text-foreground">{song.artist}</span>
-                            {" will be removed from the library and can no longer be added to setlists. Past setlists keep their copy."}
+                            {" will be removed from the library along with its charts and audio, and can no longer be added to setlists. Past setlists still list it."}
                         </DialogDescription>
                     </DialogHeader>
                     <DialogFooter className="pt-4">

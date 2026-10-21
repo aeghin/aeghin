@@ -355,10 +355,9 @@ export const deleteSongFromLibrary = async (
             };
         }
 
-        
-        const setlistUses = await prisma.setlistSong.count({ where: { songId } });
-
-        const purgeAttachments = setlistUses === 0 && song.attachments.length > 0;
+                // Its charts and audio go with it, even when a past setlist lists the
+        // song: that setlist keeps the song, without its files.
+        const purgeAttachments = song.attachments.length > 0;
 
         await prisma.$transaction(async (tx) => {
             if (purgeAttachments) {

@@ -334,6 +334,16 @@ export const deleteOrganization = async (organizationId: string, touch: TagInval
             select: { userId: true }
         });
 
+        // Its files, read before the rows that point at them are deleted: the
+        // logo and every chart and recording.
+        const files = await prisma.organization.findUnique({
+            where: { id: organizationId },
+            select: {
+                logoKey: true,
+                songs: { select: { attachments: { select: { key: true } } } },
+            },
+        });
+
         await prisma.$transaction([
             prisma.event.deleteMany({ where: { organizationId } }),
             prisma.song.deleteMany({ where: { organizationId } }),
@@ -341,6 +351,21 @@ export const deleteOrganization = async (organizationId: string, touch: TagInval
             prisma.serviceType.deleteMany({ where: { organizationId } }),
             prisma.organization.delete({ where: { id: organizationId } }),
         ]);
+
+        const fileKeys = [
+            ...(files?.logoKey ? [files.logoKey] : []),
+            ...(files?.songs.flatMap((song) => song.attachments.map((attachment) => attachment.key)) ?? []),
+        ];
+
+        // Best effort, as when an account is deleted: a file left behind must
+        // not turn a finished delete into an error.
+        if (fileKeys.length) {
+            try {
+                await new UTApi().deleteFiles(fileKeys);
+            } catch (err) {
+                console.error('deleteOrganization file cleanup error:', err);
+            }
+        }
 
         for (const { userId: memberId } of members) {
             touch(`user-${memberId}-orgs`);
