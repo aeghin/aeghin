@@ -44,10 +44,10 @@ const plans = [
     name: "Premium",
     price: PLAN_PRICES.premium,
     period: "/month",
-    description: "No size limits, plus Smart Scheduling and AI setlists",
+    description: "Bigger teams, plus Smart Scheduling and AI setlists",
     features: [
       "Everything in Starter",
-      "Unlimited members, songs and service types",
+      `Up to ${PLAN_LIMITS.premium.members} members, unlimited songs and service types`,
       "Smart Scheduling and last-call staffing alerts",
       `${formatStorage(PLAN_LIMITS.premium.storage)} of storage for charts and audio`,
       `${PLAN_LIMITS.premium.bulkEmails} group emails a month`,
@@ -66,6 +66,7 @@ const plans = [
     description: "Drafts whole events, and researches beyond your catalog",
     features: [
       "Everything in Premium",
+      `Up to ${PLAN_LIMITS.pro.members} members per organization`,
       `${formatStorage(PLAN_LIMITS.pro.storage)} of storage for charts and audio`,
       `${PLAN_LIMITS.pro.bulkEmails} group emails a month`,
       "AI event drafting with volunteer picks",
@@ -87,8 +88,8 @@ export function PricingSection() {
           <p className="text-sm font-semibold text-primary mb-4 tracking-wide uppercase">Pricing</p>
           <h2 className="text-4xl font-bold tracking-tight sm:text-5xl text-balance">Simple, transparent pricing</h2>
           <p className="mt-6 text-lg text-muted-foreground">
-            Start free. Starter raises the limits, Premium removes them and adds Smart
-            Scheduling and AI setlists, and Pro adds AI event drafting on top.
+            Start free. Starter raises the limits, Premium adds Smart Scheduling and AI
+            setlists for bigger teams, and Pro adds AI event drafting on top.
           </p>
         </div>
 

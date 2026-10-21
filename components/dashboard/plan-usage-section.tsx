@@ -19,9 +19,9 @@ const WARN_AT = 0.8;
 function planSummary(plan: OrgPlan): string {
   const { members, songs, serviceTypes, storage, bulkEmails, aiRuns } = PLAN_LIMITS[plan];
 
-  return members !== null && songs !== null && serviceTypes !== null
+  return songs !== null && serviceTypes !== null
     ? `${PLAN_NAMES[plan]} includes up to ${members} members, ${songs} songs, ${serviceTypes} service types, ${formatStorage(storage)} of storage and ${bulkEmails} group emails a month.`
-    : `${PLAN_NAMES[plan]} has no member, song or service type limit, with ${formatStorage(storage)} of storage, ${bulkEmails} group emails and ${aiRuns} AI requests a month.`;
+    : `${PLAN_NAMES[plan]} includes up to ${members} members, with no song or service type limit, ${formatStorage(storage)} of storage, ${bulkEmails} group emails and ${aiRuns} AI requests a month.`;
 }
 
 interface PlanUsageSectionProps {
@@ -52,12 +52,8 @@ export const PlanUsageSection = async ({ organizationId, isOwner }: PlanUsageSec
       <div className="mt-4 flex flex-col gap-4">
         <UsageRow
           label="Members"
-          value={members.limit === null ? `${members.used}` : `${members.used} / ${members.limit}`}
-          detail={
-            members.limit === null
-              ? `${invited}No limit`
-              : `${invited}${seatsUsed >= members.limit ? "Limit reached" : `${members.limit - seatsUsed} left`}`
-          }
+          value={`${members.used} / ${members.limit}`}
+          detail={`${invited}${seatsUsed >= members.limit ? "Limit reached" : `${members.limit - seatsUsed} left`}`}
           used={seatsUsed}
           limit={members.limit}
         />

@@ -36,7 +36,7 @@ type MemberSeats = {
   plan: OrgPlan;
   members: number;
   pendingInvites: number;
-  limit: number | null;
+  limit: number;
 };
 
 /**
@@ -241,7 +241,7 @@ export async function inviteLimitError(
 ): Promise<string | null> {
   const { plan, members, pendingInvites, limit } = await getMemberSeats(organizationId, opts.exceptEmail);
 
-  if (limit === null || members + pendingInvites < limit) return null;
+  if (members + pendingInvites < limit) return null;
 
   return `${PLAN_NAMES[plan]} organizations can have up to ${limit} members, including pending invites. ${upgradeSentence(plan, opts.isOwner, "invite more")}`;
 }
@@ -258,7 +258,7 @@ export async function joinLimitError(
 ): Promise<string | null> {
   const { members, limit } = await getMemberSeats(organizationId);
 
-  if (limit === null || members < limit) return null;
+  if (members < limit) return null;
 
   return `${organizationName} has reached its ${limit}-member limit. Let the person who invited you know. Once they make room, you can accept this invitation.`;
 }
@@ -274,10 +274,9 @@ export type SeatUsage = {
 
 /**
  * The same numbers for display, through cached reads that every invite, accept,
- * cancel and removal already expires. Null when the plan has no cap. Never
- * enforce with this.
+ * cancel and removal already expires. Never enforce with this.
  */
-export async function getSeatUsage(organizationId: string): Promise<SeatUsage | null> {
+export async function getSeatUsage(organizationId: string): Promise<SeatUsage> {
   const [plan, members, pendingInvites] = await Promise.all([
     getOrgPlan(organizationId),
     getOrgMemberCountById(organizationId),
@@ -285,8 +284,6 @@ export async function getSeatUsage(organizationId: string): Promise<SeatUsage | 
   ]);
 
   const limit = PLAN_LIMITS[plan].members;
-
-  if (limit === null) return null;
 
   return {
     plan,
@@ -334,7 +331,7 @@ export async function getEmailAllowance(organizationId: string): Promise<EmailAl
  */
 export type PlanUsage = {
   plan: OrgPlan;
-  members: { used: number; pending: number; limit: number | null };
+  members: { used: number; pending: number; limit: number };
   songs: { used: number; limit: number | null };
   serviceTypes: { used: number; limit: number | null };
   storage: { used: number; limit: number };

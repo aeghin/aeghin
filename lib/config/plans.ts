@@ -12,11 +12,12 @@ const MB = 1024 * 1024;
 const GB = 1024 * MB;
 
 /**
- * What each plan allows. `null` means no cap; storage and the monthly
+ * What each plan allows. `null` means no cap; members, storage and the monthly
  * allowances are capped on every plan.
  */
 type PlanLimits = {
-  members: number | null;
+  /** Members plus pending invites. Past Pro's, a church contacts us. */
+  members: number;
   songs: number | null;
   /** Service types in use. Deleted ones stay for past events and don't count. */
   serviceTypes: number | null;
@@ -35,10 +36,10 @@ type PlanLimits = {
  * pricing page all read from here, so they can't disagree.
  */
 export const PLAN_LIMITS: Record<OrgPlan, PlanLimits> = {
-  free: { members: 30, songs: 40, serviceTypes: 2, storage: 500 * MB, bulkEmails: 10, aiRuns: 0, smartScheduling: false },
-  starter: { members: 60, songs: 80, serviceTypes: 4, storage: 2 * GB, bulkEmails: 20, aiRuns: 0, smartScheduling: false },
-  premium: { members: null, songs: null, serviceTypes: null, storage: 5 * GB, bulkEmails: 40, aiRuns: 200, smartScheduling: true },
-  pro: { members: null, songs: null, serviceTypes: null, storage: 10 * GB, bulkEmails: 80, aiRuns: 200, smartScheduling: true },
+  free: { members: 20, songs: 40, serviceTypes: 2, storage: 500 * MB, bulkEmails: 10, aiRuns: 0, smartScheduling: false },
+  starter: { members: 50, songs: 80, serviceTypes: 4, storage: 2 * GB, bulkEmails: 20, aiRuns: 0, smartScheduling: false },
+  premium: { members: 150, songs: null, serviceTypes: null, storage: 5 * GB, bulkEmails: 40, aiRuns: 200, smartScheduling: true },
+  pro: { members: 300, songs: null, serviceTypes: null, storage: 10 * GB, bulkEmails: 80, aiRuns: 200, smartScheduling: true },
 };
 
 export const PLAN_NAMES: Record<OrgPlan, string> = { free: "Free", starter: "Starter", premium: "Premium", pro: "Pro" };
@@ -83,6 +84,6 @@ export function formatResetDate(resetsAt: Date): string {
  */
 export const PLAN_PRICES = {
   starter: "$24.99",
-  premium: "$39.99",
-  pro: "$59.99",
+  premium: "$49.99",
+  pro: "$79.99",
 };

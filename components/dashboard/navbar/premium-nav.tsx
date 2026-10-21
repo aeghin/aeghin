@@ -13,7 +13,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { getOrgPremiumStatus, startPlanCheckout } from "@/lib/actions/billing";
-import type { OrgPlan, PaidPlan } from "@/lib/config/plans";
+import { PLAN_LIMITS, type OrgPlan, type PaidPlan } from "@/lib/config/plans";
 
 type Status = { plan: OrgPlan; canSubscribe: boolean };
 
@@ -123,7 +123,7 @@ export function PremiumNav() {
         >
           <span className="text-sm font-medium">Premium</span>
           <span className="text-xs text-muted-foreground">
-            Unlimited members & songs, Smart Scheduling, AI setlists
+            Up to {PLAN_LIMITS.premium.members} members, Smart Scheduling, AI setlists
           </span>
         </DropdownMenuItem>
         <DropdownMenuItem
@@ -132,7 +132,7 @@ export function PremiumNav() {
         >
           <span className="text-sm font-medium">Pro</span>
           <span className="text-xs text-muted-foreground">
-            Smarter model + web search
+            Up to {PLAN_LIMITS.pro.members} members, smarter AI + web search
           </span>
         </DropdownMenuItem>
       </DropdownMenuContent>

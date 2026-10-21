@@ -19,7 +19,7 @@ const PLAN_PERKS: Record<PaidPlan, string[]> = {
     "Billed per organization, cancel anytime",
   ],
   premium: [
-    "Unlimited members, songs and service types",
+    `Up to ${PLAN_LIMITS.premium.members} members, unlimited songs and service types`,
     "Smart Scheduling fills declines for you",
     `${PLAN_LIMITS.premium.bulkEmails} group emails a month`,
     `${formatStorage(PLAN_LIMITS.premium.storage)} of storage for charts and audio`,
@@ -28,6 +28,7 @@ const PLAN_PERKS: Record<PaidPlan, string[]> = {
   ],
   pro: [
     "Everything in Premium",
+    `Up to ${PLAN_LIMITS.pro.members} members`,
     `${PLAN_LIMITS.pro.bulkEmails} group emails a month`,
     `${formatStorage(PLAN_LIMITS.pro.storage)} of storage for charts and audio`,
     "AI event drafting and a more capable AI model",

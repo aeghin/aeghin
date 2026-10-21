@@ -18,11 +18,12 @@ type BillingStatus = {
     /** Whether a Stripe customer exists, so the portal has something to open. */
     hasBillingAccount: boolean;
     /**
-     * The caps on the organization's plan. `null` means no cap; storage is
-     * bytes; the two allowances are per calendar month.
+     * The caps on the organization's plan. `null` means no cap, which only
+     * songs and service types can have; storage is bytes; the two allowances
+     * are per calendar month.
      */
     limits: {
-        members: number | null;
+        members: number;
         songs: number | null;
         serviceTypes: number | null;
         storage: number;
