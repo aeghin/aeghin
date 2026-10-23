@@ -355,6 +355,9 @@ export async function GET(
                             },
                         },
                         setlistSongAssignment: {
+                            // In the order they were assigned, which is where the
+                            // phone puts a new singer before this list comes back.
+                            orderBy: { createdAt: "asc" },
                             select: {
                                 userId: true,
                                 user: {
