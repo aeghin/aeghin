@@ -36,6 +36,8 @@ export type EventDetailsSetlistSong = {
   id: string
   eventId: string
   songId: string
+  /** The arrangement this event plays. Null is the Original. */
+  arrangementId: string | null
   position: number
   pitch: Pitch
   keyQuality: KeyQuality
@@ -49,8 +51,16 @@ export type EventDetailsSetlistSong = {
     artist: string
     youtubeUrl: string | null
     spotifyUrl: string | null
+    /** Every arrangement's files as well as the Original's. A row shows only its own. */
     attachments: SongAttachment[]
   }
+  /** The picked arrangement's name and links. Null for the Original. */
+  arrangement: {
+    name: string
+    useSongLinks: boolean
+    spotifyUrl: string | null
+    youtubeUrl: string | null
+  } | null
   setlistSongAssignment: {
     userId: string
     user: {
@@ -64,6 +74,13 @@ export type EventDetailsSetlistSong = {
 export type SetlistSong = {
   id: string
   songId: string
+  /**
+   * The arrangement this event plays, or null for the Original. Absent keeps
+   * the saved one, which is what phone builds from before arrangements send.
+   */
+  arrangementId?: string | null
+  /** Its name, for the row's label. Null for the Original. */
+  arrangementName?: string | null
   position: number
   pitch: Pitch
   keyQuality: KeyQuality
@@ -128,6 +145,18 @@ export type LibrarySong = {
   youtubeUrl: string | null
   themes: string[]
   attachments: SongAttachment[]
+  /** Its other versions, oldest first. The Original isn't one of them. */
+  arrangements: SongArrangement[]
+}
+
+/** A named version of a library song, picked per event on a setlist. */
+export type SongArrangement = {
+  id: string
+  name: string
+  /** On: a setlist shows the song's links. Off: the two below, if any. */
+  useSongLinks: boolean
+  spotifyUrl: string | null
+  youtubeUrl: string | null
 }
 
 export type SongAttachment = {
@@ -138,6 +167,8 @@ export type SongAttachment = {
   type: string
   size: number
   songId: string
+  /** The arrangement it belongs to. Null is the Original's. */
+  arrangementId: string | null
   createdAt: Date
 }
 

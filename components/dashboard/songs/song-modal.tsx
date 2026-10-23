@@ -37,6 +37,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 
 import { YoutubeIcon, SpotifyIcon } from "@/components/icons/brand-icons";
 import { SongAttachments } from "@/components/dashboard/songs/song-attachments";
+import { SongArrangements } from "@/components/dashboard/songs/song-arrangements";
 
 import { Pitch, KeyQuality } from "@/generated/prisma/enums";
 import { songSchema, songSchemaInput } from "@/lib/validations/song";
@@ -449,11 +450,23 @@ export function SongModal({ orgId, song, open, onOpenChange, orgName, songLimit 
                   </p>
                 </div>
 
-              {/* Attachments (existing songs only) */}
+              {/* Attachments (existing songs only): the Original's */}
               {song && (
                 <SongAttachments
                   songId={song.id}
                   organizationId={orgId}
+                  attachments={song.attachments.filter((a) => a.arrangementId === null)}
+                  storage={storage}
+                />
+              )}
+
+              {/* Arrangements (existing songs only), saved as they're made */}
+              {song && (
+                <SongArrangements
+                  songId={song.id}
+                  organizationId={orgId}
+                  songLinks={{ spotifyUrl: song.spotifyUrl, youtubeUrl: song.youtubeUrl }}
+                  arrangements={song.arrangements}
                   attachments={song.attachments}
                   storage={storage}
                 />

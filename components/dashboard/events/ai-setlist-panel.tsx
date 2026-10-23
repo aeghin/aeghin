@@ -81,11 +81,14 @@ export function AiSetlistPanel({
   }
 
   // Map the server-validated proposal into draft songs (fresh ids + order).
+  // Fresh rows are the Original; the editor carries a kept song's pick across.
   function applyProposal(songs: ProposedSetlistSong[]) {
     onApply(
       songs.map((s, idx) => ({
         id: crypto.randomUUID(),
         songId: s.songId,
+        arrangementId: null,
+        arrangementName: null,
         position: idx,
         pitch: s.pitch,
         keyQuality: s.keyQuality,

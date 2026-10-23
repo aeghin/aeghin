@@ -19,8 +19,7 @@ import { CatalogPicker } from "./song-catalog-picker";
 import { AiSetlistPanel } from "./ai-setlist-panel";
 import { AiSetlistUpgrade } from "./ai-setlist-upgrade";
 import { AiSetlistProUpsell } from "./ai-setlist-pro-upsell";
-import type { SetlistSong } from "@/lib/types";
-import { Song } from "@/generated/prisma/client";
+import type { LibrarySong, SetlistSong } from "@/lib/types";
 
 interface SetlistEditorProps {
   eventId: string
@@ -29,7 +28,7 @@ interface SetlistEditorProps {
   backHref: string
   initialSongs: SetlistSong[]
   serviceColor: string
-  catalog: Song[]
+  catalog: LibrarySong[]
   canUseAi: boolean
   hasPro: boolean
   canSubscribe: boolean
@@ -80,6 +79,28 @@ export function SetlistEditor({
     setSongs(updatedSongs)
     setIsDirty(true)
   };
+
+  // The AI picks songs, never arrangements: a song it keeps stays on the
+  // arrangement picked for it here, and one it brings in is the Original.
+  const applyAiSongs = (proposed: SetlistSong[]) => {
+    const current = new Map(songs.map((s) => [s.songId, s]));
+
+    updateSongs(
+      proposed.map((s) => {
+        const kept = current.get(s.songId);
+
+        return kept
+          ? {
+              ...s,
+              arrangementId: kept.arrangementId,
+              arrangementName: kept.arrangementName,
+              spotifyUrl: kept.spotifyUrl,
+              youtubeUrl: kept.youtubeUrl,
+            }
+          : s;
+      }),
+    );
+  };
   
   return (
     <div className="min-h-screen bg-muted/10">
@@ -106,6 +127,7 @@ export function SetlistEditor({
           <SetlistDraft
             songs={songs}
             onChange={updateSongs}
+            catalog={catalog}
             serviceColor={serviceColor}
           />
         </section>
@@ -140,7 +162,7 @@ export function SetlistEditor({
                   <AiSetlistPanel
                     eventId={eventId}
                     orgId={orgId}
-                    onApply={updateSongs}
+                    onApply={applyAiSongs}
                     serviceColor={serviceColor}
                   />
                 </>

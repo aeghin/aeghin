@@ -18,19 +18,26 @@ import {
   decodeKey,
   formatKey,
 } from "@/lib/constants/key";
-import type { SetlistSong } from "@/lib/types";
+import type { LibrarySong, SetlistSong, SongArrangement } from "@/lib/types";
 import { SpotifyIcon, YoutubeIcon } from "@/components/icons/brand-icons";
 import { cn } from "@/lib/utils";
 import { colorClasses } from "@/lib/config/service-types-config";
+import { versionLinks } from "@/lib/arrangements";
+
+// A Select item can't have an empty value, so the Original gets a word. Never an id.
+const ORIGINAL = "original";
 
 interface SetlistDraftProps {
   songs: SetlistSong[];
   onChange: (songs: SetlistSong[]) => void;
+  /** The library, for each song's arrangements. */
+  catalog: LibrarySong[];
   serviceColor: string;
 }
 
-export function SetlistDraft({ songs, onChange, serviceColor }: SetlistDraftProps) {
+export function SetlistDraft({ songs, onChange, catalog, serviceColor }: SetlistDraftProps) {
   const serviceColors = colorClasses[serviceColor];
+  const librarySongs = new Map(catalog.map((s) => [s.id, s]));
 
   const updateSong = <K extends keyof SetlistSong>(
     id: string,
@@ -51,6 +58,25 @@ export function SetlistDraft({ songs, onChange, serviceColor }: SetlistDraftProp
 
   const removeSong = (id: string) => {
     onChange(songs.filter((s) => s.id !== id));
+  };
+
+  // Switches the arrangement this event plays, and the links the row shows with it.
+  const updateArrangement = (id: string, value: string) => {
+    onChange(
+      songs.map((s) => {
+        const librarySong = librarySongs.get(s.songId);
+        if (s.id !== id || !librarySong) return s;
+
+        const arrangement = librarySong.arrangements.find((a) => a.id === value) ?? null;
+
+        return {
+          ...s,
+          arrangementId: arrangement?.id ?? null,
+          arrangementName: arrangement?.name ?? null,
+          ...versionLinks(librarySong, arrangement),
+        };
+      }),
+    );
   };
 
   return (
@@ -137,6 +163,12 @@ export function SetlistDraft({ songs, onChange, serviceColor }: SetlistDraftProp
                 </Button>
 
                 <div className="flex w-full items-center gap-2 pl-8 sm:w-auto sm:pl-0">
+                  <ArrangementSelect
+                    value={song.arrangementId ?? null}
+                    arrangements={librarySongs.get(song.songId)?.arrangements ?? []}
+                    onChange={(value) => updateArrangement(song.id, value)}
+                  />
+
                   <Select
                     value={
                       song.pitch && song.keyQuality
@@ -190,5 +222,39 @@ export function SetlistDraft({ songs, onChange, serviceColor }: SetlistDraftProp
         )}
       </CardContent>
     </Card>
+  );
+}
+
+/** The arrangement this event plays, for songs that have any. */
+function ArrangementSelect({
+  value,
+  arrangements,
+  onChange,
+}: {
+  value: string | null;
+  arrangements: SongArrangement[];
+  onChange: (value: string) => void;
+}) {
+  if (arrangements.length === 0) return null;
+
+  return (
+    <Select value={value ?? ORIGINAL} onValueChange={onChange}>
+      <SelectTrigger
+        aria-label="Arrangement"
+        className="h-7 w-full min-w-0 flex-1 text-xs sm:w-32 sm:flex-none"
+      >
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value={ORIGINAL} className="text-xs">
+          Original
+        </SelectItem>
+        {arrangements.map((arrangement) => (
+          <SelectItem key={arrangement.id} value={arrangement.id} className="text-xs">
+            {arrangement.name}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   );
 }

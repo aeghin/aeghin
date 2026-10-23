@@ -26,9 +26,29 @@ export const songSchema = z.object({
 
 export type songSchemaInput = z.infer<typeof songSchema>;
 
+export const songArrangementSchema = z.object({
+    name: z
+        .string()
+        .trim()
+        .min(1, "Arrangement name required")
+        .max(60, "Keep it under 60 characters")
+        .refine((name) => name.toLowerCase() !== "original", {
+            message: "Original is the song itself. Pick another name",
+        }),
+    // On: the setlist shows the song's links, whatever they are by then. Off:
+    // its own below, and with neither, only its files.
+    useSongLinks: z.boolean(),
+    spotifyUrl: optionalUrl,
+    youtubeUrl: optionalUrl,
+});
+
+export type songArrangementInput = z.infer<typeof songArrangementSchema>;
+
 export const songAttachmentsSchema = z.object({
     songId: z.uuid(),
     organizationId: z.uuid(),
+    // The arrangement the files are for. Absent or null is the Original.
+    arrangementId: z.uuid().nullable().optional(),
     files: z.object({
         name: z.string().min(1, "File name required"),
         url: z.url("File URL required"),

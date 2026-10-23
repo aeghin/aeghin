@@ -9,6 +9,7 @@ import { InvitationStatus } from "@/generated/prisma/enums";
 import { volunteerRoleConfig } from "@/lib/config/roles";
 import { SongVocalistAssign } from "./song-vocalist-assign";
 import { SongKeyCard } from "./song-key-card";
+import { versionLinks } from "@/lib/arrangements";
 import type { EventDetails, SetlistSong, SongKeyEntry } from "@/lib/types";
 
 interface EventSetlistSectionProps {
@@ -29,9 +30,13 @@ export function EventSetlistSection({
 }: EventSetlistSectionProps) {
   const serviceColor = event.serviceType.color;
 
+  // Each row is the arrangement this event plays: its files and, when it has
+  // any, its links. Never the Original's alongside.
   const songs: SetlistSong[] = event.setlistSongs.map((s) => ({
     id: s.id,
     songId: s.songId,
+    arrangementId: s.arrangementId,
+    arrangementName: s.arrangement?.name ?? null,
     position: s.position,
     pitch: s.pitch,
     keyQuality: s.keyQuality,
@@ -39,9 +44,8 @@ export function EventSetlistSection({
     timeSignature: s.timeSignature,
     title: s.song.title,
     artist: s.song.artist,
-    youtubeUrl: s.song.youtubeUrl,
-    spotifyUrl: s.song.spotifyUrl,
-    attachments: s.song.attachments,
+    ...versionLinks(s.song, s.arrangement),
+    attachments: s.song.attachments.filter((a) => a.arrangementId === s.arrangementId),
   }));
   const editorHref = `/dashboard/organizations/${orgId}/events/${event.id}/setlist/editor`;
 
@@ -154,6 +158,9 @@ export function EventSetlistSection({
                     <div className="flex items-baseline gap-2">
                       <p className="min-w-0 flex-1 text-xs text-muted-foreground truncate">
                         {song.artist}
+                        {song.arrangementName && (
+                          <span className="font-medium text-foreground/80"> · {song.arrangementName}</span>
+                        )}
                       </p>
                       <span className="shrink-0 font-mono text-xs text-muted-foreground sm:hidden">
                         {song.bpm} bpm · {song.timeSignature}

@@ -18,9 +18,13 @@ import type { SongAttachment, StorageUsage } from "@/lib/types";
 interface SongAttachmentsProps {
     songId: string;
     organizationId: string;
+    /** The arrangement these files belong to. Absent is the Original. */
+    arrangementId?: string | null;
     attachments: SongAttachment[];
     // Null for anyone who can't upload.
     storage: StorageUsage | null;
+    /** In an arrangement's box: just the files and the upload, storage only when short. */
+    compact?: boolean;
 };
 
 const formatFileSize = (bytes: number) => {
@@ -28,7 +32,7 @@ const formatFileSize = (bytes: number) => {
     return `${Math.max(1, Math.round(bytes / 1024))} KB`;
 };
 
-export const SongAttachments = ({ songId, organizationId, attachments, storage }: SongAttachmentsProps) => {
+export const SongAttachments = ({ songId, organizationId, arrangementId = null, attachments, storage, compact = false }: SongAttachmentsProps) => {
 
     const router = useRouter();
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -44,6 +48,7 @@ export const SongAttachments = ({ songId, organizationId, attachments, storage }
                 const result = await addSongAttachments({
                     songId,
                     organizationId,
+                    arrangementId,
                     files: uploaded.map((file) => ({
                         name: file.name,
                         url: file.ufsUrl,
@@ -124,10 +129,10 @@ export const SongAttachments = ({ songId, organizationId, attachments, storage }
 
     return (
         <div className="space-y-2">
-            <p className="text-sm font-medium">Attachments</p>
+            {!compact && <p className="text-sm font-medium">Attachments</p>}
 
             {attachments.length === 0 ? (
-                <p className="text-xs text-muted-foreground">No attachments uploaded yet.</p>
+                !compact && <p className="text-xs text-muted-foreground">No attachments uploaded yet.</p>
             ) : (
                 <ul className="space-y-1.5">
                     {attachments.map((attachment) => {
@@ -195,10 +200,12 @@ export const SongAttachments = ({ songId, organizationId, attachments, storage }
                 {isBusy ? <Spinner className="h-4 w-4" /> : <Upload className="h-4 w-4" />}
                 {isUploading ? "Uploading..." : isSaving ? "Saving..." : isFull ? "Storage full" : "Upload PDF or audio"}
             </Button>
-            <p className="text-xs text-muted-foreground">
-                Chord charts (PDF, up to 16MB) and audio like MP3, WAV or M4A (up to 64MB).
-            </p>
-            {storage && (
+            {!compact && (
+                <p className="text-xs text-muted-foreground">
+                    Chord charts (PDF, up to 16MB) and audio like MP3, WAV or M4A (up to 64MB).
+                </p>
+            )}
+            {storage && (!compact || isShort) && (
                 <p className={cn("text-xs", isShort ? "font-medium text-amber-600 dark:text-amber-400" : "text-muted-foreground")}>
                     {tooBig !== null
                         ? `Not enough storage. This upload is ${formatStorage(tooBig)}, and ${storage.limit > storage.used ? formatStorage(storage.limit - storage.used) : "none"} of ${formatStorage(storage.limit)} is left.`

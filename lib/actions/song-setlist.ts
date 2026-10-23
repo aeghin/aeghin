@@ -24,6 +24,9 @@ type SetlistRowData = {
   keyQuality: KeyQuality;
   bpm: number;
   timeSignature: string;
+  // Left out to keep the saved pick: phone builds from before arrangements
+  // don't send one, and must not reset the row to the Original.
+  arrangementId?: string | null;
 };
 
 export const saveSetlist = async (
@@ -62,18 +65,37 @@ export const saveSetlist = async (
         return { success: false, error: "Duplicate songs in setlist" };
       };
 
-      const validSongs = await prisma.song.count({
+      const librarySongs = await prisma.song.findMany({
         where: {
           id: { in: songIds },
           organizationId,
           deletedAt: null,
         },
+        select: {
+          id: true,
+          arrangements: { select: { id: true } },
+        },
       });
 
-      if (validSongs !== uniqueSongIds.size) {
+      if (librarySongs.length !== uniqueSongIds.size) {
         return {
           success: false,
           error: "One or more songs do not belong to this organization",
+        };
+      }
+
+      // A pick has to be one of its own song's arrangements.
+      const arrangementIds = new Map(
+        librarySongs.map((s) => [s.id, new Set(s.arrangements.map((a) => a.id))]),
+      );
+      const strayPick = songs.some(
+        (s) => s.arrangementId && !arrangementIds.get(s.songId)?.has(s.arrangementId),
+      );
+
+      if (strayPick) {
+        return {
+          success: false,
+          error: "An arrangement on this setlist was deleted. Pick another one and save again.",
         };
       }
     }
@@ -101,12 +123,13 @@ export const saveSetlist = async (
       const creates: (SetlistRowData & { eventId: string; songId: string })[] = [];
 
       songs.forEach((s, idx) => {
-        const data = {
+        const data: SetlistRowData = {
           position: idx,
           pitch: s.pitch,
           keyQuality: s.keyQuality,
           bpm: s.bpm,
           timeSignature: s.timeSignature,
+          ...(s.arrangementId === undefined ? {} : { arrangementId: s.arrangementId }),
         };
         const existingId = existingIdBySongId.get(s.songId);
         if (existingId) updates.push({ id: existingId, data });

@@ -200,7 +200,7 @@ export const addSongAttachments = async (
 
         if (!parsed.success) return { success: false, error: parsed.error.issues[0].message };
 
-        const { songId, organizationId, files } = parsed.data;
+        const { songId, organizationId, arrangementId, files } = parsed.data;
 
         const membership = await prisma.membership.findUnique({
             where: {
@@ -221,9 +221,20 @@ export const addSongAttachments = async (
 
         if (!song) return { success: false, error: "Song not found." };
 
+        // An arrangement's files have to be for one of this song's.
+        if (arrangementId) {
+            const arrangement = await prisma.songArrangement.findFirst({
+                where: { id: arrangementId, songId },
+                select: { id: true }
+            });
+
+            if (!arrangement) return { success: false, error: "Arrangement not found." };
+        }
+
         await prisma.songAttachment.createMany({
             data: files.map((file) => ({
                 songId,
+                arrangementId: arrangementId ?? null,
                 name: file.name,
                 url: file.url,
                 key: file.key,

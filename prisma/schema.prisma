@@ -547,6 +547,7 @@ model Song {
 
   setlistSongs SetlistSong[]
   attachments SongAttachment[]
+  arrangements SongArrangement[]
   keyEntries SongKeyEntry[]
 
 
@@ -573,6 +574,12 @@ model SetlistSong {
   songId String
   song Song @relation(fields: [songId], references: [id])
 
+  // The arrangement this event plays. Null is the Original. Deleting one is
+  // refused while an upcoming setlist plays it, so this only goes null on
+  // past events, which then list the Original.
+  arrangementId String?
+  arrangement   SongArrangement? @relation(fields: [arrangementId], references: [id], onDelete: SetNull)
+
   setlistSongAssignment SetlistSongAssignment[]
 
   createdAt DateTime @default(now())
@@ -581,6 +588,7 @@ model SetlistSong {
   @@unique([eventId, songId])
   @@index([eventId])
   @@index([songId])
+  @@index([arrangementId])
 
 }
 
@@ -595,9 +603,45 @@ model SongAttachment {
   songId String
   song   Song @relation(fields: [songId], references: [id], onDelete: Cascade)
 
+  // The arrangement it belongs to. Null is the Original's. It still hangs off
+  // the song too, so storage totals and every song and organization teardown
+  // count and clear it without knowing arrangements exist.
+  arrangementId String?
+  arrangement   SongArrangement? @relation(fields: [arrangementId], references: [id], onDelete: Cascade)
+
   createdAt DateTime @default(now())
 
   @@index([songId])
+  @@index([arrangementId])
+}
+
+/// A named version of a song (the verse the band recorded, its own intro),
+/// picked when the song goes on a setlist. The Original is no row at all: it
+/// is the song's own links and files.
+///
+/// With useSongLinks on, a setlist shows the song's links, read each time so a
+/// change to them reaches every setlist. Off, it shows only its own, and with
+/// neither just its files (lib/arrangements.ts). Deleting it takes its file
+/// rows with it; deleteSongArrangement clears the files at UploadThing.
+model SongArrangement {
+  id   String @id @default(uuid())
+  name String
+
+  useSongLinks Boolean @default(true)
+  // Its own, shown only with useSongLinks off. Both may be empty.
+  spotifyUrl String?
+  youtubeUrl String?
+
+  songId String
+  song   Song   @relation(fields: [songId], references: [id], onDelete: Cascade)
+
+  attachments  SongAttachment[]
+  setlistSongs SetlistSong[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([songId, name])
 }
 
 model SetlistSongAssignment {

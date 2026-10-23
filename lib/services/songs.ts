@@ -17,7 +17,12 @@ export const getOrganizationSongs = async (organizationId: string) => {
         deletedAt: null,
       },
       include: {
+        // Every file on the song, each with its arrangementId: the Original's
+        // are the ones without. Kept in one list so storage adds them all up.
         attachments: {
+          orderBy: { createdAt: "asc" }
+        },
+        arrangements: {
           orderBy: { createdAt: "asc" }
         }
       },

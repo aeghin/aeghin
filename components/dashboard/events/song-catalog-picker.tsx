@@ -17,8 +17,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { colorClasses } from "@/lib/config/service-types-config";
-import type { SetlistSong } from "@/lib/types";
-import { Song } from "@/generated/prisma/client";
+import type { LibrarySong as Song, SetlistSong } from "@/lib/types";
 
 interface CatalogPickerProps {
   catalog: Song[]
@@ -113,6 +112,10 @@ export function CatalogPicker({
     const newSetlistSong = {
       id: crypto.randomUUID(),
       songId: song.id,
+      // The Original, switched from the row's dropdown. Null rather than left
+      // out, which would keep the pick of a song removed and re-added unsaved.
+      arrangementId: null,
+      arrangementName: null,
       title: song.title,
       artist: song.artist,
       pitch: song.defaultPitch ?? undefined,

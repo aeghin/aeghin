@@ -9,6 +9,7 @@ import { OrgRole } from "@/generated/prisma/enums";
 import type { SetlistSong } from "@/lib/types";
 import { getOrganizationSongs } from "@/lib/services/songs";
 import { getAiSetlistAccess, getAiProAccess } from "@/lib/billing/entitlements";
+import { versionLinks } from "@/lib/arrangements";
 
 
 interface PageProps {
@@ -48,6 +49,8 @@ export default async function SetlistEditPage({ params }: PageProps) {
   const initialSongs: SetlistSong[] = event.setlistSongs.map((s) => ({
       id: s.id,
       songId: s.songId,
+      arrangementId: s.arrangementId,
+      arrangementName: s.arrangement?.name ?? null,
       position: s.position,
       pitch: s.pitch,
       keyQuality: s.keyQuality,
@@ -55,8 +58,7 @@ export default async function SetlistEditPage({ params }: PageProps) {
       timeSignature: s.timeSignature,
       title: s.song.title,
       artist: s.song.artist,
-      youtubeUrl: s.song.youtubeUrl,
-      spotifyUrl: s.song.spotifyUrl,
+      ...versionLinks(s.song, s.arrangement),
     }));
 
   return (

@@ -295,6 +295,15 @@ export const getEventDetailsById = async (eventId: string, organizationId: strin
                 }
               }
             },
+            // The arrangement this event plays, null for the Original.
+            arrangement: {
+              select: {
+                name: true,
+                useSongLinks: true,
+                spotifyUrl: true,
+                youtubeUrl: true,
+              }
+            },
             setlistSongAssignment: {
               include: {
                 user: {

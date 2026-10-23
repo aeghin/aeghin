@@ -104,7 +104,8 @@ export function SetlistEditorModal({
                   {song.title}
                 </p>
                 <p className="truncate text-xs text-muted-foreground">
-                  {song.artist} · {song.bpm} bpm
+                  {song.artist}
+                  {song.arrangementName && ` · ${song.arrangementName}`} · {song.bpm} bpm
                 </p>
               </div>
 

@@ -88,11 +88,13 @@ function SongLinks({ song }: { song: Song }) {
 }
 
 function SongAttachments({ song, max }: { song: Song; max?: number }) {
-  if (song.attachments.length === 0) {
+  // The Original's. An arrangement's files show on a setlist that plays it.
+  const files = song.attachments.filter((a) => a.arrangementId === null)
+  if (files.length === 0) {
     return <span className="text-xs text-muted-foreground">—</span>
   }
-  const shown = max ? song.attachments.slice(0, max) : song.attachments
-  const extra = song.attachments.length - shown.length
+  const shown = max ? files.slice(0, max) : files
+  const extra = files.length - shown.length
   return (
     <>
       {shown.map((attachment) => {
