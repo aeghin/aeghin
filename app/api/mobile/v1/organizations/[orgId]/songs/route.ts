@@ -12,8 +12,10 @@ import type { KeyQuality, Pitch } from "@/generated/prisma/enums";
 /**
  * One song as the phone reads it — the same shape `getOrganizationSongs`
  * returns the dashboard, with `DateTime` flattened to an ISO string and Prisma
- * enums left as the string unions they serialise to. Mirrored in the Expo app
- * at `src/types/song.ts`.
+ * enums left as the string unions they serialise to. One difference: each
+ * arrangement carries its own files, so `attachments` stays the Original's,
+ * which builds from before arrangements read as the song's whole list.
+ * Mirrored in the Expo app at `src/types/song.ts`.
  */
 type LibraryAttachment = {
     id: string;
@@ -22,6 +24,16 @@ type LibraryAttachment = {
     type: string;
     size: number;
     createdAt: string;
+};
+
+type LibraryArrangement = {
+    id: string;
+    name: string;
+    /** On: a setlist shows the song's links. Off: the two below, if any. */
+    useSongLinks: boolean;
+    spotifyUrl: string | null;
+    youtubeUrl: string | null;
+    attachments: LibraryAttachment[];
 };
 
 type LibrarySong = {
@@ -36,6 +48,8 @@ type LibrarySong = {
     youtubeUrl: string | null;
     themes: string[];
     attachments: LibraryAttachment[];
+    /** Its other versions, oldest first. The Original isn't one of them. */
+    arrangements: LibraryArrangement[];
 };
 
 
@@ -120,6 +134,8 @@ export async function GET(
                 youtubeUrl: true,
                 themes: true,
                 attachments: {
+                    // The Original's only. Each arrangement's come with it below.
+                    where: { arrangementId: null },
                     select: {
                         id: true,
                         name: true,
@@ -127,6 +143,27 @@ export async function GET(
                         type: true,
                         size: true,
                         createdAt: true,
+                    },
+                    orderBy: { createdAt: "asc" },
+                },
+                arrangements: {
+                    select: {
+                        id: true,
+                        name: true,
+                        useSongLinks: true,
+                        spotifyUrl: true,
+                        youtubeUrl: true,
+                        attachments: {
+                            select: {
+                                id: true,
+                                name: true,
+                                url: true,
+                                type: true,
+                                size: true,
+                                createdAt: true,
+                            },
+                            orderBy: { createdAt: "asc" },
+                        },
                     },
                     orderBy: { createdAt: "asc" },
                 },
@@ -139,6 +176,13 @@ export async function GET(
             attachments: song.attachments.map((attachment) => ({
                 ...attachment,
                 createdAt: attachment.createdAt.toISOString(),
+            })),
+            arrangements: song.arrangements.map((arrangement) => ({
+                ...arrangement,
+                attachments: arrangement.attachments.map((attachment) => ({
+                    ...attachment,
+                    createdAt: attachment.createdAt.toISOString(),
+                })),
             })),
         }));
 

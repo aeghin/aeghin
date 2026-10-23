@@ -23,7 +23,11 @@ const isDraftSong = (value: unknown): value is SetlistSong =>
     typeof value.pitch === "string" && value.pitch in Pitch &&
     typeof value.keyQuality === "string" && value.keyQuality in KeyQuality &&
     typeof value.bpm === "number" && Number.isInteger(value.bpm) && value.bpm > 0 &&
-    typeof value.timeSignature === "string" && value.timeSignature.length > 0;
+    typeof value.timeSignature === "string" && value.timeSignature.length > 0 &&
+    // Absent keeps the saved pick, which is what builds from before arrangements send.
+    (value.arrangementId === undefined ||
+        value.arrangementId === null ||
+        typeof value.arrangementId === "string");
 
 /**
  * PUT /api/mobile/v1/organizations/[orgId]/events/[eventId]/setlist

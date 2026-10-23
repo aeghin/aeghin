@@ -47,8 +47,10 @@ type StoredFile = {
     size: number;
 };
 
-/** A refusal to answer with, or what actually reached UploadThing. */
-type Stored = { status: number; error: string } | { files: StoredFile[]; skipped: number };
+/** A refusal to answer with, or what actually reached UploadThing and which version it's for. */
+type Stored =
+    | { status: number; error: string }
+    | { files: StoredFile[]; skipped: number; arrangementId: string | null };
 
 /**
  * What a client says it just uploaded.
@@ -68,6 +70,14 @@ function readStored(body: unknown): Stored {
 
     if (body.files.length > MAX_FILES) {
         return { status: 400, error: `Up to ${MAX_FILES} files at a time.` };
+    }
+
+    // Absent or null is the Original, which is all a build from before
+    // arrangements sends. The action checks it is one of this song's.
+    const arrangementId = body.arrangementId ?? null;
+
+    if (arrangementId !== null && !filled(arrangementId)) {
+        return { status: 400, error: "Expected an arrangement id." };
     }
 
     const files: StoredFile[] = [];
@@ -105,7 +115,7 @@ function readStored(body: unknown): Stored {
         });
     }
 
-    return { files, skipped: 0 };
+    return { files, skipped: 0, arrangementId };
 }
 
 /**
@@ -158,6 +168,7 @@ async function forwardUpload(req: Request, orgId: string): Promise<Stored> {
             size: file.size,
         })),
         skipped: results.length - uploaded.length,
+        arrangementId: null,
     };
 }
 
@@ -168,8 +179,9 @@ type Params = { orgId: string; songId: string };
  *
  * Attaches charts and tracks to a song, in one of two shapes told apart by the
  * body. JSON is a client that uploaded to UploadThing itself and is reporting
- * the keys, which is what the dashboard has always done. `multipart/form-data`
- * under `files` is an older build posting the bytes for us to forward.
+ * the keys, which is what the dashboard has always done, with `arrangementId`
+ * when they are an arrangement's. `multipart/form-data` under `files` is an
+ * older build posting the bytes for us to forward, always for the Original.
  *
  * Owners and admins only, matching the file router's own middleware. The rows
  * are written by `addSongAttachments` either way, so the duplicate check and
@@ -203,12 +215,12 @@ export const POST = route<Params>(".../songs/[id]/attachments", async (req, { pa
 
     if ("error" in stored) return fail(stored.status, stored.error);
 
-    const { files, skipped } = stored;
+    const { files, skipped, arrangementId } = stored;
 
     if (files.length === 0) return fail(502, "The upload didn't go through. Try again.");
 
     const result = await addSongAttachments(
-        { songId, organizationId: orgId, files },
+        { songId, organizationId: orgId, arrangementId, files },
         expireTag,
     );
 

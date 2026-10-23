@@ -21,6 +21,7 @@ import {
     type VolunteerRole,
 } from "@/generated/prisma/enums";
 import { parseRoleSpots, type RoleSpots } from "@/lib/role-spots";
+import { versionLinks } from "@/lib/arrangements";
 
 
 /**
@@ -97,9 +98,17 @@ type EventDetailsSetlistSong = {
     timeSignature: string;
     title: string;
     artist: string;
+    /** The picked arrangement's own when it has any, else the song's. */
     youtubeUrl: string | null;
     spotifyUrl: string | null;
+    /** The picked arrangement's files, or the Original's. Never both. */
     attachments: EventDetailsAttachment[];
+    /**
+     * The arrangement this event plays, or null for the Original. The links
+     * and attachments above are already its own, so a build that predates
+     * arrangements shows the right version without reading this.
+     */
+    arrangement: { id: string; name: string } | null;
     /** Who is singing this one. Empty until somebody is assigned. */
     vocalists: EventDetailsPerson[];
 };
@@ -330,6 +339,7 @@ export async function GET(
                     select: {
                         id: true,
                         songId: true,
+                        arrangementId: true,
                         position: true,
                         pitch: true,
                         keyQuality: true,
@@ -349,9 +359,19 @@ export async function GET(
                                         url: true,
                                         type: true,
                                         size: true,
+                                        arrangementId: true,
                                         createdAt: true,
                                     },
                                 },
+                            },
+                        },
+                        arrangement: {
+                            select: {
+                                id: true,
+                                name: true,
+                                useSongLinks: true,
+                                spotifyUrl: true,
+                                youtubeUrl: true,
                             },
                         },
                         setlistSongAssignment: {
@@ -497,27 +517,41 @@ export async function GET(
                 expiresAt: assignment.expiresAt.toISOString(),
                 invitedBy: assignedBy,
             })),
-            setlist: event.setlistSongs.map((entry) => ({
-                id: entry.id,
-                songId: entry.songId,
-                position: entry.position,
-                pitch: entry.pitch,
-                keyQuality: entry.keyQuality,
-                bpm: entry.bpm,
-                timeSignature: entry.timeSignature,
-                title: entry.song.title,
-                artist: entry.song.artist,
-                youtubeUrl: entry.song.youtubeUrl,
-                spotifyUrl: entry.song.spotifyUrl,
-                attachments: entry.song.attachments.map((attachment) => ({
-                    ...attachment,
-                    createdAt: attachment.createdAt.toISOString(),
-                })),
-                vocalists: entry.setlistSongAssignment.map((assigned) => ({
-                    userId: assigned.userId,
-                    ...assigned.user,
-                })),
-            })),
+            setlist: event.setlistSongs.map((entry) => {
+                const links = versionLinks(entry.song, entry.arrangement);
+
+                return {
+                    id: entry.id,
+                    songId: entry.songId,
+                    position: entry.position,
+                    pitch: entry.pitch,
+                    keyQuality: entry.keyQuality,
+                    bpm: entry.bpm,
+                    timeSignature: entry.timeSignature,
+                    title: entry.song.title,
+                    artist: entry.song.artist,
+                    youtubeUrl: links.youtubeUrl,
+                    spotifyUrl: links.spotifyUrl,
+                    attachments: entry.song.attachments
+                        .filter((attachment) => attachment.arrangementId === entry.arrangementId)
+                        .map((attachment) => ({
+                            id: attachment.id,
+                            name: attachment.name,
+                            url: attachment.url,
+                            type: attachment.type,
+                            size: attachment.size,
+                            createdAt: attachment.createdAt.toISOString(),
+                        })),
+                    arrangement: entry.arrangement && {
+                        id: entry.arrangement.id,
+                        name: entry.arrangement.name,
+                    },
+                    vocalists: entry.setlistSongAssignment.map((assigned) => ({
+                        userId: assigned.userId,
+                        ...assigned.user,
+                    })),
+                };
+            }),
             viewer: {
                 userId: membership.userId,
                 canManage,
