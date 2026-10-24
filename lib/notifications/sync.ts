@@ -190,7 +190,10 @@ export const syncEventNotifications = async (
         organization: { select: { name: true, logoUrl: true, timeZone: true } },
         // Who covers a team on this event only, in place of its lead.
         teamLeads: { select: { category: true, userId: true } },
+        // A dismissed decline is off the roster: its spot reads as one nobody
+        // was asked to fill, the same as a deleted row.
         assignments: {
+          where: { dismissedAt: null },
           select: {
             userId: true,
             role: true,

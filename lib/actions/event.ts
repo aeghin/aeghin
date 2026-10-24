@@ -1428,6 +1428,12 @@ export const cancelUserEventAssignment = async (userId: string, organizationId: 
 
     if (!assignment) return { success: false, error: "Unable to find this assignment" };
 
+    // Turning this CANCELED would wipe the decline off their record. Only a
+    // stale screen gets here: a declined row's menu offers Remove Person.
+    if (assignment.status === InvitationStatus.DECLINED) {
+      return { success: false, error: "They already declined. Refresh to remove them." };
+    }
+
     // Off the event means off its songs too: the setlist reads its singers
     // without looking at their status, so a row left behind still shows them.
     await prisma.$transaction([
@@ -1712,6 +1718,10 @@ export const resendEventInvitation = async (
  * spot somebody else has since been invited into stays, and a role never drops
  * below one: taking the whole role off is removeEventRole.
  *
+ * A lapsed or removed row is deleted: nobody answered it, so it never counted.
+ * A declined one is only dismissed, because a decline — "Can't make it"
+ * included — stays on the member's acceptance record.
+ *
  * Never anybody live. A volunteer who accepted, or is still deciding, comes off
  * through cancelUserEventAssignment, which tells them they've been removed.
  */
@@ -1739,8 +1749,8 @@ export const deleteEventInvite = async (
 
     if (membership.role === OrgRole.MEMBER) return { success: false, error: "Unauthorized" };
 
-    const outcome = await prisma.$transaction(
-      async (tx): Promise<{ error: string } | { declined: boolean }> => {
+    const error = await prisma.$transaction(
+      async (tx): Promise<string | null> => {
         await lockEventSpots(tx, eventId);
 
         const event = await tx.event.findFirst({
@@ -1749,16 +1759,17 @@ export const deleteEventInvite = async (
             rolesNeeded: true,
             roleSpots: true,
             assignments: {
+              where: { dismissedAt: null },
               select: { id: true, userId: true, role: true, status: true, expiresAt: true },
             },
           },
         });
 
-        if (!event) return { error: "Unable to locate event" };
+        if (!event) return "Unable to locate event";
 
         const assignment = event.assignments.find((a) => a.userId === userId);
 
-        if (!assignment) return { error: "Unable to find this assignment" };
+        if (!assignment) return "Unable to find this assignment";
 
         const now = new Date();
 
@@ -1767,14 +1778,21 @@ export const deleteEventInvite = async (
           assignment.status === InvitationStatus.ACCEPTED ||
           (assignment.status === InvitationStatus.PENDING && assignment.expiresAt > now);
 
-        if (live) return { error: "Only a declined, removed or expired invite can be deleted" };
+        if (live) return "Only a declined, removed or expired invite can be deleted";
 
         const spots = parseRoleSpots(event.roleSpots);
         const { needed, open } = roleStanding(assignment.role, spots, event.assignments, now);
 
-        await tx.eventAssignment.delete({
-          where: { id: assignment.id, organizationId },
-        });
+        if (assignment.status === InvitationStatus.DECLINED) {
+          await tx.eventAssignment.update({
+            where: { id: assignment.id, organizationId },
+            data: { dismissedAt: now },
+          });
+        } else {
+          await tx.eventAssignment.delete({
+            where: { id: assignment.id, organizationId },
+          });
+        }
 
         if (open > 0 && needed > 1) {
           await tx.event.update({
@@ -1788,18 +1806,15 @@ export const deleteEventInvite = async (
           });
         }
 
-        return { declined: assignment.status === InvitationStatus.DECLINED };
+        return null;
       },
     );
 
-    if ("error" in outcome) return { success: false, error: outcome.error };
+    if (error) return { success: false, error };
 
     touch(`user-${userId}-events-${organizationId}`);
     touch(`event-${eventId}-org-${organizationId}-details`);
     touch(`org-${organizationId}-events`);
-
-    // A decline is part of the acceptance rate auto-fill ranks people by.
-    if (outcome.declined) touch(`org-${organizationId}-acceptance-stats`);
 
     await syncEventNotifications(eventId, touch);
 
@@ -1955,9 +1970,11 @@ export const addEventRoles = async (
 
 
 // The counterpart to addEventRoles. Only a role nobody is live on can come off —
-// pulling a volunteer from an event stays its own explicit act. Dead rows
-// (declined, canceled, lapsed) are deleted with it, since the roster is the union
-// of rolesNeeded and assignment roles and would otherwise keep rendering the role.
+// pulling a volunteer from an event stays its own explicit act. Canceled and
+// lapsed rows are deleted with it, since the roster is the union of rolesNeeded
+// and assignment roles and would otherwise keep rendering the role. Declined
+// rows are dismissed instead, which every roster read skips, so the decline
+// still counts on the member's acceptance record.
 export const removeEventRole = async (
   organizationId: string,
   eventId: string,
@@ -1990,7 +2007,7 @@ export const removeEventRole = async (
           rolesNeeded: true,
           roleSpots: true,
           assignments: {
-            where: { role },
+            where: { role, dismissedAt: null },
             select: {
               userId: true,
               status: true,
@@ -2038,7 +2055,17 @@ export const removeEventRole = async (
 
     await prisma.$transaction([
       prisma.eventAssignment.deleteMany({
-        where: { eventId, organizationId, role },
+        where: { eventId, organizationId, role, status: { not: InvitationStatus.DECLINED } },
+      }),
+      prisma.eventAssignment.updateMany({
+        where: {
+          eventId,
+          organizationId,
+          role,
+          status: InvitationStatus.DECLINED,
+          dismissedAt: null,
+        },
+        data: { dismissedAt: now },
       }),
       prisma.event.update({
         where: { id: eventId },
@@ -2055,11 +2082,6 @@ export const removeEventRole = async (
     for (const { userId } of event.assignments) {
       touch(`user-${userId}-events-${organizationId}`);
     };
-
-    // Dropping declined rows moves the denominator the acceptance rate counts from.
-    if (event.assignments.some((a) => a.status === InvitationStatus.DECLINED)) {
-      touch(`org-${organizationId}-acceptance-stats`);
-    }
 
     await syncEventNotifications(eventId, touch);
 
@@ -2127,9 +2149,10 @@ export const inviteMembersToEvent = async (
         },
       }),
       // The other half of the roster union. The assignments above can't answer
-      // it — they're narrowed to the people being invited.
+      // it — they're narrowed to the people being invited. A dismissed decline
+      // left behind by removeEventRole doesn't put the role back.
       prisma.eventAssignment.findFirst({
-        where: { eventId, organizationId, role },
+        where: { eventId, organizationId, role, dismissedAt: null },
         select: { id: true },
       }),
     ]);
@@ -2286,6 +2309,8 @@ export const inviteMembersToEvent = async (
             // again once they say yes.
             reminderSentAt: null,
             rehearsalReminderSentAt: null,
+            // A dismissed decline asked again is back on the roster.
+            dismissedAt: null,
           },
         });
       }

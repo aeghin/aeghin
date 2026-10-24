@@ -74,7 +74,8 @@ export async function staffingTallies(
           // Past its deadline is nobody deciding, even before the hourly sweep
           // writes EXPIRED.
           { status: InvitationStatus.PENDING, expiresAt: { gt: now } },
-          { status: InvitationStatus.DECLINED },
+          // A dismissed decline is off the roster, so its role doesn't read red.
+          { status: InvitationStatus.DECLINED, dismissedAt: null },
         ],
       },
       _count: { _all: true },

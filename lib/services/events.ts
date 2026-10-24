@@ -255,7 +255,10 @@ export const getEventDetailsById = async (eventId: string, organizationId: strin
         },
         dates: { orderBy: { startTime: "asc" } },
         serviceType: true,
+        // A dismissed decline stays for the member's acceptance record, but
+        // isn't on the roster.
         assignments: {
+          where: { dismissedAt: null },
           include: {
             user: {
               select: {

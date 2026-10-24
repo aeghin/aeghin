@@ -400,6 +400,11 @@ model EventAssignment {
   // morning when that was overnight, so the cron reads the lapse back from here.
   lapsedAt DateTime?
 
+  // When an admin took a declined row off the roster: Remove Person, or
+  // removing its role. The row stays so the decline still counts on the
+  // member's acceptance record; every roster read skips it. A re-invite clears it.
+  dismissedAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   expiresAt DateTime

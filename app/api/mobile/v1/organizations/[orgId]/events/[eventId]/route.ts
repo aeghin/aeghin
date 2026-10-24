@@ -141,7 +141,10 @@ type EventDetails = {
     /** Floating wall clock like `dates`, or null when there's no rehearsal. */
     rehearsalStart: string | null;
     rehearsalEnd: string | null;
-    /** Everyone on the event, declined and canceled included — as the web shows. */
+    /**
+     * Everyone on the event, declined and canceled included — as the web
+     * shows. A dismissed decline is left out, as it is there.
+     */
     assignments: EventDetailsAssignment[];
     setlist: EventDetailsSetlistSong[];
     /**
@@ -309,6 +312,8 @@ export async function GET(
                     },
                 },
                 assignments: {
+                    // Kept for the member's acceptance record, off the roster.
+                    where: { dismissedAt: null },
                     // The web leaves these unordered and lets React's key sort
                     // it out; a stable order costs nothing and stops rows
                     // swapping places between two reads of the same roster.
