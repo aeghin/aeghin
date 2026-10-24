@@ -141,8 +141,8 @@ const describeActivity = (item: ActivityItem): ReactNode => {
       return (
         <>
           <Name>{item.actorName}</Name> declined <Name>{item.targetName}</Name>
-          <EventContext eventName={item.eventName} /> — auto-fill is off, so the slot
-          is still open
+          <EventContext eventName={item.eventName} /> — auto-fill was off, so nobody
+          was invited
         </>
       );
     case ActivityType.SMART_FILL_NO_CANDIDATES:

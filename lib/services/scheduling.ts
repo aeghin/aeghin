@@ -106,7 +106,10 @@ export type ReplacementOutcome =
   | {
       status: "ALL_UNAVAILABLE";
       qualified: number;
-      alreadyAssigned: number;
+      /** Accepted or still deciding on this event. */
+      alreadyOn: number;
+      /** Asked here already and not on it: declined, lapsed or removed. */
+      alreadyAsked: number;
       conflicting: number;
       blocked: number;
     };
@@ -126,14 +129,29 @@ export async function findBestReplacement(params: {
   });
   if (!event) return { status: "EVENT_MISSING" };
 
+  // Anyone with a row here is skipped, whatever it says: somebody who
+  // declined, let it lapse or was removed is never auto-invited back.
   const existing = await prisma.eventAssignment.findMany({
     where: { eventId },
-    select: { userId: true },
+    select: { userId: true, status: true, expiresAt: true },
   });
   const excluded = new Set<string>([
     ...excludeUserIds,
     ...existing.map((e) => e.userId),
   ]);
+
+  // Which of them are actually on the event, so the breakdown doesn't call
+  // somebody who said no "already on this event".
+  const now = new Date();
+  const onEvent = new Set(
+    existing
+      .filter(
+        (e) =>
+          e.status === InvitationStatus.ACCEPTED ||
+          (e.status === InvitationStatus.PENDING && e.expiresAt > now),
+      )
+      .map((e) => e.userId),
+  );
 
   const [conflicting, blocked, candidates] = await Promise.all([
     getConflictingUserIds(organizationId, event.dates),
@@ -162,12 +180,14 @@ export async function findBestReplacement(params: {
   );
 
   if (eligible.length === 0) {
-    let alreadyAssigned = 0;
+    let alreadyOn = 0;
+    let alreadyAsked = 0;
     let conflictingCount = 0;
     let blockedCount = 0;
 
     for (const m of candidates) {
-      if (excluded.has(m.user.id)) alreadyAssigned += 1;
+      if (onEvent.has(m.user.id)) alreadyOn += 1;
+      else if (excluded.has(m.user.id)) alreadyAsked += 1;
       else if (conflicting.has(m.user.id)) conflictingCount += 1;
       else blockedCount += 1;
     }
@@ -175,7 +195,8 @@ export async function findBestReplacement(params: {
     return {
       status: "ALL_UNAVAILABLE",
       qualified: candidates.length,
-      alreadyAssigned,
+      alreadyOn,
+      alreadyAsked,
       conflicting: conflictingCount,
       blocked: blockedCount,
     };

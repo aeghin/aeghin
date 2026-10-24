@@ -1118,8 +1118,8 @@ const refillOpenedSpot = async ({
         `${outcome.qualified} qualified`,
         outcome.conflicting > 0 && `${outcome.conflicting} double-booked`,
         outcome.blocked > 0 && `${outcome.blocked} on blockout`,
-        outcome.alreadyAssigned > 0 &&
-          `${outcome.alreadyAssigned} already on this event`,
+        outcome.alreadyOn > 0 && `${outcome.alreadyOn} already on this event`,
+        outcome.alreadyAsked > 0 && `${outcome.alreadyAsked} already asked`,
       ].filter(Boolean);
 
       await logActivity({

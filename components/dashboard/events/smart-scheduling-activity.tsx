@@ -73,7 +73,7 @@ const describeRow = (item: SmartSchedulingActivityItem): ReactNode => {
       return (
         <>
           <Name>{item.actorName}</Name> declined <Name>{item.targetName}</Name> —
-          auto-fill was off, so the slot is still open
+          auto-fill was off, so nobody was invited
         </>
       );
     case ActivityType.SMART_FILL_NO_CANDIDATES:
@@ -175,7 +175,9 @@ export const SmartSchedulingActivity = ({
     unfilledCount > 0 && {
       key: "unfilled",
       icon: CalendarClock,
-      label: `${unfilledCount} ${unfilledCount === 1 ? "slot" : "slots"} left open`,
+      // History, like "filled automatically": the log can't know what the
+      // roster did since, so it never claims a spot is still open.
+      label: `${unfilledCount} not filled automatically`,
       className: "text-amber-600 dark:text-amber-400",
     },
   ].filter(Boolean) as {
