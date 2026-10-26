@@ -183,3 +183,107 @@ export const eventTeamLeads = (
 
   return result;
 };
+
+/** Why somebody is the one asked to fill a team on an event. */
+export type InChargeReason = "cover" | "lead" | "creator" | "owner";
+
+/** Who's in charge of one team on one event. Several people only when it falls to the owners. */
+export type TeamInCharge = {
+  people: TeamPerson[];
+  reason: InChargeReason;
+};
+
+/** What decides who's in charge on one event — also how an unsaved draft is read. */
+type EventStaffing = {
+  serviceTypeId: string;
+  createdById: string | null;
+  covers: { category: Team; userId: string }[];
+};
+
+/**
+ * Who's in charge of each team on one event — asked to fill its open spots —
+ * the way the alerts decide it (`roleOwners` in lib/notifications/audience.ts):
+ * whoever covers it on this event, else the service type's lead, else the
+ * event's creator, else the owners. Each step counts only an admin or owner,
+ * so somebody demoted to member drops out and the next step takes over.
+ *
+ * A draft that isn't saved yet reads the same way: the person drafting is the
+ * creator, and the covers are the ones the draft picks.
+ */
+export const eventTeamsInCharge = (
+  settings: TeamNotificationSettings,
+  event: EventStaffing,
+): Record<Team, TeamInCharge> => {
+  const handlers = eventTeamLeads(settings, event.serviceTypeId, event.covers);
+
+  const person = ({ userId, firstName, lastName }: TeamPerson): TeamPerson => ({
+    userId,
+    firstName,
+    lastName,
+  });
+
+  const creator = settings.managers.find(
+    (manager) => manager.userId === event.createdById,
+  );
+
+  const fallback: TeamInCharge = creator
+    ? { people: [person(creator)], reason: "creator" }
+    : {
+        people: settings.managers
+          .filter((manager) => manager.role === OrgRole.OWNER)
+          .map(person),
+        reason: "owner",
+      };
+
+  return Object.fromEntries(
+    TEAM_ORDER.map((team): [Team, TeamInCharge] => {
+      const handler = handlers[team];
+
+      return [
+        team,
+        handler
+          ? { people: [handler.person], reason: handler.cover ? "cover" : "lead" }
+          : fallback,
+      ];
+    }),
+  ) as Record<Team, TeamInCharge>;
+};
+
+/** A team one person can staff on one event. */
+export type StaffableTeam = {
+  team: Team;
+  /** In charge of it, or only on its Also notify, as the backup. */
+  inCharge: boolean;
+  /** Whoever's in charge, so a backup is told who was asked first. */
+  handledBy: TeamInCharge;
+};
+
+/**
+ * The teams one person can staff on one event: the ones they're in charge of,
+ * and the ones they're on Also notify for, as a backup. The AI fills these and
+ * nothing else — never somebody else's team.
+ */
+export const staffableTeams = (
+  settings: TeamNotificationSettings,
+  event: EventStaffing,
+  viewerId: string,
+): StaffableTeam[] => {
+  const inCharge = eventTeamsInCharge(settings, event);
+
+  const teams =
+    settings.serviceTypes.find(
+      (serviceType) => serviceType.serviceTypeId === event.serviceTypeId,
+    )?.teams ?? [];
+
+  return TEAM_ORDER.flatMap((team) => {
+    const handledBy = inCharge[team];
+    const isInCharge = handledBy.people.some((person) => person.userId === viewerId);
+    const isBackup = teams.some(
+      (entry) =>
+        entry.team === team &&
+        entry.watchers.some((watcher) => watcher.userId === viewerId),
+    );
+
+    return isInCharge || isBackup ? [{ team, inCharge: isInCharge, handledBy }] : [];
+  });
+};

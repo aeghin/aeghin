@@ -3,10 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
-import { ArrowUp, Check, Globe, ListMusic, Music, Sparkles, Square } from "lucide-react";
+import { Check, Globe, ListMusic, Music, Sparkles } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
+import { PromptInput } from "@/components/ai-chat/prompt-input";
 import { AgentSources, AgentStep } from "@/components/ai-chat/agent-steps";
 import { Markdown } from "@/components/ai-chat/markdown";
 import { cn } from "@/lib/utils";
@@ -246,56 +246,15 @@ export function AiSetlistPanel({
           )}
         </div>
 
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            submit();
-          }}
-          className={cn(
-            "relative flex items-end gap-2 rounded-xl border border-border bg-card p-1.5 transition-colors",
-            serviceColors.focusBorder,
-          )}
-        >
-          <Textarea
-            value={input}
-            onChange={(e) => setInput(e.currentTarget.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                submit();
-              }
-            }}
-            rows={1}
-            placeholder="Describe the setlist…"
-            className="max-h-28 min-h-0 flex-1 resize-none border-0 bg-transparent px-2 py-1.5 text-xs shadow-none focus-visible:ring-0 dark:bg-transparent"
-          />
-          {isStreaming ? (
-            <Button
-              type="button"
-              size="icon"
-              variant="secondary"
-              onClick={stop}
-              className="size-8 shrink-0 cursor-pointer rounded-lg"
-              aria-label="Stop"
-            >
-              <Square className="h-3.5 w-3.5 fill-current" />
-            </Button>
-          ) : (
-            <Button
-              type="submit"
-              size="icon"
-              disabled={!input.trim()}
-              className={cn(
-                "size-8 shrink-0 cursor-pointer rounded-lg",
-                serviceColors.solid,
-                serviceColors.solidHover,
-              )}
-              aria-label="Send"
-            >
-              <ArrowUp className="h-3.5 w-3.5" />
-            </Button>
-          )}
-        </form>
+        <PromptInput
+          value={input}
+          onChange={setInput}
+          onSubmit={submit}
+          onStop={stop}
+          busy={isStreaming}
+          placeholder="Describe the setlist…"
+          sendClassName={cn(serviceColors.solid, serviceColors.solidHover)}
+        />
       </CardContent>
     </Card>
   );
@@ -306,7 +265,7 @@ function ProposalCard({
   onApply,
   serviceColors,
 }: {
-  output: { title: string; songs: ProposedSetlistSong[]; skipped: string[] };
+  output: { title: string; note?: string; songs: ProposedSetlistSong[]; skipped: string[] };
   onApply: (songs: ProposedSetlistSong[]) => void;
   serviceColors: (typeof colorClasses)[string];
 }) {
@@ -329,6 +288,11 @@ function ProposalCard({
           {output.songs.length} songs
         </span>
       </div>
+
+      {/* The model's explanation rides on the card: it stops at the proposal. */}
+      {output.note && (
+        <p className="mb-2 text-[11px] leading-relaxed text-muted-foreground">{output.note}</p>
+      )}
 
       <ol className="space-y-1.5">
         {output.songs.map((s, idx) => (

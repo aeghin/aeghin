@@ -68,6 +68,7 @@ import { notifyDeclineShortage, notifyReplacement } from "@/lib/notifications/de
 import {
   notifyCoverChanges,
   notifyEventCovers,
+  notifyTeamsNeeded,
 } from "@/lib/notifications/team-lead";
 import {
   clearEventNotifications,
@@ -125,6 +126,9 @@ export type MemberAvailability = {
 
 type ActionResponse = { success: true } | { success: false; error: string };
 
+/** The new event's id, so a caller can open it. */
+type CreateEventResult = { success: true; eventId: string } | { success: false; error: string };
+
 /**
  * Holds one event's spot counts for the rest of a transaction, so two writes
  * landing together — two admins inviting at once — can't both read the old
@@ -171,6 +175,65 @@ const raiseSpotsToFit = async (
     where: { id: eventId },
     data: { roleSpots: storedRoleSpots({ ...spots, [role]: filling }, event.rolesNeeded) },
   });
+};
+
+/**
+ * How many of one role's spots nobody has taken: nobody said yes and nobody is
+ * deciding. Run inside an invite's transaction, under `lockEventSpots`, so the
+ * answer holds until it commits.
+ */
+const openSpots = async (
+  tx: Prisma.TransactionClient,
+  eventId: string,
+  role: VolunteerRole,
+  now: Date,
+): Promise<number> => {
+  const [event, filling] = await Promise.all([
+    tx.event.findUnique({
+      where: { id: eventId },
+      select: { roleSpots: true },
+    }),
+    tx.eventAssignment.count({
+      where: {
+        eventId,
+        role,
+        OR: [
+          { status: InvitationStatus.ACCEPTED },
+          { status: InvitationStatus.PENDING, expiresAt: { gt: now } },
+        ],
+      },
+    }),
+  ]);
+
+  if (!event) return 0;
+
+  return Math.max(0, spotsFor(parseRoleSpots(event.roleSpots), role) - filling);
+};
+
+/**
+ * Why an AI card's picks were refused at approval: they're serving another
+ * event at that time. The card never picks somebody who is, so each of these
+ * was booked after it was built. Names the other event, so the fix is clear.
+ */
+const conflictError = async (
+  clashes: { userId: string; event: { name: string } }[],
+): Promise<string> => {
+  const eventOf = new Map<string, string>();
+
+  for (const clash of clashes) {
+    if (!eventOf.has(clash.userId)) eventOf.set(clash.userId, clash.event.name);
+  }
+
+  const users = await prisma.user.findMany({
+    where: { id: { in: [...eventOf.keys()] } },
+    select: { id: true, firstName: true, lastName: true },
+  });
+
+  const names = users
+    .map((u) => `${u.firstName} ${u.lastName} (${eventOf.get(u.id)})`)
+    .join(", ");
+
+  return `Unable to assign ${names} — they're now serving another event at that time`;
 };
 
 /**
@@ -288,7 +351,7 @@ export async function createEvent(
   input: CreateEventInput,
   organizationId: string,
   touch: TagInvalidator = updateTag,
-): Promise<ActionResponse> {
+): Promise<CreateEventResult> {
   try {
     
     const users = await currentUser();
@@ -314,6 +377,7 @@ export async function createEvent(
       smartSchedulingEnabled: smartSchedulingRequested,
       rehearsal,
       teamLeads,
+      refuseConflicts,
     } = parsed.data;
 
     // As many as asked for, and never fewer than the people invited into the
@@ -474,6 +538,21 @@ export async function createEvent(
           success: false,
           error: `Unable to assign ${names} — they have blockout dates during this event`,
         };
+      }
+
+      // From an AI draft, a clash is refused as well.
+      if (refuseConflicts) {
+        const clashes = (
+          await getConflictingAssignments(
+            organizationId,
+            Object.values(dayTimes).map((times) => ({
+              startTime: times.startTime,
+              endTime: times.endTime,
+            })),
+          )
+        ).filter((row) => assignedUserIdSet.has(row.userId));
+
+        if (clashes.length > 0) return { success: false, error: await conflictError(clashes) };
       }
     }
 
@@ -673,7 +752,20 @@ export async function createEvent(
       );
     }
 
-    return { success: true };
+    // Each team's lead hears this event needs them — never the creator, and
+    // not a cover picked here, who already heard above.
+    after(() =>
+      notifyTeamsNeeded({
+        organizationId,
+        eventId: newEventId,
+        roles: rolesNeeded,
+        actor: { userId: id, name: `${users.firstName} ${users.lastName}` },
+        added: false,
+        skipCovers: true,
+      }),
+    );
+
+    return { success: true, eventId: newEventId };
 
   } catch {
     return { success: false, error: "Unable to create event" };
@@ -1959,6 +2051,18 @@ export const addEventRoles = async (
 
     await syncEventNotifications(eventId, touch);
 
+    // The new roles' leads hear about them, unless they added them themselves.
+    after(() =>
+      notifyTeamsNeeded({
+        organizationId,
+        eventId,
+        roles: roles.filter((role) => !event.rolesNeeded.includes(role)),
+        actor: { userId: user.id, name: `${user.firstName} ${user.lastName}` },
+        added: true,
+        skipCovers: false,
+      }),
+    );
+
     return { success: true };
 
   } catch {
@@ -2096,7 +2200,13 @@ export const removeEventRole = async (
 
 
 type InviteToEventResult =
-  | { success: true; invitedCount: number; skippedNames: string[] }
+  | {
+      success: true;
+      invitedCount: number;
+      skippedNames: string[];
+      /** Picked, but the role filled up before they could be asked. Only with `onlyOpenSpots`. */
+      noSpotNames: string[];
+    }
   | { success: false; error: string };
 
 // Invites members into a role on an event that already exists. Mirrors the
@@ -2119,7 +2229,7 @@ export const inviteMembersToEvent = async (
 
     if (!parsed.success) return { success: false, error: parsed.error.message };
 
-    const { role, userIds, expiresAt } = parsed.data;
+    const { role, userIds, expiresAt, onlyOpenSpots, refuseConflicts } = parsed.data;
 
     const uniqueUserIds = [...new Set(userIds)];
 
@@ -2235,6 +2345,15 @@ export const inviteMembersToEvent = async (
       };
     }
 
+    // From an AI card, a clash is refused as well.
+    if (refuseConflicts) {
+      const clashes = (await getConflictingAssignments(organizationId, event.dates, eventId)).filter(
+        (row) => uniqueUserIds.includes(row.userId),
+      );
+
+      if (clashes.length > 0) return { success: false, error: await conflictError(clashes) };
+    }
+
     // A member holds at most one role per event (unique eventId+userId), so
     // anyone still live on the roster is skipped rather than re-roled. Declined,
     // removed, and lapsed rows are reused — a second row would violate it. A
@@ -2269,20 +2388,38 @@ export const inviteMembersToEvent = async (
       toReactivate.push({ id: existing.id, userId: uid });
     }
 
-    const invitedUserIds = [...toCreate, ...toReactivate.map((a) => a.userId)];
+    // In the order they were picked: with only the open spots to fill, the
+    // first picks get them.
+    const reactivateIds = new Map(toReactivate.map((a) => [a.userId, a.id]));
+    const candidates = uniqueUserIds.filter(
+      (uid) => toCreate.includes(uid) || reactivateIds.has(uid),
+    );
 
-    if (invitedUserIds.length === 0) {
+    if (candidates.length === 0) {
       return { success: false, error: "Everyone selected is already on this event" };
     }
 
     const expiry = new Date(Date.now() + expiresAt * 24 * 60 * 60 * 1000);
 
-    await prisma.$transaction(async (tx) => {
+    const invitedUserIds = await prisma.$transaction(async (tx) => {
       await lockEventSpots(tx, eventId);
 
-      if (toCreate.length > 0) {
+      // Read under the lock, so a lead and their backup approving at once
+      // can't both take the last spot.
+      const room = onlyOpenSpots
+        ? await openSpots(tx, eventId, role, now)
+        : candidates.length;
+
+      const asked = candidates.slice(0, room);
+
+      if (asked.length === 0) return asked;
+
+      const creating = asked.filter((uid) => !reactivateIds.has(uid));
+      const reactivating = asked.flatMap((uid) => reactivateIds.get(uid) ?? []);
+
+      if (creating.length > 0) {
         await tx.eventAssignment.createMany({
-          data: toCreate.map((uid) => ({
+          data: creating.map((uid) => ({
             eventId,
             userId: uid,
             role,
@@ -2293,9 +2430,9 @@ export const inviteMembersToEvent = async (
         });
       }
 
-      if (toReactivate.length > 0) {
+      if (reactivating.length > 0) {
         await tx.eventAssignment.updateMany({
-          where: { id: { in: toReactivate.map((a) => a.id) }, organizationId },
+          where: { id: { in: reactivating }, organizationId },
           data: {
             role,
             status: InvitationStatus.PENDING,
@@ -2327,7 +2464,16 @@ export const inviteMembersToEvent = async (
 
       // Into the role's open spots first; anybody past them is another spot.
       await raiseSpotsToFit(tx, eventId, role, now);
+
+      return asked;
     });
+
+    if (invitedUserIds.length === 0) {
+      return {
+        success: false,
+        error: `No ${volunteerRoleConfig[role].label} spots are open anymore`,
+      };
+    }
 
     const invitedUsers = await prisma.user.findMany({
       where: { id: { in: invitedUserIds } },
@@ -2403,13 +2549,31 @@ export const inviteMembersToEvent = async (
 
     // Reusing a row drops whatever ACCEPTED/DECLINED it held, which moves the
     // acceptance numbers those stats are counted from.
-    if (toReactivate.length > 0) {
+    if (invitedUserIds.some((uid) => reactivateIds.has(uid))) {
       touch(`org-${organizationId}-acceptance-stats`);
     }
 
     await syncEventNotifications(eventId, touch);
 
-    return { success: true, invitedCount: invitedUserIds.length, skippedNames };
+    // Picked, but the role filled up before they could be asked.
+    const leftOut = candidates.filter((uid) => !invitedUserIds.includes(uid));
+
+    const noSpotNames =
+      leftOut.length > 0
+        ? (
+            await prisma.user.findMany({
+              where: { id: { in: leftOut } },
+              select: { firstName: true, lastName: true },
+            })
+          ).map((u) => `${u.firstName} ${u.lastName}`)
+        : [];
+
+    return {
+      success: true,
+      invitedCount: invitedUserIds.length,
+      skippedNames,
+      noSpotNames,
+    };
 
   } catch {
 

@@ -222,12 +222,16 @@ export type RoleCandidate = {
   name: string
   /** Laplace-smoothed acceptance rate, 0–1. No-history members sit at 0.5. */
   reliability: number
+  /** Invitations they said yes to, out of `responded`. */
+  accepted: number
   /** Accepted + declined invitations this member has actually answered. */
   responded: number
   /** Accepted assignments whose event fell inside the recent window. */
   recentServes: number
   /** Date-only (YYYY-MM-DD) of their most recent served event, or null. */
   lastServedOn: string | null
+  /** Other events still ahead they've said yes to or are deciding on. */
+  upcoming: number
 }
 
 export type RoleExclusion = {
@@ -240,9 +244,10 @@ export type RoleExclusion = {
 
 export type RoleEligibility = {
   role: VolunteerRole
-  /** Ranked best-first, capped. `totalQualified` reports the untruncated size. */
+  /** Everyone free for the role, ranked best-first. */
   eligible: RoleCandidate[]
   excluded: RoleExclusion[]
+  /** Everyone holding the role, the unavailable included. */
   totalQualified: number
 }
 

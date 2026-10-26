@@ -2,7 +2,7 @@ import { z } from "zod";
 import { Pitch, KeyQuality } from "@/generated/prisma/enums";
 
 // What the model is allowed to send when it proposes a setlist.
-// It only picks songId + (optional) key; everything else is hydrated
+// It only picks songs by ref + (optional) key; everything else is hydrated
 // server-side from the catalog, so the model can't invent metadata.
 export const proposeSetlistInputSchema = z.object({
   title: z
@@ -11,9 +11,9 @@ export const proposeSetlistInputSchema = z.object({
   songs: z
     .array(
       z.object({
-        songId: z
+        song: z
           .string()
-          .describe("Exact id of a song from the provided catalog."),
+          .describe("Ref of a song from the provided catalog."),
         pitch: z
           .enum(Pitch)
           .optional()
@@ -28,6 +28,11 @@ export const proposeSetlistInputSchema = z.object({
     )
     .min(1)
     .describe("Songs in playing order."),
+  note: z
+    .string()
+    .describe(
+      "One or two sentences shown on the card: the flow and key choices, and any song worth adding to the library that isn't in it yet.",
+    ),
 });
 
 export type ProposeSetlistInput = z.infer<typeof proposeSetlistInputSchema>;

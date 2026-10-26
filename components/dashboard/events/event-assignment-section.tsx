@@ -38,6 +38,7 @@ import { EventVolunteerRowMenu } from "./event-volunteer-row-menu";
 import { EmailTeamDialog } from "./email-team-dialog";
 import { AddEventRolesDialog } from "./add-event-roles-dialog";
 import { InviteToEventDialog, type EventPlace } from "./invite-to-event-dialog";
+import { TeamFillDialog, type FillableTeam } from "./team-fill-dialog";
 import { EventRoleRemoveButton } from "./event-role-remove-button";
 import { roleStanding } from "@/lib/role-spots";
 import { EventSmartSchedulingToggle } from "./event-smart-scheduling-toggle";
@@ -77,6 +78,14 @@ interface EventAssignmentsCardProps {
    * nobody staffs a team twice. Empty for members.
    */
   teamLeads: Partial<Record<Team, EventTeamLead>>;
+  /**
+   * The teams the viewer can fill with AI here: theirs and the ones they back
+   * up on Also notify, on a Pro plan, while the event is still ahead. A backed-
+   * up team names who they're backing up. Empty for members.
+   */
+  aiTeams: { team: Team; backingUp: string | null }[];
+  /** The event is inside its last-call days, when backups can step in anyway. */
+  lastCall: boolean;
 }
 
 // Tiny corner badge icon shown on the avatar
@@ -122,6 +131,8 @@ export function EventAssignmentsCard({
   smartSchedulingAvailable,
   canUpgrade,
   teamLeads,
+  aiTeams,
+  lastCall,
 }: EventAssignmentsCardProps) {
   const serviceColor = event.serviceType.color;
   const serviceColors = getServiceColors(serviceColor);
@@ -225,9 +236,22 @@ export function EventAssignmentsCard({
           (sum, g) => sum + Math.min(g.standing.accepted, g.standing.needed),
           0,
         ),
+        open: roleGroups.reduce((sum, g) => sum + g.standing.open, 0),
       };
     })
     .filter((cat) => cat.roleGroups.length > 0);
+
+  // Fill with AI: the viewer's teams that still have spots nobody has taken.
+  // A team they only back up waits for its lead until the backup is needed:
+  // a spot on it fell through, which is when they're emailed, or last call.
+  const fillable: FillableTeam[] = categories.flatMap((cat) => {
+    const aiTeam = aiTeams.find((t) => t.team === cat.key);
+    const needed = aiTeam?.backingUp === null || cat.stalled || lastCall;
+
+    return aiTeam && cat.open > 0 && needed
+      ? [{ team: cat.key, label: cat.label, open: cat.open, backingUp: aiTeam.backingUp }]
+      : [];
+  });
 
   // Buttons share a line two or three across, and a lone last one stretches.
   const actionClass = "flex-1 basis-28";
@@ -357,6 +381,16 @@ export function EventAssignmentsCard({
                 </div>
               </AccordionTrigger>
               <AccordionContent className="space-y-5 pt-1">
+                {aiTeams.some((t) => t.team === category.key) && (
+                  <TeamFillDialog
+                    organizationId={event.organizationId}
+                    eventId={event.id}
+                    eventName={event.name}
+                    serviceColor={serviceColor}
+                    teams={fillable}
+                    team={category.key}
+                  />
+                )}
                 {category.roleGroups.map((group) => {
                   const roleInfo = volunteerRoleConfig[group.role];
                   const isUnfilled = group.items.length === 0;

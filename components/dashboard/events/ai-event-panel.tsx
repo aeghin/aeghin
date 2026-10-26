@@ -5,31 +5,67 @@ import { useRouter } from "next/navigation";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import {
-  ArrowUp,
   Check,
   CalendarClock,
   CalendarDays,
-  Loader2,
+  CalendarOff,
+  CalendarX2,
+  History,
   MapPin,
   Pencil,
   RotateCcw,
   Sparkles,
-  Square,
   TriangleAlert,
   UserSearch,
   X,
 } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
-import { Trace, TraceDescription, TraceLine, TraceTitle } from "@/components/ui/trace";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Item,
+  ItemActions,
+  ItemContent,
+  ItemDescription,
+  ItemMedia,
+  ItemTitle,
+} from "@/components/ui/item";
+import { Spinner } from "@/components/ui/spinner";
+import {
+  Trace,
+  TraceCollapsible,
+  TraceCollapsibleContent,
+  TraceCollapsibleTrigger,
+  TraceDescription,
+  TraceIcon,
+  TraceLine,
+  TraceTitle,
+} from "@/components/ui/trace";
 import { AgentStep } from "@/components/ai-chat/agent-steps";
 import { Markdown } from "@/components/ai-chat/markdown";
+import { PromptInput } from "@/components/ai-chat/prompt-input";
+import { Suggestions } from "@/components/ai-chat/suggestions";
 import { cn } from "@/lib/utils";
 import { getServiceColors } from "@/lib/config/service-types-config";
-import { volunteerRoleConfig } from "@/lib/config/roles";
+import {
+  teamLabel,
+  teamOfRole,
+  teamsOfRoles,
+  volunteerRoleConfig,
+} from "@/lib/config/roles";
 import type { VolunteerRole } from "@/generated/prisma/enums";
 import { createEvent } from "@/lib/actions/event";
 import type {
+  CheckAvailabilityOutput,
   EventDraft,
   EventDraftAgentUIMessage,
 } from "@/lib/agents/event/agent";
@@ -78,6 +114,30 @@ function formatDraftTime(time: string): string {
   });
 }
 
+/** "2026-10-31 to 2026-11-02" as "Oct 31 – Nov 2"; blockout days are UTC midnights. */
+function formatBlockout(detail: string): string {
+  const [from, to] = detail.split(" to ");
+  if (!from || !to) return detail;
+
+  const day = (iso: string) =>
+    new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-US", {
+      timeZone: "UTC",
+      month: "short",
+      day: "numeric",
+    });
+
+  return from === to ? day(from) : `${day(from)} – ${day(to)}`;
+}
+
+/** "Marcus Lee" as "ML", for an avatar with no photo. */
+const initials = (name: string) =>
+  name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("");
+
 interface AiEventPanelProps {
   orgId: string;
   /** Whether the org has a service type to file an event under. With none the
@@ -123,6 +183,21 @@ export function AiEventPanel({
           lastPart.state === "input-available"
         : false;
   const showBusy = isStreaming && !tailIsLive;
+
+  // Only the newest draft can be created or edited; earlier ones fold away so
+  // nobody presses Create on a version they've already moved past.
+  let latestDraftId: string | undefined;
+  for (const message of messages) {
+    for (const part of message.parts) {
+      if (
+        part.type === "tool-proposeEvent" &&
+        part.state === "output-available" &&
+        part.output.ok
+      ) {
+        latestDraftId = part.toolCallId;
+      }
+    }
+  }
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
@@ -203,20 +278,7 @@ export function AiEventPanel({
                             part.output.roles.length === 1 ? "role" : "roles"
                           }`}
                         >
-                          <Trace>
-                            {part.output.roles.map((r) => (
-                              <TraceLine key={r.role} className="text-xs">
-                                <TraceTitle>{volunteerRoleConfig[r.role].label}</TraceTitle>
-                                <TraceDescription>
-                                  {`${r.totalQualified} free${
-                                    r.excluded.length > 0
-                                      ? ` · ${r.excluded.length} unavailable`
-                                      : ""
-                                  }`}
-                                </TraceDescription>
-                              </TraceLine>
-                            ))}
-                          </Trace>
+                          <AvailabilityTrace roles={part.output.roles} />
                         </AgentStep>
                       );
                     case "output-error":
@@ -257,6 +319,7 @@ export function AiEventPanel({
                           draft={part.output.draft}
                           orgId={orgId}
                           onRefine={onRefine}
+                          latest={part.toolCallId === latestDraftId}
                         />
                       ) : (
                         // The server turned the draft down; the agent fixes it
@@ -310,67 +373,31 @@ export function AiEventPanel({
       )}
 
       {!hasMessages && hasServiceTypes && (
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          {SUGGESTIONS.map((s) => (
-            <button
-              key={s}
-              type="button"
-              onClick={() => {
-                setInput(s);
-                setOpen(true);
-              }}
-              className="rounded-lg border border-border bg-card/50 px-2.5 py-1.5 text-left text-xs text-muted-foreground transition-colors hover:border-primary/50 hover:text-foreground"
-            >
-              {s}
-            </button>
-          ))}
+        <div className="mt-3">
+          <Suggestions
+            items={SUGGESTIONS}
+            onPick={(s) => {
+              setInput(s);
+              setOpen(true);
+            }}
+          />
         </div>
       )}
 
-      {/* Deliberately not a <form> — this panel renders inside the create-event
-          form, and nesting forms is invalid HTML. */}
-      <div className="relative mt-3 flex items-end gap-2 rounded-xl border border-border bg-card p-1.5 transition-colors focus-within:border-primary/50">
-        <Textarea
+      <div className="mt-3">
+        <PromptInput
           value={input}
-          onChange={(e) => setInput(e.currentTarget.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              submit();
-            }
-          }}
-          rows={1}
+          onChange={setInput}
+          onSubmit={submit}
+          onStop={stop}
+          busy={isStreaming}
           disabled={!hasServiceTypes}
           placeholder={
             hasServiceTypes
               ? "Describe the event…"
               : "Add a service type to start drafting"
           }
-          className="max-h-28 min-h-0 flex-1 resize-none border-0 bg-transparent px-2 py-1.5 text-xs shadow-none focus-visible:ring-0 dark:bg-transparent"
         />
-        {isStreaming ? (
-          <Button
-            type="button"
-            size="icon"
-            variant="secondary"
-            onClick={stop}
-            className="size-8 shrink-0 cursor-pointer rounded-lg"
-            aria-label="Stop"
-          >
-            <Square className="h-3.5 w-3.5 fill-current" />
-          </Button>
-        ) : (
-          <Button
-            type="button"
-            size="icon"
-            onClick={submit}
-            disabled={!input.trim() || !hasServiceTypes}
-            className="size-8 shrink-0 cursor-pointer rounded-lg"
-            aria-label="Send"
-          >
-            <ArrowUp className="h-3.5 w-3.5" />
-          </Button>
-        )}
       </div>
     </div>
   );
@@ -380,10 +407,13 @@ function DraftCard({
   draft,
   orgId,
   onRefine,
+  latest,
 }: {
   draft: EventDraft;
   orgId: string;
   onRefine?: (draft: EventDraft) => void;
+  /** The newest draft in the chat: the only one that can be created or edited. */
+  latest: boolean;
 }) {
   const router = useRouter();
   const [removed, setRemoved] = useState<Set<string>>(new Set());
@@ -402,6 +432,24 @@ function DraftCard({
     // Drafts from before counts carry none, which is one each.
     spots: draft.roleSpots?.[role] ?? 1,
   }));
+
+  // Roles by team, each with whoever picks its people. Drafts from before
+  // teams carry none, which makes every team the drafter's.
+  const groups = (
+    draft.teams?.length
+      ? draft.teams
+      : teamsOfRoles(draft.rolesNeeded).map((team) => ({
+          team,
+          name: "",
+          you: true,
+          cover: false,
+        }))
+  )
+    .map((team) => ({
+      ...team,
+      roles: byRole.filter(({ role }) => teamOfRole(role) === team.team),
+    }))
+    .filter((team) => team.roles.length > 0);
 
   function toggleRemoved(userId: string) {
     setRemoved((prev) => {
@@ -464,6 +512,10 @@ function DraftCard({
                 }
               : undefined,
             roleAssignments,
+            // Teams the draft handed to somebody for this event only.
+            teamLeads: (draft.covers ?? []).map(({ team, userId }) => ({ team, userId })),
+            // Anybody booked elsewhere since the draft was built is refused.
+            refuseConflicts: true,
           },
           orgId,
         );
@@ -474,181 +526,264 @@ function DraftCard({
         }
 
         setCreated(true);
-        router.replace(`/dashboard/organizations/${orgId}`);
+        // Straight to the new event, where its leads' teams are filled.
+        router.replace(`/dashboard/organizations/${orgId}/events/${result.eventId}`);
       } catch {
         setError("Something went wrong. Please try again.");
       }
     });
   }
 
+  // An earlier version in the same chat: one line, nothing to press.
+  if (!latest) {
+    return (
+      <AgentStep
+        icon={History}
+        title={`Earlier draft: ${draft.name}`}
+        description={formatDraftDate(draft.days[0].date)}
+      />
+    );
+  }
+
   return (
-    <div className="rounded-xl border bg-card p-3 shadow-sm">
-      <div className="mb-3 flex items-start gap-2">
-        <span className={cn("mt-1 h-2 w-2 shrink-0 rounded-full", colors.dot)} />
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold">{draft.name}</p>
-          <p className="text-[11px] text-muted-foreground">
-            {draft.serviceTypeName}
-          </p>
-        </div>
-      </div>
-
-      <div className="mb-3 space-y-1 text-xs text-muted-foreground">
-        {draft.days.map((d) => (
-          <p key={d.date} className="flex items-center gap-1.5">
-            <CalendarDays className="h-3 w-3 shrink-0" />
-            {formatDraftDate(d.date)} · {formatDraftTime(d.startTime)} –{" "}
-            {formatDraftTime(d.endTime)}
-          </p>
-        ))}
-        {draft.rehearsal && (
-          <p className="flex items-center gap-1.5">
-            <CalendarClock className="h-3 w-3 shrink-0" />
-            Rehearsal {formatDraftDate(draft.rehearsal.date)} ·{" "}
-            {formatDraftTime(draft.rehearsal.startTime)} –{" "}
-            {formatDraftTime(draft.rehearsal.endTime)}
-          </p>
+    <Card className="gap-4 py-4">
+      <CardHeader className="gap-1 px-4">
+        <CardTitle className="flex min-w-0 items-center gap-2 text-sm">
+          <span className={cn("size-2 shrink-0 rounded-full", colors.dot)} />
+          <span className="truncate">{draft.name}</span>
+        </CardTitle>
+        {draft.serviceTypeName.toLowerCase() !== draft.name.toLowerCase() && (
+          <CardDescription className="text-xs">{draft.serviceTypeName}</CardDescription>
         )}
-        <p className="flex items-center gap-1.5">
-          <MapPin className="h-3 w-3 shrink-0" />
-          {draft.location}
-        </p>
-      </div>
+      </CardHeader>
 
-      <ul className="space-y-2">
-        {byRole.map(({ role, people, spots }) => (
-          <li key={role} className="flex items-start gap-2 text-xs">
-            <span className="w-4 shrink-0 text-center">
-              {volunteerRoleConfig[role].icon}
-            </span>
-            <div className="min-w-0 flex-1">
-              <p className="font-medium">
-                {volunteerRoleConfig[role].label}
-                {spots > 1 && (
-                  <span className="font-normal text-muted-foreground"> ×{spots}</span>
-                )}
-                {people.length === 0 ? (
-                  <span className="ml-1.5 font-normal text-muted-foreground">
-                    — left open
-                  </span>
-                ) : people.length < spots ? (
-                  <span className="ml-1.5 font-normal text-muted-foreground">
-                    — {spots - people.length} more open
-                  </span>
-                ) : null}
-              </p>
-              {people.map((p) => (
-                <div key={p.userId} className="flex items-start gap-1.5">
-                  <p className="min-w-0 flex-1 text-[11px] text-muted-foreground">
-                    <span className="text-foreground">{p.name}</span> ·{" "}
-                    {p.reason}
-                  </p>
-                  <button
-                    type="button"
-                    disabled={locked}
-                    onClick={() => toggleRemoved(p.userId)}
-                    aria-label={`Remove ${p.name}`}
-                    className="mt-0.5 shrink-0 rounded p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          </li>
-        ))}
-      </ul>
+      <CardContent className="flex flex-col gap-4 px-4">
+        {/* The model's explanation rides on the card: it stops at the draft. */}
+        {draft.summary && (
+          <p className="text-xs leading-relaxed text-muted-foreground">{draft.summary}</p>
+        )}
 
-      {removed.size > 0 && !created && (
-        <button
-          type="button"
-          disabled={locked}
-          onClick={() => setRemoved(new Set())}
-          className="mt-2 text-[11px] text-muted-foreground underline underline-offset-2 transition-colors hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
-        >
-          Undo {removed.size} removal{removed.size === 1 ? "" : "s"}
-        </button>
-      )}
-
-      {draft.warnings.length > 0 && (
-        <div className="mt-3 space-y-1 rounded-lg bg-amber-500/10 p-2">
-          {draft.warnings.map((w, i) => (
-            <p
-              key={i}
-              className="flex items-start gap-1.5 text-[11px] text-amber-700 dark:text-amber-500"
-            >
-              <TriangleAlert className="mt-0.5 h-3 w-3 shrink-0" />
-              <span>
-                {w.name} skipped for {volunteerRoleConfig[w.role].label} —{" "}
-                {w.reason}
-              </span>
+        <div className="flex flex-col gap-1 text-xs text-muted-foreground">
+          {draft.days.map((d) => (
+            <p key={d.date} className="flex items-center gap-1.5">
+              <CalendarDays className="size-3 shrink-0" />
+              {formatDraftDate(d.date)} · {formatDraftTime(d.startTime)} –{" "}
+              {formatDraftTime(d.endTime)}
             </p>
           ))}
+          {draft.rehearsal && (
+            <p className="flex items-center gap-1.5">
+              <CalendarClock className="size-3 shrink-0" />
+              Rehearsal {formatDraftDate(draft.rehearsal.date)} ·{" "}
+              {formatDraftTime(draft.rehearsal.startTime)} –{" "}
+              {formatDraftTime(draft.rehearsal.endTime)}
+            </p>
+          )}
+          <p className="flex items-center gap-1.5">
+            <MapPin className="size-3 shrink-0" />
+            {draft.location}
+          </p>
         </div>
-      )}
 
-      {error && (
-        <p className="mt-3 text-[11px] text-destructive">{error}</p>
-      )}
+        <div className="flex flex-col gap-3">
+          {groups.map(({ team, name, you, cover, roles }) => (
+            <div key={team} className="flex flex-col gap-1.5">
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
+                  {teamLabel(team)}
+                </span>
+                <span className="truncate text-[11px] text-muted-foreground">
+                  {you ? (cover ? "You, covering" : "You") : `${name} picks`}
+                </span>
+              </div>
 
-      <Button
-        type="button"
-        size="sm"
-        disabled={locked}
-        onClick={create}
-        className="mt-3 w-full cursor-pointer"
-      >
-        {created ? (
-          <>
-            <Check className="mr-1.5 h-3.5 w-3.5" />
-            Created
-          </>
-        ) : isPending ? (
-          <>
-            <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-            Creating…
-          </>
-        ) : kept.length === 0 ? (
-          "Create event"
-        ) : (
-          `Create & invite ${kept.length} ${kept.length === 1 ? "person" : "people"}`
+              {you ? (
+                roles.map(({ role, people, spots }) => (
+                  <div key={role} className="flex flex-col">
+                    <div className="flex items-center gap-1.5 text-xs font-medium">
+                      <span aria-hidden>{volunteerRoleConfig[role].icon}</span>
+                      {volunteerRoleConfig[role].label}
+                      {spots > 1 && (
+                        <span className="font-normal text-muted-foreground">×{spots}</span>
+                      )}
+                      {people.length < spots && (
+                        <Badge variant="secondary" className="ml-auto">
+                          {spots - people.length} open
+                        </Badge>
+                      )}
+                    </div>
+                    {people.map((p) => (
+                      <Item key={p.userId} size="sm" className="gap-2.5 px-0 py-1.5">
+                        <ItemMedia>
+                          <Avatar size="sm">
+                            <AvatarFallback>{initials(p.name)}</AvatarFallback>
+                          </Avatar>
+                        </ItemMedia>
+                        <ItemContent className="min-w-0 gap-0.5">
+                          <ItemTitle className="text-xs">{p.name}</ItemTitle>
+                          <ItemDescription className="text-[11px]">{p.reason}</ItemDescription>
+                        </ItemContent>
+                        <ItemActions>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-xs"
+                            disabled={locked}
+                            onClick={() => toggleRemoved(p.userId)}
+                            aria-label={`Remove ${p.name}`}
+                          >
+                            <X />
+                          </Button>
+                        </ItemActions>
+                      </Item>
+                    ))}
+                  </div>
+                ))
+              ) : (
+                // Somebody else's team: its spots wait for them, and they're told.
+                <p className="text-xs text-muted-foreground">
+                  {roles
+                    .map(({ role, spots }) =>
+                      spots > 1
+                        ? `${volunteerRoleConfig[role].label} ×${spots}`
+                        : volunteerRoleConfig[role].label,
+                    )
+                    .join(", ")}
+                </p>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {removed.size > 0 && !created && (
+          <Button
+            type="button"
+            variant="link"
+            size="xs"
+            disabled={locked}
+            onClick={() => setRemoved(new Set())}
+            className="self-start px-0"
+          >
+            Undo {removed.size} removal{removed.size === 1 ? "" : "s"}
+          </Button>
         )}
-      </Button>
 
-      {!created && kept.length > 0 && (
-        <p className="mt-1.5 text-center text-[11px] text-muted-foreground">
-          Sends {kept.length === 1 ? "an invite" : "invites"} by email
-          immediately
-        </p>
-      )}
+        {draft.warnings.length > 0 && (
+          <Alert className="px-3 py-2">
+            <TriangleAlert />
+            <AlertTitle className="text-xs">Not picked</AlertTitle>
+            <AlertDescription className="text-[11px]">
+              <ul className="flex flex-col gap-0.5">
+                {draft.warnings.map((w, i) => (
+                  <li key={i}>
+                    {w.name} for {volunteerRoleConfig[w.role].label}: {w.reason}
+                  </li>
+                ))}
+              </ul>
+            </AlertDescription>
+          </Alert>
+        )}
 
-      {onRefine && !created && (
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          disabled={locked}
-          onClick={() => {
-            // Hands over the whole draft, removals included — what you see on
-            // this card is what lands in the form.
-            onRefine({ ...draft, assignments: kept });
-            setRefined(true);
-          }}
-          className="mt-2 w-full cursor-pointer"
-        >
-          {refined ? (
+        {error && <p className="text-[11px] text-destructive">{error}</p>}
+      </CardContent>
+
+      <CardFooter className="flex-col items-stretch gap-2 px-4">
+        <Button type="button" size="sm" disabled={locked} onClick={create}>
+          {created ? (
             <>
-              <Check className="mr-1.5 h-3.5 w-3.5" />
-              Loaded into the form below
+              <Check data-icon="inline-start" />
+              Created
             </>
+          ) : isPending ? (
+            <>
+              <Spinner data-icon="inline-start" />
+              Creating…
+            </>
+          ) : kept.length === 0 ? (
+            "Create event"
           ) : (
-            <>
-              <Pencil className="mr-1.5 h-3.5 w-3.5" />
-              Edit manually first
-            </>
+            `Create & invite ${kept.length} ${kept.length === 1 ? "person" : "people"}`
           )}
         </Button>
-      )}
-    </div>
+
+        {!created && kept.length > 0 && (
+          <p className="text-center text-[11px] text-muted-foreground">
+            Sends {kept.length === 1 ? "an invite" : "invites"} by email
+            immediately
+          </p>
+        )}
+
+        {onRefine && !created && (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={locked}
+            onClick={() => {
+              // Hands over the whole draft, removals included — what you see on
+              // this card is what lands in the form.
+              onRefine({ ...draft, assignments: kept });
+              setRefined(true);
+            }}
+          >
+            {refined ? (
+              <>
+                <Check data-icon="inline-start" />
+                Loaded into the form below
+              </>
+            ) : (
+              <>
+                <Pencil data-icon="inline-start" />
+                Edit manually first
+              </>
+            )}
+          </Button>
+        )}
+      </CardFooter>
+    </Card>
+  );
+}
+
+/**
+ * Who's free for each role, and — opened — who can't serve and why. The
+ * count is the people free, not everyone holding the role.
+ */
+function AvailabilityTrace({ roles }: { roles: CheckAvailabilityOutput["roles"] }) {
+  return (
+    <Trace>
+      {roles.map((r) => {
+        const line = (
+          <TraceLine className="text-xs">
+            <TraceTitle>{volunteerRoleConfig[r.role].label}</TraceTitle>
+            <TraceDescription>
+              {`${r.eligible.length} free${r.excluded.length > 0 ? ` · ${r.excluded.length} can't` : ""}`}
+            </TraceDescription>
+          </TraceLine>
+        );
+
+        if (r.excluded.length === 0) return <div key={r.role}>{line}</div>;
+
+        return (
+          <TraceCollapsible key={r.role}>
+            <TraceCollapsibleTrigger>{line}</TraceCollapsibleTrigger>
+            <TraceCollapsibleContent className="text-xs">
+              <Trace>
+                {r.excluded.map((x) => (
+                  <TraceLine key={x.name} className="text-xs">
+                    <TraceIcon>{x.reason === "blockout" ? <CalendarOff /> : <CalendarX2 />}</TraceIcon>
+                    <TraceTitle>{x.name}</TraceTitle>
+                    <TraceDescription>
+                      {x.reason === "blockout"
+                        ? `blocked out ${formatBlockout(x.detail)}`
+                        : `serving ${x.detail}`}
+                    </TraceDescription>
+                  </TraceLine>
+                ))}
+              </Trace>
+            </TraceCollapsibleContent>
+          </TraceCollapsible>
+        );
+      })}
+    </Trace>
   );
 }

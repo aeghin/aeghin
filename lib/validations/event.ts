@@ -131,6 +131,10 @@ export const createEventInputSchema = createEventBaseSchema
     roleAssignments: z.record(z.enum(VolunteerRole), z.array(z.string()).default([])),
     // Optional: templates, the assistant and older phone builds don't send it.
     teamLeads: eventTeamLeadsSchema.optional(),
+    // The AI draft's Create: somebody serving another event at that time is
+    // refused, like a blockout. The draft never picks one, so it's a booking
+    // made since. The form leaves it off and only warns.
+    refuseConflicts: z.boolean().optional(),
   })
   .superRefine((data, ctx) => refineRehearsal(data.rehearsal, ctx));
 
@@ -156,6 +160,14 @@ export const inviteToEventSchema = z.object({
   role: z.enum(VolunteerRole),
   userIds: z.array(z.string()).min(1, "Select at least one member"),
   expiresAt: z.number().refine((v) => [3, 5, 7].includes(v)),
+  // The AI's approval: only spots still open when it lands, so a lead and
+  // their backup can't both add a drummer. Without it an extra invite still
+  // adds a spot, as it always has.
+  onlyOpenSpots: z.boolean().optional(),
+  // The AI's approval too: somebody serving another event at that time is
+  // refused, like a blockout. The card never picks one, so it's a booking made
+  // since. Without it a clash is the inviter's call, as the picker warns.
+  refuseConflicts: z.boolean().optional(),
 });
 
 export type InviteToEventInput = z.infer<typeof inviteToEventSchema>;

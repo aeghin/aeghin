@@ -44,6 +44,15 @@
       background-position: 0 0;
     }
   }
+  @keyframes tw-shimmer-icon {
+    from {
+      mask-position: 100% 0;
+    }
+    40%,
+    to {
+      mask-position: 0 0;
+    }
+  }
 }
 
 @utility shimmer {
@@ -92,6 +101,34 @@
 @utility shimmer-none {
   --shimmer-image: none;
   --shimmer-text-fill: currentColor;
+}
+
+/* `shimmer` for an icon. An svg has no text for background-clip to cut the
+   gradient to, so the band is a mask instead: it fades the glyph as it
+   passes, as `shimmer`'s light-mode band fades text, which reads the same on
+   a white icon in either theme. One sweep then a rest, since an icon that
+   shines is on screen the whole time. */
+@utility shimmer-icon {
+  --_spread: var(--shimmer-spread, 6px);
+
+  mask-image: linear-gradient(
+    calc(90deg + var(--shimmer-angle)),
+    #000 calc(50% - var(--_spread)),
+    rgb(0 0 0 / 0.6) calc(50% - var(--_spread) * 0.5),
+    rgb(0 0 0 / 0.2) 50%,
+    rgb(0 0 0 / 0.6) calc(50% + var(--_spread) * 0.5),
+    #000 calc(50% + var(--_spread))
+  );
+  mask-repeat: no-repeat;
+  /* Room either side for the tilted band to clear the corners before it rests. */
+  mask-size: calc(200% + var(--_spread) * 4) 100%;
+  mask-position: 0 0;
+  animation: tw-shimmer-icon var(--shimmer-duration, 2.5s) linear infinite;
+
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+    mask-image: none;
+  }
 }
 
 @theme inline {

@@ -1,24 +1,39 @@
 import "server-only";
 
 import prisma from "@/lib/prisma";
-import { OrgRole, type RoleCategory as Team } from "@/generated/prisma/enums";
+import {
+  OrgRole,
+  type RoleCategory as Team,
+  type VolunteerRole,
+} from "@/generated/prisma/enums";
 import EventCoverEmail from "@/components/email/event-cover-template";
 import EventTeamHandoffEmail, {
   type TeamHandoff,
 } from "@/components/email/event-team-handoff-template";
+import EventTeamNeededEmail from "@/components/email/event-team-needed-template";
 import TeamAlertsChangeEmail from "@/components/email/team-alerts-change-template";
 import TeamLeadEmail from "@/components/email/team-lead-template";
-import { rolesOfTeam, TEAM_ORDER, teamLabel, volunteerRoleConfig } from "@/lib/config/roles";
+import {
+  rolesOfTeam,
+  TEAM_ORDER,
+  teamLabel,
+  teamOfRole,
+  teamsOfRoles,
+  volunteerRoleConfig,
+} from "@/lib/config/roles";
 import { formatEventShort, formatEventWhen } from "@/lib/email/event-when";
 import { organizationSender } from "@/lib/email/organization";
 import { sendEmailBatches } from "@/lib/email/send";
 import {
   organizationOwners,
+  roleOwners,
   teamKey,
   type Person,
 } from "@/lib/notifications/audience";
 import { loadStaffingDirectory } from "@/lib/notifications/directory";
 import { sendPushNotices, type PushNotice } from "@/lib/push/send";
+import { parseRoleSpots, roleStanding, spotLabel } from "@/lib/role-spots";
+import { hasDateAhead, zoneOrFallback } from "@/lib/time-zone";
 
 /** Every role in one team, e.g. "Pianist, Aux Keys, Bassist". */
 const rolesOf = (team: Team) =>
@@ -432,6 +447,178 @@ export async function notifyEventCovers({
     );
   } catch (err) {
     console.error(`Failed to tell covers on event ${eventId}`, err);
+  }
+}
+
+/**
+ * Tells each team's lead, once, that an event needs their team — when the
+ * event is made, and when roles are added to it later. Without it a lead only
+ * finds their empty spots by opening the event, or from the bell in the last
+ * week.
+ *
+ * Only whoever's in charge of the team on this event, and only a lead or a
+ * cover: a team with no lead is already the creator's to fill, and the owners
+ * are the last resort, not the first call. Also notify stays quiet — they're
+ * the backup, and hear when something falls through. Nobody hears about their
+ * own change, and a cover picked in the same save already has
+ * `notifyEventCovers`.
+ *
+ * Best effort, like the rest of this file: the event is already saved.
+ */
+export async function notifyTeamsNeeded({
+  organizationId,
+  eventId,
+  roles,
+  actor,
+  added,
+  skipCovers,
+}: {
+  organizationId: string;
+  eventId: string;
+  /** The roles this change put on the event. */
+  roles: VolunteerRole[];
+  actor: { userId: string; name: string };
+  /** Roles added to an event that already existed, rather than a new event. */
+  added: boolean;
+  /** Leave covers out: they were picked in this same save and already told. */
+  skipCovers: boolean;
+}): Promise<void> {
+  try {
+    if (roles.length === 0) return;
+
+    const [event, directory] = await Promise.all([
+      prisma.event.findUnique({
+        where: { id: eventId },
+        select: {
+          name: true,
+          serviceTypeId: true,
+          createdById: true,
+          roleSpots: true,
+          dates: { select: { startTime: true, endTime: true } },
+          teamLeads: { select: { category: true, userId: true } },
+          assignments: {
+            where: { dismissedAt: null },
+            select: { role: true, status: true, expiresAt: true },
+          },
+          organization: { select: { name: true, logoUrl: true, timeZone: true } },
+        },
+      }),
+      loadStaffingDirectory(organizationId, { watchers: false }),
+    ]);
+
+    if (!event || !directory) return;
+
+    // Nothing to staff once every block is over.
+    if (!hasDateAhead(event.dates, zoneOrFallback(event.organization.timeZone))) return;
+
+    const now = new Date();
+    const spots = parseRoleSpots(event.roleSpots);
+
+    // Each person told, with the roles still open on the teams they handle.
+    const byPerson = new Map<
+      string,
+      {
+        person: Person;
+        reason: "cover" | "lead";
+        open: { role: VolunteerRole; count: number }[];
+      }
+    >();
+
+    for (const role of new Set(roles)) {
+      const { open } = roleStanding(role, spots, event.assignments, now);
+
+      if (open === 0) continue;
+
+      const team = teamOfRole(role);
+
+      const { people, reason } = roleOwners(directory, {
+        serviceTypeId: event.serviceTypeId,
+        createdById: event.createdById,
+        role,
+        coverId: event.teamLeads.find((cover) => cover.category === team)?.userId ?? null,
+      });
+
+      if (reason !== "lead" && reason !== "cover") continue;
+      if (reason === "cover" && skipCovers) continue;
+
+      const [person] = people;
+
+      if (!person || person.userId === actor.userId) continue;
+
+      const entry = byPerson.get(person.userId) ?? { person, reason, open: [] };
+
+      entry.open.push({ role, count: open });
+      byPerson.set(person.userId, entry);
+    }
+
+    if (byPerson.size === 0) return;
+
+    const { name: organizationName, logoUrl } = event.organization;
+    const when = formatEventWhen(event.dates);
+    const short = formatEventShort(event.dates);
+    const serviceTypeName = directory.serviceTypeNames.get(event.serviceTypeId) ?? null;
+    const viewLink = `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/organizations/${organizationId}/events/${eventId}`;
+
+    const messages = [...byPerson.values()].map(({ person, reason, open }) => {
+      const teamLabels = names.format(
+        teamsOfRoles(open.map(({ role }) => role)).map(teamLabel),
+      );
+      const openRoles = open.map(({ role, count }) => spotLabel(role, count)).join(", ");
+
+      // "New event for Band", not "Band needed": that's how a decline reads,
+      // and nothing has fallen through yet.
+      const subject = added
+        ? `${openRoles} added: ${event.name}`
+        : `New event for ${teamLabels}: ${event.name}`;
+
+      return { person, reason, teamLabels, openRoles, subject };
+    });
+
+    await sendEmailBatches(
+      "event team needed",
+      messages.map(({ person, reason, teamLabels, openRoles, subject }) => ({
+        from: organizationSender(organizationName),
+        to: person.email,
+        subject,
+        react: EventTeamNeededEmail({
+          recipientName: person.firstName,
+          organizationName,
+          logoUrl,
+          eventName: event.name,
+          eventDate: when?.date ?? null,
+          eventTime: when?.time ?? null,
+          teamLabels,
+          openRoles,
+          actorName: actor.name,
+          added,
+          viewLink,
+          footer:
+            reason === "cover"
+              ? `You're receiving this because you're covering ${teamLabels} for this event at ${organizationName}.`
+              : `You're receiving this because you lead ${teamLabels}${serviceTypeName ? ` for ${serviceTypeName}` : ""} at ${organizationName}.`,
+        }),
+      })),
+    );
+
+    await sendPushNotices(
+      "event team needed",
+      messages.map(({ person, teamLabels, openRoles, subject }) => ({
+        email: person.email,
+        title: subject,
+        subtitle: organizationName,
+        body: [
+          added
+            ? `${actor.name} added ${openRoles}. It's yours to staff.`
+            : `${actor.name} left ${teamLabels} for you to staff: ${openRoles}.`,
+          short,
+        ]
+          .filter(Boolean)
+          .join("\n"),
+        data: { type: "event", organizationId, eventId },
+      })),
+    );
+  } catch (err) {
+    console.error(`Failed to tell leads event ${eventId} needs their teams`, err);
   }
 }
 

@@ -27,8 +27,10 @@ import {
 import {
   eventTeamLeads,
   getTeamNotificationSettings,
+  staffableTeams,
 } from "@/lib/services/team-notifications";
 import { getOrgPlan } from "@/lib/billing/entitlements";
+import { LAST_CALL_DAYS } from "@/lib/notifications/staffing";
 import { getEmailAllowance } from "@/lib/billing/limits";
 import { PLAN_LIMITS } from "@/lib/config/plans";
 import { TEAM_ORDER, teamsOfRoles, volunteerRoleConfig } from "@/lib/config/roles";
@@ -37,7 +39,7 @@ import type {
   TeamLeadPicks,
 } from "@/components/dashboard/events/event-team-leads-field";
 import { InvitationStatus, OrgRole } from "@/generated/prisma/enums";
-import { floatingNow } from "@/lib/time-zone";
+import { floatingNow, hasDateAhead } from "@/lib/time-zone";
 
 export default async function EventDetailPage({
   params,
@@ -124,6 +126,36 @@ export default async function EventDetailPage({
   const teamLeads = teamSettings
     ? eventTeamLeads(teamSettings, event.serviceTypeId, event.teamLeads)
     : {};
+
+  // Fill with AI: the teams this viewer can staff here — theirs, and the ones
+  // they back up — on a Pro plan, while the event is still ahead. The card
+  // keeps the ones with open spots; the route checks all of it again.
+  const aiTeams =
+    teamSettings && plan === "pro" && hasDateAhead(event.dates, timeZone)
+      ? staffableTeams(
+          teamSettings,
+          {
+            serviceTypeId: event.serviceTypeId,
+            createdById: event.createdById,
+            covers: event.teamLeads,
+          },
+          user.id,
+        ).map((s) => ({
+          team: s.team,
+          // Who they're backing up, by first name; null on their own teams.
+          backingUp: s.inCharge
+            ? null
+            : s.handledBy.people.map((person) => person.firstName).join(" and "),
+        }))
+      : [];
+
+  // From the day last call goes out — counted in calendar days on the
+  // church's clock, as it counts them — a backup can step in with Fill with
+  // AI whatever state the team is in.
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  const firstStart = Math.min(...event.dates.map((date) => date.startTime.getTime()));
+  const lastCall =
+    Math.floor(firstStart / DAY_MS) - Math.floor(now.getTime() / DAY_MS) <= LAST_CALL_DAYS[0];
 
   let editTeamLeads: { choices: TeamLeadChoices; picks: TeamLeadPicks } | undefined;
 
@@ -260,6 +292,8 @@ export default async function EventDetailPage({
                 smartSchedulingAvailable={smartSchedulingAvailable}
                 canUpgrade={membership.role === OrgRole.OWNER}
                 teamLeads={teamLeads}
+                aiTeams={aiTeams}
+                lastCall={lastCall}
               />
             </div>
             {/* <EventStatusCard event={event} /> */}

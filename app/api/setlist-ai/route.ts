@@ -8,6 +8,7 @@ import { getAiSetlistAccess, getAiProAccess } from "@/lib/billing/entitlements";
 import { aiRunLimitError, recordUsage } from "@/lib/billing/limits";
 import { OrgRole, UsageKind } from "@/generated/prisma/enums";
 import { createSetlistAgent } from "@/lib/agents/setlist/agent";
+import { trimHistory } from "@/lib/agents/history";
 
 
 export const maxDuration = 300;
@@ -76,7 +77,13 @@ export async function POST(req: Request) {
 
   return createAgentUIStreamResponse({
     agent,
-    uiMessages: messages,
+    uiMessages: trimHistory(messages),
     timeout: 290_000,
+    // The headers are already sent by the time the agent can fail, so without
+    // this a mid-stream failure reaches nobody's logs.
+    onError: (error) => {
+      console.error("POST /api/setlist-ai stream failed", error);
+      return "The assistant stopped before it finished. Please try again.";
+    },
   });
 }

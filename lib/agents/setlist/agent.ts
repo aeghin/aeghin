@@ -1,6 +1,7 @@
-import { ToolLoopAgent, tool, InferAgentUIMessage } from "ai";
+import { ToolLoopAgent, tool, stepCountIs, InferAgentUIMessage } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { Pitch, KeyQuality } from "@/generated/prisma/enums";
+import { GATEWAY_CACHING, proposalAccepted, shortRefs } from "@/lib/agents/shared";
 import { proposeSetlistInputSchema } from "./schema";
 
 // Minimal view of a catalog song the agent reasons over (org-scoped).
@@ -33,32 +34,47 @@ export type ProposedSetlistSong = {
 
 export type SetlistTier = "premium" | "pro";
 
+export type ProposeSetlistOutput = {
+  /** Every pick was a catalog song: the loop can stop at the card. */
+  ok: boolean;
+  title: string;
+  /** Shown on the card. Absent from proposals made before notes. */
+  note?: string;
+  songs: ProposedSetlistSong[];
+  skipped: string[];
+};
+
 const TIER_MODEL: Record<SetlistTier, string> = {
   premium: "anthropic/claude-haiku-5.5",
   pro: "anthropic/claude-sonnet-5.5",
 };
 
-function buildInstructions(orgName: string, catalog: AgentCatalogSong[], tier: SetlistTier) {
+function buildInstructions(
+  orgName: string,
+  catalog: AgentCatalogSong[],
+  tier: SetlistTier,
+  ref: (id: string) => string,
+) {
   const rows = catalog
     .map(
       (s) =>
-        `- ${s.id} | "${s.title}" — ${s.artist} | key ${s.defaultPitch}/${s.defaultKeyQuality} | ${s.bpm}bpm ${s.timeSignature} | themes: ${s.themes.join(", ") || "—"}`,
+        `- ${ref(s.id)} | "${s.title}" — ${s.artist} | key ${s.defaultPitch}/${s.defaultKeyQuality} | ${s.bpm}bpm ${s.timeSignature} | themes: ${s.themes.join(", ") || "—"}`,
     )
     .join("\n");
 
   const scope =
     tier === "pro"
-      ? `You are well versed in music theory, and you may use web search to research songs, artists, and what other worship teams play. You may name and recommend songs that are NOT in this catalog — but only in your chat explanation.`
+      ? `You are well versed in music theory, and you may use web search to research songs, artists, and what other worship teams play. You may name and recommend songs that are NOT in this catalog — in your note or a reply, never in the setlist itself.`
       : `You are well versed in music theory. You have no web access and work strictly from this organization's song catalog. Never name, recommend, or describe a song that is not in the catalog below — not in the setlist, and not in chat. If the catalog can't cover what the user is asking for, say so plainly and suggest they add songs to their library.`;
 
   const idRule =
     tier === "pro"
-      ? `- Only catalog songs can be added to the setlist, so the proposeSetlist call must contain ONLY ids from the catalog above. When you recommend a song that isn't in the catalog, keep it in chat and tell the user to add it to their catalog first if they want it in the setlist. Never put a non-catalog song in the tool call.`
-      : `- Choose songs strictly by their exact id from the catalog above. Never invent songs or ids.`;
+      ? `- Only catalog songs can be added to the setlist, so the proposeSetlist call must contain ONLY refs from the catalog above. When you recommend a song that isn't in the catalog, keep it in your note or reply and tell the user to add it to their catalog first if they want it in the setlist. Never put a non-catalog song in the tool call.`
+      : `- Choose songs strictly by their exact ref from the catalog above. Never invent songs or refs.`;
 
   return `You are a setlist assistant for "${orgName}". You help a worship/music leader build an event setlist. ${scope}
 
-CATALOG (id | title — artist | key | tempo | themes):
+CATALOG (ref | title — artist | key | tempo | themes):
 ${rows}
 
 How to work:
@@ -66,7 +82,8 @@ ${idRule}
 - Use each song's themes to match what the user asks for (e.g. "communion", "surrender", "Christmas").
 - Think about flow: key compatibility between adjacent songs, a sensible tempo/energy arc, and theme coherence.
 - Keep each song in its catalog key unless the user asks to transpose.
-- Explain your thinking briefly in chat (1–3 sentences), then ALWAYS call the proposeSetlist tool to deliver the list — never write the final setlist as plain text.
+- Always deliver a setlist through proposeSetlist, never as plain text, and put your explanation in its note — the card shows it. To change one, call proposeSetlist again with the whole new list.
+- Questions about songs, keys or flow don't need a new setlist: answer just that question in a sentence or two — never your own steps or checks, or apologies.
 - If the catalog is too small or lacks fitting songs, say so honestly instead of forcing it.`;
 }
 
@@ -77,25 +94,27 @@ export function createSetlistAgent(opts: {
 }) {
   const { tier, orgName, catalog } = opts;
   const byId = new Map(catalog.map((s) => [s.id, s]));
+  const { ref, resolve } = shortRefs(catalog.map((s) => s.id));
 
   const proposeSetlist = tool({
     description:
       "Deliver a finished setlist for the user to review and apply. Call this once you've settled on the songs.",
     inputSchema: proposeSetlistInputSchema,
-    // Runs on the server: validates every id against the org catalog and
+    // Runs on the server: validates every ref against the org catalog and
     // hydrates real metadata. The model cannot smuggle in foreign songs.
-    execute: async ({ title, songs }) => {
+    execute: async ({ title, songs, note }): Promise<ProposeSetlistOutput> => {
       const resolved: ProposedSetlistSong[] = [];
       const skipped: string[] = [];
       const seen = new Set<string>();
 
       for (const item of songs) {
-        const song = byId.get(item.songId);
-        if (!song || seen.has(item.songId)) {
-          skipped.push(item.songId);
+        const id = resolve(item.song);
+        const song = id ? byId.get(id) : undefined;
+        if (!id || !song || seen.has(id)) {
+          skipped.push(item.song);
           continue;
         }
-        seen.add(item.songId);
+        seen.add(id);
         resolved.push({
           songId: song.id,
           title: song.title,
@@ -110,8 +129,21 @@ export function createSetlistAgent(opts: {
         });
       }
 
-      return { title, songs: resolved, skipped };
+      // Anything skipped keeps the loop going, so the model can fix it.
+      return { ok: skipped.length === 0, title, note, songs: resolved, skipped };
     },
+    // The list a follow-up needs to edit it, by title and ref.
+    toModelOutput: ({ output }) => ({
+      type: "text",
+      value: [
+        `Setlist shown on the card: ${output.songs
+          .map((s, i) => `${i + 1}. ${s.title} (${ref(s.songId)}) in ${s.pitch}/${s.keyQuality}`)
+          .join("; ")}.`,
+        output.skipped.length ? `Skipped, not in the catalog: ${output.skipped.join(", ")}.` : "",
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    }),
   });
 
 
@@ -126,8 +158,12 @@ export function createSetlistAgent(opts: {
 
   return new ToolLoopAgent({
     model: TIER_MODEL[tier],
-    instructions: buildInstructions(orgName, catalog, tier),
+    instructions: buildInstructions(orgName, catalog, tier, ref),
     tools,
+    // Ends at a clean proposal: the card carries the note, so a further call
+    // only to say "here it is" would re-read the whole catalog for nothing.
+    stopWhen: [proposalAccepted("proposeSetlist"), stepCountIs(4)],
+    providerOptions: GATEWAY_CACHING,
   });
 }
 

@@ -1,8 +1,16 @@
 import { ToolLoopAgent, tool, stepCountIs, InferAgentUIMessage } from "ai";
-import { VolunteerRole } from "@/generated/prisma/enums";
-import { ROLE_ORDER, teamLabel, teamOfRole, volunteerRoleConfig } from "@/lib/config/roles";
+import type { RoleCategory as Team, VolunteerRole } from "@/generated/prisma/enums";
+import { ROLE_ORDER, TEAM_ORDER, teamLabel, teamOfRole, teamsOfRoles, volunteerRoleConfig } from "@/lib/config/roles";
 import type { RoleEligibility } from "@/lib/types";
 import { spotsFor, storedRoleSpots, type RoleSpots } from "@/lib/role-spots";
+import {
+  GATEWAY_CACHING,
+  availabilityLines,
+  proposalAccepted,
+  shortRefs,
+  toAvailability,
+  type AvailabilityRole,
+} from "@/lib/agents/shared";
 import {
   checkAvailabilityInputSchema,
   proposeEventInputSchema,
@@ -35,13 +43,26 @@ export type AgentRosterMember = {
   userId: string;
   name: string;
   volunteerRoles: VolunteerRole[];
+  /** An admin or owner: somebody who can cover a team. */
+  manager: boolean;
 };
+
+/** The person drafting, who creates the event when they approve it. */
+export type AgentViewer = { userId: string; name: string; firstName: string };
+
+/**
+ * Each service type's team leads, by service type id, when the lead is
+ * somebody other than the person drafting. A team left out is theirs to staff.
+ */
+export type AgentTeamLeads = Record<
+  string,
+  Partial<Record<Team, { userId: string; name: string }>>
+>;
 
 export type EventAgentDeps = {
   checkAvailability: (input: {
     days: DraftDay[];
     roles: VolunteerRole[];
-    maxPerRole?: number;
   }) => Promise<RoleEligibility[]>;
 };
 
@@ -54,12 +75,25 @@ export type DraftAssignment = {
   reason: string;
 };
 
-/** A pick the server rejected. Surfaced, never silently dropped. */
+/** A pick the server rejected or left to somebody else. Surfaced, never silently dropped. */
 export type DraftWarning = {
   name: string;
   role: VolunteerRole;
   reason: string;
 };
+
+/** Who picks the people for one team on a draft. */
+export type DraftTeam = {
+  team: Team;
+  /** Their full name; the card says "You" when `you`. */
+  name: string;
+  you: boolean;
+  /** Handling it for this event only, rather than as the team's lead. */
+  cover: boolean;
+};
+
+/** A team handed to somebody for this event only, saved with the event. */
+export type DraftCover = { team: Team; userId: string; name: string };
 
 export type EventDraft = {
   serviceTypeId: string;
@@ -80,10 +114,20 @@ export type EventDraft = {
   summary: string;
   warnings: DraftWarning[];
   unfilledRoles: VolunteerRole[];
+  /** Who picks each team's people. Absent from drafts made before teams. */
+  teams?: DraftTeam[];
+  /** Absent from drafts made before covers. */
+  covers?: DraftCover[];
+};
+
+export type CheckAvailabilityOutput = {
+  days: DraftDay[];
+  roles: AvailabilityRole[];
 };
 
 export type ProposeEventOutput =
-  | { ok: true; draft: EventDraft }
+  /** `refill`: picks were dropped from spots on this person's teams somebody else could still fill. */
+  | { ok: true; draft: EventDraft; refill: boolean }
   | { ok: false; error: string };
 
 const WEEKDAYS = [
@@ -112,19 +156,36 @@ function dayNumber(iso: string): number | null {
   return Math.floor(utc / 86_400_000);
 }
 
+const dayLines = (days: DraftDay[]) =>
+  days.map((d) => `${d.date} ${d.startTime}-${d.endTime}`).join(", ");
+
 function buildInstructions(opts: {
   orgName: string;
+  viewer: AgentViewer;
   today: string;
   serviceTypes: AgentServiceType[];
   templates: AgentTemplate[];
   roster: AgentRosterMember[];
+  teamLeads: AgentTeamLeads;
+  ref: (id: string) => string;
 }) {
-  const { orgName, today, serviceTypes, templates, roster } = opts;
+  const { orgName, viewer, today, serviceTypes, templates, roster, teamLeads, ref } = opts;
+  const you = viewer.firstName;
 
   const todayWeekday = WEEKDAYS[new Date(`${today}T00:00:00Z`).getUTCDay()];
 
+  // Who staffs each team for each service type, so the model knows before it
+  // picks which teams are this person's to fill.
   const serviceTypeRows = serviceTypes
-    .map((t) => `- ${t.id} | ${t.name}`)
+    .map((t) => {
+      const leads = teamLeads[t.id] ?? {};
+      const teams = TEAM_ORDER.map((team) => {
+        const lead = leads[team];
+        return `${teamLabel(team)}: ${lead ? `${lead.name} (lead)` : "you"}`;
+      }).join(" · ");
+
+      return `- ${ref(t.id)} | ${t.name} | ${teams}`;
+    })
     .join("\n");
 
   // Every role with its name and team, so "drums" or "the band" maps onto
@@ -138,7 +199,7 @@ function buildInstructions(opts: {
     ? templates
         .map(
           (t) =>
-            `- "${t.name}" | every ${WEEKDAYS[t.dayOfWeek]} | ${t.location} | serviceTypeId ${t.serviceTypeId} | ${t.days
+            `- "${t.name}" | every ${WEEKDAYS[t.dayOfWeek]} | ${t.location} | service type ${ref(t.serviceTypeId)} | ${t.days
               .map((d) => `day+${d.dayOffset} ${d.startTime}-${d.endTime}`)
               .join(", ")} | roles: ${t.rolesNeeded
               .map((role) => {
@@ -157,14 +218,19 @@ function buildInstructions(opts: {
     : "(none)";
 
   const rosterRows = roster
-    .map((m) => `- ${m.userId} | ${m.name} | ${m.volunteerRoles.join(", ") || "no roles"}`)
+    .map(
+      (m) =>
+        `- ${ref(m.userId)} | ${m.name}${m.userId === viewer.userId ? " (you)" : ""} | ${
+          m.volunteerRoles.map((role) => volunteerRoleConfig[role].label).join(", ") || "no roles"
+        }${m.manager ? " · admin or owner" : ""}`,
+    )
     .join("\n");
 
-  return `You draft events for "${orgName}". An owner or admin describes what they want; you produce a complete draft they review and approve. You never create anything — your proposal pre-fills their form, and they press the button.
+  return `You plan events for "${orgName}" with ${viewer.name}, who is creating one. You draft it — dates, times, place, roles, rehearsal — and pick people for the teams ${you} staffs. You never create anything: your draft fills a card, and ${you} presses the button.
 
 TODAY IS ${today} (${todayWeekday}).
 
-SERVICE TYPES (id | name):
+SERVICE TYPES (ref | name | who staffs each team when ${you} creates the event):
 ${serviceTypeRows}
 Every event is filed under one of these. There are no others and you cannot create one. If none of them really fits what they asked for, use the closest and say in your summary which one you used and that it may not be the right home — never let a mismatch pass silently.
 
@@ -175,28 +241,41 @@ Read what they ask for by name and by team — "the band" means the Band roles h
 TEMPLATES — the org's own recurring patterns. Use one ONLY when they ask for it by name or plainly describe that service ("the youth gathering", "Sunday morning"). Never reach for one to fill in something they simply did not mention. When you do use one, take its times, location, roles and service type:
 ${templateRows}
 
+MEMBERS (ref | name | roles):
+${rosterRows}
+
+WHO STAFFS WHAT
+Each team on an event has one person picking its people: the team's lead for that service type, or ${you} when it has none.
+- Pick people only for the teams ${you} staffs. For a team somebody else leads, leave its spots open: the card names who fills them, and they're told the moment the event is created.
+- "I'll handle the band this week" makes ${you} the cover for that team on this event, and "Kevin covers the band" hands it to another admin or owner: put either in covers. Whoever covers a team staffs it, so when ${you} covers one, pick its people too. The regular lead is told either way.
+- Only admins and owners can cover a team.
+
 WHAT THEY ASKED FOR WINS
-Anything they state is settled — the day, the date, the time, the location, the roles. Never replace it with a template's usual value, or with whatever this organization normally does. A template's weekday is a default for when they named no day; if they named one, that is the day, and no template overrides it. Where their request and a template disagree, follow them and say so in your summary.
+Anything they state is settled — the day, the date, the time, the location, the roles. Never replace it with a template's usual value, or with whatever this organization normally does. A template's weekday is a default for when they named no day; if they named one, that is the day, and no template overrides it. Where their request and a template disagree, follow them.
+Anything they didn't mention keeps its default: smartSchedulingEnabled stays off unless they ask for auto-fill or the template you use has it on, and expiresInDays comes from that template, else 3.
 
 REHEARSALS
 Most events have one, and "rehearsal" on proposeEvent is where it goes: a single block with one date and a start and end clock time, in the same formats as the event days. Set it when they mention a rehearsal, or when a template you are using carries one — a template's rehearsal comes along with its times and roles, so dropping it would quietly lose something the org set up. Otherwise leave it out. Never invent a rehearsal they did not ask for.
 A template's rehearsal is written as an offset from its FIRST day, so "rehearsal day-3 19:00-21:00" on a Sunday service falling on 2026-09-20 resolves to 2026-09-17 19:00-21:00. Resolve it against the dates you actually drafted, not the template's usual weekday.
 A rehearsal is informational. It never makes anyone unavailable, it is not part of the days you pass to checkAvailability, and it must not change who you pick.
 
-ROSTER (userId | name | volunteer roles):
-${rosterRows}
-
 HOW TO WORK
 1. Work out the dates first. "Next Sunday" means the next occurrence AFTER today — if today is Sunday, that's seven days out, not today.
-2. Call checkAvailability with those event days — never the rehearsal — and every role the event needs. It returns, per role, who is free and ranked best-first, plus who is excluded and why.
-3. Pick people. Then call proposeEvent. Always finish with proposeEvent — never write the final plan as prose.
+2. Call checkAvailability with those event days — never the rehearsal — and the roles you're staffing. It returns everyone free for each role, best first, with their record, plus everyone who can't serve and why.
+3. Pick people, then call proposeEvent with the complete draft. Always deliver a draft through proposeEvent, never as prose, and put your explanation in its summary — the card shows it.
+4. To change a draft, call proposeEvent again with the whole updated draft. When the change touches who can serve — new days or times, an added role, or someone named for a role you haven't checked — call checkAvailability first: every role for new days or times, otherwise just the roles the change touches. A new name, place, description, deadline, rehearsal or auto-fill setting doesn't change who can serve, so go straight to proposeEvent.
+When the days move, a weekday in the name moves with them: "Sunday Service" on a Saturday becomes "Saturday Service", unless they chose that name themselves.
+Questions don't need a new draft. "Who's free for drums?", "Why isn't Sarah on it?", "Who hasn't served lately?" — call checkAvailability first for the roles the question is about, even if you checked earlier in this chat, then answer just that question in a sentence or two from what it returns and the member list. Write it for the person asking: the facts and what they mean — never your own steps or checks, a review of the rest of the draft, or apologies.
 
 PICKING PEOPLE
-- The ranked list is ordered by reliability (how often they accept). Taking the top of each list is a sound default.
-- Rotate deliberately. Each candidate carries recentServes and lastServedOn. If your most reliable person has served far more than the rest, pick someone rested and say so in their reason — that is the main thing you add over a plain ranking.
-- Never pick anyone in the excluded list. They have a real conflict or a blockout, and the server will reject them.
-- Honour explicit requests ("put Marcus on drums") whenever that person is eligible. If they aren't, say who and why, and offer the best alternative.
-- Leaving a slot empty is fine and often correct. Say which roles you left open and why.
+- Each person free comes with how often they say yes, how often they've served in the last 60 days and when they last did, and how many events they're already booked for ahead.
+- Start from the top of each list, then rotate: prefer someone rested over someone who has served most recent weeks or is booked solid ahead.
+- Every reason is one short sentence built from those facts, e.g. "Rested — last served Sep 14, while Marcus served 4 of the last 5 Sundays." Never state anything you weren't given.
+- Mention someone's invite record only when it decided the pick, written as "accepted 2 of 3 invites they answered". Under 3 answers it says little, so lean on how rested they are instead.
+- Honour named requests whenever the person can serve. When they can't, say exactly why — blocked out (with the dates), serving another event then (name it), or doesn't hold the role — and offer the best alternative.
+- Never pick anyone who can't serve, and never give one person two roles.
+- Leaving a spot open on a team ${you} staffs is fine; say why in your summary.
+- Asked why somebody wasn't picked, answer from the facts: they can't serve and why, they don't hold the role, or they ranked lower — and give the numbers.
 - Some roles need more than one person — three BGVs, two guitarists, a template's "BGVS x3". Set roleSpots for those and assign up to that many. Every assignment is somebody wanted there, never a backup, so never assign more people to a role than it needs.
 
 HARD RULES — the server enforces these and will reject the draft
@@ -206,47 +285,61 @@ HARD RULES — the server enforces these and will reject the draft
 - One person holds at most ONE role per event. Never assign the same person twice.
 - expiresInDays is exactly 3, 5, or 7.
 - Every assignment's role must also appear in rolesNeeded.
-- Use exact userIds and serviceTypeIds from the lists above. Never invent one, never pass a name where an id belongs.
+- Use refs exactly as written above for people and service types. Never invent one, never pass a name where a ref belongs.
 - A rehearsal, if you send one, must be a real date, not in the past, on or before the event's last day, and end after it starts.`;
 }
 
 export function createEventDraftAgent(opts: {
   orgName: string;
+  viewer: AgentViewer;
   /** YYYY-MM-DD in the org's own reckoning. Anchors all relative dates. */
   today: string;
   serviceTypes: AgentServiceType[];
   templates: AgentTemplate[];
   roster: AgentRosterMember[];
+  teamLeads: AgentTeamLeads;
   deps: EventAgentDeps;
 }) {
-  const { orgName, today, serviceTypes, templates, roster, deps } = opts;
+  const { orgName, viewer, today, serviceTypes, templates, roster, teamLeads, deps } = opts;
 
   const serviceTypeById = new Map(serviceTypes.map((t) => [t.id, t]));
   const memberById = new Map(roster.map((m) => [m.userId, m]));
+  const { ref, resolve } = shortRefs([
+    ...roster.map((m) => m.userId),
+    ...serviceTypes.map((t) => t.id),
+  ]);
 
   const checkAvailability = tool({
     description:
-      "Who can serve on given days, per role — ranked by reliability, with rotation history, plus who is excluded and why. Call this before proposing.",
+      "Everyone free for each role on given event days — best first, with how often they say yes, how often and how recently they've served, and what they're already booked for ahead — plus everyone who can't serve and why. Call it before picking people, and to answer questions about who's free.",
     inputSchema: checkAvailabilityInputSchema,
-    execute: async ({ days, roles }) => {
-      const roleEligibility = await deps.checkAvailability({ days, roles });
-      return { days, roles: roleEligibility };
+    execute: async ({ days, roles }): Promise<CheckAvailabilityOutput> => {
+      const eligibility = await deps.checkAvailability({ days, roles });
+      return { days, roles: eligibility.map((entry) => toAvailability(entry, ref)) };
     },
+    // The same facts as lines rather than JSON, which repeats every key for
+    // every person — re-read again by every follow-up in this chat.
+    toModelOutput: ({ output }) => ({
+      type: "text",
+      value: [`Days: ${dayLines(output.days)}`, ...output.roles.map(availabilityLines)].join("\n\n"),
+    }),
   });
 
   const proposeEvent = tool({
     description:
-      "Deliver the finished draft for the user to review and approve. Call this once you've settled the dates and the people.",
+      "Deliver the finished draft for the user to review and approve. Call this once you've settled the dates and the people, and again with the whole draft for any change.",
     inputSchema: proposeEventInputSchema,
-    // Runs on the server. Every id, date and pick is re-checked against live
+    // Runs on the server. Every ref, date and pick is re-checked against live
     // data here — the model's output is a suggestion, not a source of truth.
     execute: async (input): Promise<ProposeEventOutput> => {
-      const serviceType = serviceTypeById.get(input.serviceTypeId);
+      const serviceTypeId = resolve(input.serviceType);
+      const serviceType = serviceTypeId ? serviceTypeById.get(serviceTypeId) : undefined;
+
       if (!serviceType) {
         return {
           ok: false,
-          error: `Unknown serviceTypeId "${input.serviceTypeId}". Use one of: ${serviceTypes
-            .map((t) => `${t.id} (${t.name})`)
+          error: `Unknown service type "${input.serviceType}". Use one of: ${serviceTypes
+            .map((t) => `${ref(t.id)} (${t.name})`)
             .join(", ")}`,
         };
       }
@@ -321,13 +414,47 @@ export function createEventDraftAgent(opts: {
       }
 
       const rolesNeeded = [...new Set(input.rolesNeeded)];
+      const leads = teamLeads[serviceType.id] ?? {};
+
+      // Covers: a team handed to somebody for this event only. Admins and
+      // owners only, one per team; naming the team's usual handler changes
+      // nothing, so it's dropped — as createEvent drops it.
+      const covers: DraftCover[] = [];
+
+      for (const pick of input.covers) {
+        const userId = resolve(pick.person);
+        const member = userId ? memberById.get(userId) : undefined;
+
+        if (!userId || !member) {
+          return { ok: false, error: `Unknown person "${pick.person}" covering ${teamLabel(pick.team)}. Use a ref from the member list.` };
+        }
+        if (!member.manager) {
+          return { ok: false, error: `${member.name} can't cover ${teamLabel(pick.team)} — only admins and owners can.` };
+        }
+        if (covers.some((cover) => cover.team === pick.team)) {
+          return { ok: false, error: `${teamLabel(pick.team)} can have one cover, not two.` };
+        }
+
+        const usual = leads[pick.team]?.userId ?? viewer.userId;
+
+        if (userId !== usual) covers.push({ team: pick.team, userId, name: member.name });
+      }
+
+      const handlerOf = (team: Team) => {
+        const cover = covers.find((entry) => entry.team === team);
+        if (cover) return { userId: cover.userId, name: cover.name, cover: true };
+
+        const lead = leads[team];
+        if (lead) return { userId: lead.userId, name: lead.name, cover: false };
+
+        return { userId: viewer.userId, name: viewer.name, cover: false };
+      };
 
       // Verify against the FINAL dates, uncapped — a capped list would wrongly
       // reject an eligible member who happened to rank low.
       const eligibility = await deps.checkAvailability({
         days,
         roles: rolesNeeded,
-        maxPerRole: Number.MAX_SAFE_INTEGER,
       });
 
       const eligibleByRole = new Map(
@@ -348,10 +475,11 @@ export function createEventDraftAgent(opts: {
       const claimed = new Set<string>();
 
       for (const pick of input.assignments) {
-        const member = memberById.get(pick.userId);
-        const label = member?.name ?? pick.userId;
+        const userId = resolve(pick.person);
+        const member = userId ? memberById.get(userId) : undefined;
+        const label = member?.name ?? pick.person;
 
-        if (!member) {
+        if (!userId || !member) {
           warnings.push({
             name: label,
             role: pick.role,
@@ -367,6 +495,18 @@ export function createEventDraftAgent(opts: {
           });
           continue;
         }
+
+        // Somebody else's team: they pick its people, and they're told.
+        const handler = handlerOf(teamOfRole(pick.role));
+
+        if (handler.userId !== viewer.userId) {
+          warnings.push({
+            name: label,
+            role: pick.role,
+            reason: `${teamLabel(teamOfRole(pick.role))} is ${handler.name}'s to fill — they'll be told about the event.`,
+          });
+          continue;
+        }
         if (!member.volunteerRoles.includes(pick.role)) {
           warnings.push({
             name: label,
@@ -376,7 +516,7 @@ export function createEventDraftAgent(opts: {
           continue;
         }
         // EventAssignment is unique on (eventId, userId): one role per person.
-        if (claimed.has(pick.userId)) {
+        if (claimed.has(userId)) {
           warnings.push({
             name: label,
             role: pick.role,
@@ -385,7 +525,7 @@ export function createEventDraftAgent(opts: {
           continue;
         }
 
-        const excluded = exclusionByRole.get(pick.role)?.get(pick.userId);
+        const excluded = exclusionByRole.get(pick.role)?.get(userId);
         if (excluded) {
           warnings.push({
             name: label,
@@ -397,7 +537,7 @@ export function createEventDraftAgent(opts: {
           });
           continue;
         }
-        if (!eligibleByRole.get(pick.role)?.has(pick.userId)) {
+        if (!eligibleByRole.get(pick.role)?.has(userId)) {
           warnings.push({
             name: label,
             role: pick.role,
@@ -406,9 +546,9 @@ export function createEventDraftAgent(opts: {
           continue;
         }
 
-        claimed.add(pick.userId);
+        claimed.add(userId);
         assignments.push({
-          userId: pick.userId,
+          userId,
           name: member.name,
           role: pick.role,
           reason: pick.reason,
@@ -429,8 +569,32 @@ export function createEventDraftAgent(opts: {
         rolesNeeded,
       );
 
+      const teams: DraftTeam[] = teamsOfRoles(rolesNeeded).map((team) => {
+        const handler = handlerOf(team);
+
+        return {
+          team,
+          name: handler.name,
+          you: handler.userId === viewer.userId,
+          cover: handler.cover,
+        };
+      });
+
+      const unfilledRoles = rolesNeeded.filter(
+        (r) => assignments.filter((a) => a.role === r).length < spotsFor(roleSpots, r),
+      );
+
+      // A pick dropped from a spot still open on a team this person staffs:
+      // somebody else may be free for it, so the agent gets a round to look.
+      const refill = warnings.some(
+        (w) =>
+          unfilledRoles.includes(w.role) &&
+          handlerOf(teamOfRole(w.role)).userId === viewer.userId,
+      );
+
       return {
         ok: true,
+        refill,
         draft: {
           serviceTypeId: serviceType.id,
           serviceTypeName: serviceType.name,
@@ -447,28 +611,58 @@ export function createEventDraftAgent(opts: {
           rehearsal,
           summary: input.summary,
           warnings,
-          unfilledRoles: rolesNeeded.filter(
-            (r) => assignments.filter((a) => a.role === r).length < spotsFor(roleSpots, r),
-          ),
+          unfilledRoles,
+          teams,
+          covers,
         },
       };
     },
+    // What a follow-up needs to edit the draft — names with their refs — not
+    // the whole card again.
+    toModelOutput: ({ output }) => ({
+      type: "text",
+      value: output.ok
+        ? [
+            `Draft shown on the card: "${output.draft.name}", ${dayLines(output.draft.days)}, ${output.draft.serviceTypeName}.`,
+            `Picked: ${
+              output.draft.assignments
+                .map((a) => `${volunteerRoleConfig[a.role].label} — ${a.name} (${ref(a.userId)})`)
+                .join("; ") || "nobody"
+            }.`,
+            `Teams: ${(output.draft.teams ?? [])
+              .map((t) => `${teamLabel(t.team)} — ${t.you ? "you" : t.name}${t.cover ? " (covering)" : ""}`)
+              .join("; ")}.`,
+            output.draft.warnings.length
+              ? `Not picked: ${output.draft.warnings.map((w) => `${w.name} for ${volunteerRoleConfig[w.role].label} — ${w.reason}`).join("; ")}`
+              : "",
+            output.refill
+              ? "Those leave spots open on your teams. Replace them with someone free — call checkAvailability for those roles first, as your list may be out of date — or leave them open and say why in the summary. Then call proposeEvent again with the whole draft."
+              : "",
+          ]
+            .filter(Boolean)
+            .join("\n")
+        : `Rejected: ${output.error}`,
+    }),
   });
 
   return new ToolLoopAgent({
     model: "anthropic/claude-sonnet-5.5",
     instructions: buildInstructions({
       orgName,
+      viewer,
       today,
       serviceTypes,
       templates,
       roster,
+      teamLeads,
+      ref,
     }),
     tools: { checkAvailability, proposeEvent },
-    // stopWhen defaults to a SINGLE step, which would halt the loop right after
-    // checkAvailability and never reach proposeEvent. This budget covers the
-    // normal check -> propose path plus a few rounds of correcting a rejection.
-    stopWhen: stepCountIs(8),
+    // Ends the moment a draft is accepted: the card carries the summary, so a
+    // further call only to say "here it is" would be a full read for nothing.
+    // The cap covers check -> propose plus a few rounds of fixing a rejection.
+    stopWhen: [proposalAccepted("proposeEvent"), stepCountIs(6)],
+    providerOptions: GATEWAY_CACHING,
   });
 }
 

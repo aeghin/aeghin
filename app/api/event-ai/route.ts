@@ -1,17 +1,12 @@
 import { createAgentUIStreamResponse } from "ai";
 import { revalidateTag } from "next/cache";
 import { currentUser } from "@/lib/services/user";
-import { getUserMembershipWithOrg, getOrgMembersWithUser } from "@/lib/services/organization";
-import { getOrgServiceTypes } from "@/lib/services/service-types";
-import { getOrgEventTemplates } from "@/lib/services/event-templates";
-import { getEligibilityByRole } from "@/lib/services/scheduling";
+import { getUserMembershipWithOrg } from "@/lib/services/organization";
 import { getAiProAccess } from "@/lib/billing/entitlements";
 import { aiRunLimitError, recordUsage } from "@/lib/billing/limits";
 import { OrgRole, UsageKind } from "@/generated/prisma/enums";
-import {
-  createEventDraftAgent,
-  type EventAgentDeps,
-} from "@/lib/agents/event/agent";
+import { buildEventDraftAgent } from "@/lib/agents/event/build";
+import { trimHistory } from "@/lib/agents/history";
 
 export const maxDuration = 300;
 
@@ -55,13 +50,19 @@ export async function POST(req: Request) {
     return new Response("Not found", { status: 404 });
   }
 
-  const [serviceTypes, templates, members] = await Promise.all([
-    getOrgServiceTypes(orgId),
-    getOrgEventTemplates(orgId),
-    getOrgMembersWithUser(orgId),
-  ]);
+  // The person drafting creates the event, so a team with no lead is theirs.
+  const agent = await buildEventDraftAgent({
+    organizationId: orgId,
+    organizationName: membership.organization.name,
+    viewer: {
+      userId: user.id,
+      name: `${user.firstName} ${user.lastName}`,
+      firstName: user.firstName,
+    },
+    today: resolveToday(today),
+  });
 
-  if (serviceTypes.length === 0) {
+  if (!agent) {
     return new Response("No service types", { status: 422 });
   }
 
@@ -75,51 +76,15 @@ export async function POST(req: Request) {
 
   revalidateTag(`org-${orgId}-usage`, { expire: 0 });
 
-  // The one place calendar date + clock time become the stored floating-UTC
-  // instants. The agent never sees a timezone.
-  const deps: EventAgentDeps = {
-    checkAvailability: ({ days, roles, maxPerRole }) =>
-      getEligibilityByRole({
-        organizationId: orgId,
-        dates: days.map((d) => ({
-          startTime: `${d.date}T${d.startTime}:00Z`,
-          endTime: `${d.date}T${d.endTime}:00Z`,
-        })),
-        roles,
-        ...(maxPerRole === undefined ? {} : { maxPerRole }),
-      }),
-  };
-
-  const agent = createEventDraftAgent({
-    orgName: membership.organization.name,
-    today: resolveToday(today),
-    serviceTypes,
-    templates: templates.map((t) => ({
-      name: t.name,
-      dayOfWeek: t.dayOfWeek,
-      location: t.location,
-      description: t.description,
-      days: t.days,
-      rolesNeeded: t.rolesNeeded,
-      roleSpots: t.roleSpots,
-      expiresInDays: t.expiresInDays,
-      smartSchedulingEnabled: t.smartSchedulingEnabled,
-      rehearsalDayOffset: t.rehearsalDayOffset,
-      rehearsalStartTime: t.rehearsalStartTime,
-      rehearsalEndTime: t.rehearsalEndTime,
-      serviceTypeId: t.serviceTypeId,
-    })),
-    roster: members.map((m) => ({
-      userId: m.userId,
-      name: `${m.user.firstName} ${m.user.lastName}`,
-      volunteerRoles: m.volunteerRoles,
-    })),
-    deps,
-  });
-
   return createAgentUIStreamResponse({
     agent,
-    uiMessages: messages,
+    uiMessages: trimHistory(messages),
     timeout: 290_000,
+    // The headers are already sent by the time the agent can fail, so without
+    // this a mid-stream failure reaches nobody's logs.
+    onError: (error) => {
+      console.error("POST /api/event-ai stream failed", error);
+      return "The assistant stopped before it finished. Please try again.";
+    },
   });
 }

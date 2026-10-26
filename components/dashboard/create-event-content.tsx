@@ -507,6 +507,13 @@ export function CreateEventPageContent({
       }
 
       setRoleAssignments(assignments);
+      // Teams the draft handed to somebody for this event, as the form's picks.
+      setTeamLeadPicks({
+        serviceTypeId: draft.serviceTypeId,
+        picks: Object.fromEntries(
+          (draft.covers ?? []).map((cover) => [cover.team, cover.userId]),
+        ),
+      });
       setSelectedTemplateId("");
       // Recomputed by handleNext once they commit to dates on Next.
       setMemberConflicts({});

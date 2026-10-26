@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { VolunteerRole } from "@/generated/prisma/enums";
+import { RoleCategory, VolunteerRole } from "@/generated/prisma/enums";
 
 /**
  * Event times are stored as floating wall-clock — the create-event form builds
@@ -33,15 +33,15 @@ export const checkAvailabilityInputSchema = z.object({
   roles: z
     .array(z.enum(VolunteerRole))
     .min(1)
-    .describe("Which volunteer roles to pull candidates for."),
+    .describe("Which volunteer roles to check."),
 });
 
 export type CheckAvailabilityInput = z.infer<typeof checkAvailabilityInputSchema>;
 
 export const proposeEventInputSchema = z.object({
-  serviceTypeId: z
+  serviceType: z
     .string()
-    .describe("Exact id of a service type from the list in your instructions."),
+    .describe("Ref of a service type from the list in your instructions."),
   name: z
     .string()
     .trim()
@@ -75,18 +75,30 @@ export const proposeEventInputSchema = z.object({
   assignments: z
     .array(
       z.object({
-        userId: z
+        person: z
           .string()
-          .describe("Exact userId from the roster. Never a name."),
+          .describe("Ref of a member from the member list. Never a name."),
         role: z.enum(VolunteerRole),
         reason: z
           .string()
-          .describe("One short sentence: why this person for this slot."),
+          .describe("One short sentence from their numbers: why this person, here."),
       }),
     )
     .default([])
     .describe(
-      "Who fills what. A person may appear at most once — one role each.",
+      "Who fills what, only on teams the person drafting staffs. A person may appear at most once — one role each.",
+    ),
+  covers: z
+    .array(
+      z.object({
+        team: z.enum(RoleCategory),
+        person: z.string().describe("Ref of an admin or owner from the member list."),
+      }),
+    )
+    .max(5)
+    .default([])
+    .describe(
+      "Teams handed to somebody for this event only — the person drafting, or another admin or owner. Leave empty unless they asked.",
     ),
   expiresInDays: z
     .union([z.literal(3), z.literal(5), z.literal(7)])
@@ -101,7 +113,9 @@ export const proposeEventInputSchema = z.object({
     ),
   summary: z
     .string()
-    .describe("Two or three sentences on the plan and any gaps you left."),
+    .describe(
+      "One or two short sentences at the top of the card, or empty. Only what the card can't show: why a spot on your teams is still open, something they asked for that the draft couldn't do, or a service type that may not fit. Never mention dates, days, times, the place, the rehearsal, settings, who picks any team, or why you picked someone: the card shows all of that.",
+    ),
 });
 
 export type ProposeEventInput = z.infer<typeof proposeEventInputSchema>;

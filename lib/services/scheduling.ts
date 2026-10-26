@@ -294,12 +294,52 @@ export async function getRecentServeCounts(
 }
 
 /**
+ * How many events ahead each member is already on — said yes, or still inside
+ * their window to answer — so a pick can see who's booked solid.
+ *
+ * Kept apart from `getRecentServeCounts` on purpose: a booking isn't a serve,
+ * and fatigue stays what has actually happened. This is the other half of a
+ * fair rotation, the weeks still to come. `excludeEventId` leaves out the
+ * event being staffed, or everyone already on it would count it.
+ */
+export async function getUpcomingCounts(
+  organizationId: string,
+  windowDays: number,
+  excludeEventId?: string,
+): Promise<Map<string, number>> {
+  // "Ahead" on the organization's clock, which event times are written in.
+  const now = floatingNow(await getOrganizationTimeZone(organizationId));
+  const until = new Date(now.getTime() + windowDays * DAY_MS);
+
+  const rows = await prisma.eventAssignment.groupBy({
+    by: ["userId"],
+    where: {
+      organizationId,
+      ...(excludeEventId ? { eventId: { not: excludeEventId } } : {}),
+      OR: [
+        { status: InvitationStatus.ACCEPTED },
+        { status: InvitationStatus.PENDING, expiresAt: { gt: new Date() } },
+      ],
+      event: { dates: { some: { startTime: { gte: now, lte: until } } } },
+    },
+    _count: { _all: true },
+  });
+
+  // One row per person per event, so the count is events.
+  return new Map(rows.map((row) => [row.userId, row._count._all]));
+}
+
+/**
  * The full scheduling picture for a set of candidate days, one entry per role.
  *
  * Ranking deliberately mirrors `findBestReplacement` — Laplace-smoothed
  * acceptance, then proven volume — so the automatic floor here is the same
- * member smart scheduling would have picked. `recentServes`/`lastServedOn` ride
- * along so a caller can deviate for rotation and say why.
+ * member smart scheduling would have picked. `recentServes`, `lastServedOn` and
+ * `upcoming` ride along so a caller can deviate for rotation and say why.
+ *
+ * Everyone free comes back unless a caller caps it: a list cut at the most
+ * reliable few hides every newer member, who then never gets picked and never
+ * builds the record that would rank them.
  *
  * Exclusions come back named and reasoned rather than silently filtered: a
  * caller that can't see *who* was dropped and why will invent an explanation.
@@ -308,15 +348,19 @@ export async function getEligibilityByRole(params: {
   organizationId: string;
   dates: DateRange[];
   roles: VolunteerRole[];
+  /** A cap per role. Left out, everyone free comes back. */
   maxPerRole?: number;
   recentWindowDays?: number;
+  /** The event being staffed, once it exists: its own roster is neither a clash nor a booking. */
+  excludeEventId?: string;
 }): Promise<RoleEligibility[]> {
   const {
     organizationId,
     dates,
     roles,
-    maxPerRole = 8,
+    maxPerRole = Infinity,
     recentWindowDays = 60,
+    excludeEventId,
   } = params;
 
   if (dates.length === 0 || roles.length === 0) {
@@ -328,9 +372,9 @@ export async function getEligibilityByRole(params: {
     }));
   }
 
-  const [conflictRows, blockoutRows, memberships, acceptance, recent] =
+  const [conflictRows, blockoutRows, memberships, acceptance, recent, upcoming] =
     await Promise.all([
-      getConflictingAssignments(organizationId, dates),
+      getConflictingAssignments(organizationId, dates, excludeEventId),
       getBlockoutsForDates(organizationId, dates),
       prisma.membership.findMany({
         where: { organizationId, volunteerRoles: { hasSome: roles } },
@@ -342,6 +386,7 @@ export async function getEligibilityByRole(params: {
       }),
       getAcceptanceCounts(organizationId),
       getRecentServeCounts(organizationId, recentWindowDays),
+      getUpcomingCounts(organizationId, recentWindowDays, excludeEventId),
     ]);
 
   const conflictBy = new Map<string, string>();
@@ -411,11 +456,13 @@ export async function getEligibilityByRole(params: {
           // Rounded for display only — the sort below uses full precision, so
           // this stays consistent with findBestReplacement's ordering.
           reliability: Math.round(rate * 100) / 100,
+          accepted,
           responded,
           recentServes: serve?.count ?? 0,
           lastServedOn: serve?.lastServedOn
             ? toDateOnly(serve.lastServedOn)
             : null,
+          upcoming: upcoming.get(m.user.id) ?? 0,
         },
       });
     }
