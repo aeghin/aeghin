@@ -17,13 +17,15 @@ type Params = { orgId: string; eventId: string };
 /**
  * POST /api/mobile/v1/organizations/[orgId]/events/[eventId]/invitations
  *
- * Invites members into one role: `{ role, userIds, expiresAt: 3 | 5 | 7 }`.
+ * Invites members into one role: `{ role, userIds, expiresAt: 3 | 5 | 7 }`,
+ * and from an AI card `onlyOpenSpots` and `refuseConflicts` as well.
  *
  * The action is the dashboard's: it refuses anyone without the volunteer
  * role or with a blockout on an event day, skips anyone already live on the
  * roster, reuses dead rows, emails the invitees and logs the activity.
- * Answers `{ invitedCount, skippedNames }` so the phone can say who was
- * already on it.
+ * Answers `{ invitedCount, skippedNames, noSpotNames }` so the phone can say
+ * who was already on it, and who an AI card picked for a spot that filled
+ * up first.
  */
 export const POST = route<Params>("POST .../events/[id]/invitations", async (req, { params }) => {
     const clerkId = await clerkIdOf();
@@ -51,7 +53,11 @@ export const POST = route<Params>("POST .../events/[id]/invitations", async (req
     if (!result.success) return actionFailure(result.error);
 
     return json(
-        { invitedCount: result.invitedCount, skippedNames: result.skippedNames },
+        {
+            invitedCount: result.invitedCount,
+            skippedNames: result.skippedNames,
+            noSpotNames: result.noSpotNames,
+        },
         201,
     );
 });

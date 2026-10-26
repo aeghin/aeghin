@@ -7,7 +7,10 @@ import { getAdjacentEvents } from "@/lib/services/events";
 import {
     eventTeamLeads,
     getTeamNotificationSettings,
+    staffableTeams,
 } from "@/lib/services/team-notifications";
+import { LAST_CALL_DAYS } from "@/lib/notifications/staffing";
+import { floatingNow, hasDateAhead, zoneOrFallback } from "@/lib/time-zone";
 import { deleteEvent, editEventDetails, setEventSmartScheduling } from "@/lib/actions/event";
 import type { EditEventDetailsInput } from "@/lib/validations/event";
 import { expireTag, isObject } from "@/lib/mobile/route";
@@ -77,6 +80,13 @@ type TeamLead = {
 type TeamLeadPick = {
     team: RoleCategory;
     userId: string;
+};
+
+/** A team the viewer can fill with AI on this event. */
+type AiTeam = {
+    team: RoleCategory;
+    /** Whoever's in charge, by first name, when the viewer is only its backup. */
+    backingUp: string | null;
 };
 
 type EventDetailsAttachment = {
@@ -180,6 +190,14 @@ type EventDetails = {
         firstName: string;
         lastName: string;
     } | null;
+    /**
+     * The teams the viewer can fill with AI here, as the dashboard decides
+     * it: theirs, and the ones they back up on Also notify, on a Pro plan,
+     * while the event is still ahead. Managers only; empty for everybody else.
+     */
+    aiTeams: AiTeam[];
+    /** Inside last-call days, when a backup can fill with AI whatever the team's state. */
+    lastCall: boolean;
     /** Managers only; empty for everybody else. */
     smartSchedulingActivity: EventDetailsActivityItem[];
     /** Managers only; 0 for everybody else. */
@@ -211,6 +229,8 @@ const toNeighbor = (event: { id: string; name: string; startTime: Date }): Event
 
 
 const NO_STORE = { "Cache-Control": "private, no-store" };
+
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 
 /**
@@ -288,6 +308,8 @@ export async function GET(
                 organization: {
                     select: {
                         name: true,
+                        entitlements: true,
+                        timeZone: true,
                     },
                 },
                 serviceType: {
@@ -498,6 +520,40 @@ export async function GET(
             ? { userId: creator.userId, firstName: creator.firstName, lastName: creator.lastName }
             : null;
 
+        // Fill with AI: the teams this viewer can staff here — theirs, and the
+        // ones they back up — on a Pro plan, while the event is still ahead.
+        // The phone keeps the ones with open spots; the team-ai route checks
+        // all of it again.
+        const timeZone = zoneOrFallback(event.organization.timeZone);
+
+        const aiTeams: AiTeam[] =
+            teamSettings &&
+            event.organization.entitlements.includes("ai_pro") &&
+            hasDateAhead(event.dates, timeZone)
+                ? staffableTeams(
+                    teamSettings,
+                    {
+                        serviceTypeId: event.serviceType.id,
+                        createdById: event.createdById,
+                        covers: event.teamLeads,
+                    },
+                    membership.userId,
+                ).map((staffable) => ({
+                    team: staffable.team,
+                    backingUp: staffable.inCharge
+                        ? null
+                        : staffable.handledBy.people.map((person) => person.firstName).join(" and "),
+                }))
+                : [];
+
+        // From the day last call goes out — counted in calendar days on the
+        // church's clock, as it counts them — a backup can step in whatever
+        // state the team is in.
+        const firstStart = Math.min(...event.dates.map((date) => date.startTime.getTime()));
+        const lastCall =
+            Math.floor(firstStart / DAY_MS) - Math.floor(floatingNow(timeZone).getTime() / DAY_MS) <=
+            LAST_CALL_DAYS[0];
+
         const adjacent = await adjacentRead;
 
         const details: EventDetails = {
@@ -565,6 +621,8 @@ export async function GET(
             teamLeads,
             teamLeadPicks,
             createdBy,
+            aiTeams,
+            lastCall,
             smartSchedulingActivity: activity.map((item) => ({
                 ...item,
                 createdAt: item.createdAt.toISOString(),

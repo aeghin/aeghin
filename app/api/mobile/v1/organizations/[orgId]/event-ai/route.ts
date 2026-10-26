@@ -1,16 +1,10 @@
-import { createAgentUIStreamResponse, type UIMessage } from "ai";
+import { createAgentUIStreamResponse } from "ai";
 
 import prisma from "@/lib/prisma";
 import { UsageKind } from "@/generated/prisma/enums";
-import {
-    createEventDraftAgent,
-    type EventAgentDeps,
-} from "@/lib/agents/event/agent";
+import { buildEventDraftAgent } from "@/lib/agents/event/build";
+import { trimHistory } from "@/lib/agents/history";
 import { aiRunLimitError, recordUsage } from "@/lib/billing/limits";
-import { getOrgEventTemplates } from "@/lib/services/event-templates";
-import { getOrgMembersWithUser } from "@/lib/services/organization";
-import { getEligibilityByRole } from "@/lib/services/scheduling";
-import { getOrgServiceTypes } from "@/lib/services/service-types";
 import {
     canManage,
     clerkIdOf,
@@ -75,12 +69,18 @@ export const POST = route<Params>("POST .../event-ai", async (req, { params }) =
 
     if (!membership) return fail(404, "Not Found");
 
-    const org = await prisma.organization.findUnique({
-        where: { id: orgId },
-        select: { name: true, entitlements: true },
-    });
+    const [org, viewer] = await Promise.all([
+        prisma.organization.findUnique({
+            where: { id: orgId },
+            select: { name: true, entitlements: true },
+        }),
+        prisma.user.findUnique({
+            where: { id: membership.userId },
+            select: { firstName: true, lastName: true },
+        }),
+    ]);
 
-    if (!org) return fail(404, "Not Found");
+    if (!org || !viewer) return fail(404, "Not Found");
 
     if (!org.entitlements.includes("ai_pro")) {
         return fail(403, "Upgrade required");
@@ -94,13 +94,19 @@ export const POST = route<Params>("POST .../event-ai", async (req, { params }) =
         return fail(400, "Expected messages.");
     }
 
-    const [serviceTypes, templates, members] = await Promise.all([
-        getOrgServiceTypes(orgId),
-        getOrgEventTemplates(orgId),
-        getOrgMembersWithUser(orgId),
-    ]);
+    // The person drafting creates the event, so a team with no lead is theirs.
+    const agent = await buildEventDraftAgent({
+        organizationId: orgId,
+        organizationName: org.name,
+        viewer: {
+            userId: membership.userId,
+            name: `${viewer.firstName} ${viewer.lastName}`,
+            firstName: viewer.firstName,
+        },
+        today: resolveToday(body.today),
+    });
 
-    if (serviceTypes.length === 0) return fail(422, "No service types");
+    if (!agent) return fail(422, "No service types");
 
     // The dashboard's monthly allowance, worded so the phone can show it as is.
     const aiLimit = await aiRunLimitError(orgId);
@@ -111,51 +117,9 @@ export const POST = route<Params>("POST .../event-ai", async (req, { params }) =
 
     expireTag(`org-${orgId}-usage`);
 
-    // The one place calendar date + clock time become the stored floating-UTC
-    // instants. The agent never sees a timezone.
-    const deps: EventAgentDeps = {
-        checkAvailability: ({ days, roles, maxPerRole }) =>
-            getEligibilityByRole({
-                organizationId: orgId,
-                dates: days.map((d) => ({
-                    startTime: `${d.date}T${d.startTime}:00Z`,
-                    endTime: `${d.date}T${d.endTime}:00Z`,
-                })),
-                roles,
-                ...(maxPerRole === undefined ? {} : { maxPerRole }),
-            }),
-    };
-
-    const agent = createEventDraftAgent({
-        orgName: org.name,
-        today: resolveToday(body.today),
-        serviceTypes,
-        templates: templates.map((t) => ({
-            name: t.name,
-            dayOfWeek: t.dayOfWeek,
-            location: t.location,
-            description: t.description,
-            days: t.days,
-            rolesNeeded: t.rolesNeeded,
-            roleSpots: t.roleSpots,
-            expiresInDays: t.expiresInDays,
-            smartSchedulingEnabled: t.smartSchedulingEnabled,
-            rehearsalDayOffset: t.rehearsalDayOffset,
-            rehearsalStartTime: t.rehearsalStartTime,
-            rehearsalEndTime: t.rehearsalEndTime,
-            serviceTypeId: t.serviceTypeId,
-        })),
-        roster: members.map((m) => ({
-            userId: m.userId,
-            name: `${m.user.firstName} ${m.user.lastName}`,
-            volunteerRoles: m.volunteerRoles,
-        })),
-        deps,
-    });
-
     return createAgentUIStreamResponse({
         agent,
-        uiMessages: body.messages as UIMessage[],
+        uiMessages: trimHistory(body.messages),
         timeout: 290_000,
         // The headers are already sent by the time the agent can fail, so
         // `route`'s try/catch never sees it. Without this the SDK's default

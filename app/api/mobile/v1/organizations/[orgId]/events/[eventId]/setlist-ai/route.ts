@@ -1,8 +1,9 @@
-import { createAgentUIStreamResponse, type UIMessage } from "ai";
+import { createAgentUIStreamResponse } from "ai";
 
 import prisma from "@/lib/prisma";
 import { UsageKind } from "@/generated/prisma/enums";
 import { createSetlistAgent } from "@/lib/agents/setlist/agent";
+import { trimHistory } from "@/lib/agents/history";
 import { aiRunLimitError, recordUsage } from "@/lib/billing/limits";
 import { getOrganizationSongs } from "@/lib/services/songs";
 import {
@@ -101,7 +102,7 @@ export const POST = route<Params>("POST .../setlist-ai", async (req, { params })
 
     return createAgentUIStreamResponse({
         agent,
-        uiMessages: body.messages as UIMessage[],
+        uiMessages: trimHistory(body.messages),
         timeout: 290_000,
     });
 });

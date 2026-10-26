@@ -295,6 +295,11 @@ type NewEvent = {
      * event only. Absent from older app builds, which is the same as none.
      */
     teamLeads?: { team: RoleCategory; userId: string }[];
+    /**
+     * Sent by the AI draft's Create: somebody serving another event at that
+     * time is refused, like a blockout. Absent from the form and older builds.
+     */
+    refuseConflicts?: boolean;
 };
 
 const isTeamLeadPick = (value: unknown): value is { team: RoleCategory; userId: string } =>
@@ -327,7 +332,8 @@ const isNewEvent = (value: unknown): value is NewEvent =>
     (value.rehearsal === undefined || value.rehearsal === null || isNewEventDay(value.rehearsal)) &&
     isObject(value.roleAssignments) &&
     (value.teamLeads === undefined ||
-        (Array.isArray(value.teamLeads) && value.teamLeads.every(isTeamLeadPick)));
+        (Array.isArray(value.teamLeads) && value.teamLeads.every(isTeamLeadPick))) &&
+    (value.refuseConflicts === undefined || typeof value.refuseConflicts === "boolean");
 
 /** `"2026-09-27"`, `"10:00"` -> the UTC instant the app stores. */
 const instant = (date: string, clock: string) => new Date(`${date}T${clock}:00Z`);
@@ -418,6 +424,7 @@ export async function POST(
                     : {}),
                 roleAssignments: body.roleAssignments,
                 teamLeads: body.teamLeads,
+                refuseConflicts: body.refuseConflicts,
             } as CreateEventInput,
             orgId,
             expireTag,
@@ -433,7 +440,12 @@ export async function POST(
             );
         };
 
-        return NextResponse.json({ success: true }, { status: 201, headers: NO_STORE });
+        // The new event's id, so the phone can open it. Installed builds read
+        // only `success`.
+        return NextResponse.json(
+            { success: true, eventId: result.eventId },
+            { status: 201, headers: NO_STORE },
+        );
 
     } catch (err) {
         console.error("POST /api/mobile/v1/organizations/[orgId]/events failed", err);
