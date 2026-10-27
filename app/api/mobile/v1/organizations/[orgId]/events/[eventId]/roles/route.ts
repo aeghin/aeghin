@@ -1,5 +1,5 @@
 import { addEventRoles, removeEventRole } from "@/lib/actions/event";
-import { VolunteerRole } from "@/generated/prisma/enums";
+import { RoleCategory, VolunteerRole } from "@/generated/prisma/enums";
 import {
     actionFailure,
     clerkIdOf,
@@ -17,10 +17,15 @@ type Params = { orgId: string; eventId: string };
 const isVolunteerRole = (value: unknown): value is VolunteerRole =>
     typeof value === "string" && value in VolunteerRole;
 
+const isTeam = (value: unknown): value is RoleCategory =>
+    typeof value === "string" && value in RoleCategory;
+
 /**
  * POST /api/mobile/v1/organizations/[orgId]/events/[eventId]/roles
  *
- * Adds open slots to the roster: `{ roles: VolunteerRole[] }`.
+ * Adds open slots to the roster: `{ roles: VolunteerRole[], fillMyself?: RoleCategory[] }`.
+ * `fillMyself` names the teams these roles bring onto the event that the
+ * caller will fill, so their lead isn't told to; an older phone leaves it out.
  */
 export const POST = route<Params>("POST .../events/[id]/roles", async (req, { params }) => {
     const clerkId = await clerkIdOf();
@@ -38,12 +43,19 @@ export const POST = route<Params>("POST .../events/[id]/roles", async (req, { pa
     if (
         !isObject(body) ||
         !Array.isArray(body.roles) ||
-        !body.roles.every(isVolunteerRole)
+        !body.roles.every(isVolunteerRole) ||
+        (body.fillMyself !== undefined &&
+            !(Array.isArray(body.fillMyself) && body.fillMyself.every(isTeam)))
     ) {
         return fail(400, "Expected a list of volunteer roles.");
     }
 
-    const result = await addEventRoles(orgId, eventId, { roles: body.roles }, expireTag);
+    const result = await addEventRoles(
+        orgId,
+        eventId,
+        { roles: body.roles, fillMyself: body.fillMyself },
+        expireTag,
+    );
 
     if (!result.success) return actionFailure(result.error);
 
