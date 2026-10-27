@@ -181,7 +181,7 @@ function InfoTile({
         "min-w-0 space-y-1 rounded-xl border p-2.5",
         tile.when === "today"
           ? cn(colors.borderSoft, colors.badge)
-          : "border-border bg-secondary/60",
+          : "border-border bg-secondary/20",
         tile.when === "done" && "opacity-50",
         className,
       )}

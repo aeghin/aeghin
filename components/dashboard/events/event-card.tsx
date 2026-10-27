@@ -130,7 +130,7 @@ export function RoleChip({ role }: { role: string }) {
   if (!info) return null;
 
   return (
-    <span className="inline-flex shrink-0 items-center gap-1 rounded-md bg-secondary px-2 py-0.5 text-xs font-medium text-muted-foreground">
+    <span className="inline-flex shrink-0 items-center gap-1 py-0.5 text-xs font-medium text-muted-foreground">
       <span aria-hidden>{info.icon}</span>
       {info.label}
     </span>

@@ -188,7 +188,7 @@ function InfoTile({
   return (
     <div
       className={cn(
-        "min-w-0 space-y-1 rounded-xl border border-border bg-secondary/60 p-2.5",
+        "min-w-0 space-y-1 rounded-xl border border-border bg-secondary/20 p-2.5",
         className,
       )}
     >
