@@ -95,7 +95,7 @@ export const proposeEventInputSchema = z.object({
         person: z.string().describe("Ref of an admin or owner from the member list."),
       }),
     )
-    .max(5)
+    .max(Object.values(RoleCategory).length)
     .default([])
     .describe(
       "Teams handed to somebody for this event only — the person drafting, or another admin or owner. Leave empty unless they asked.",

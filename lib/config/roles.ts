@@ -35,6 +35,7 @@ export const volunteerRoleConfig: Record<VolunteerRole, VolunteerRoleDefinition>
   [VolunteerRole.PROJECTION_TECH]: { label: "Projection",    icon: "📽️", team: Team.MEDIA,       sings: false },
   [VolunteerRole.USHER]:           { label: "Usher",         icon: "🚪", team: Team.HOSPITALITY, sings: false },
   [VolunteerRole.GREETER]:         { label: "Greeter",       icon: "👋", team: Team.HOSPITALITY, sings: false },
+  [VolunteerRole.TRANSLATOR]:      { label: "Translator",    icon: "🌐", team: Team.TRANSLATION, sings: false },
 };
 
 /**
@@ -48,6 +49,7 @@ export const teamConfig: Record<Team, { label: string }> = {
   [Team.PRODUCTION]: { label: "Production" },
   [Team.MEDIA]: { label: "Media" },
   [Team.HOSPITALITY]: { label: "Hospitality" },
+  [Team.TRANSLATION]: { label: "Translation" },
 };
 
 /** Every role, in the order written above. */

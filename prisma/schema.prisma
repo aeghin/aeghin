@@ -29,6 +29,7 @@ enum VolunteerRole {
   CHOIR
   CAMERA
   LIGHTING
+  TRANSLATOR
 }
 
 enum InvitationStatus {
@@ -820,6 +821,7 @@ enum RoleCategory {
   PRODUCTION
   HOSPITALITY
   MEDIA
+  TRANSLATION
 }
 
 /// Who handles one team's open spots on one service type's events: the person
