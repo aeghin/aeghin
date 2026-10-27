@@ -80,6 +80,11 @@ export type FillableTeam = {
 
 type ServiceColors = ReturnType<typeof getServiceColors>;
 
+const teamList = new Intl.ListFormat("en", { type: "conjunction" });
+
+/** "Band", or "Maria's Vocals" on a team the viewer only backs up. */
+const teamName = (t: FillableTeam) => (t.backingUp ? `${t.backingUp}'s ${t.label}` : t.label);
+
 interface TeamFillDialogProps {
   organizationId: string;
   eventId: string;
@@ -87,15 +92,14 @@ interface TeamFillDialogProps {
   serviceColor: string;
   /** Every team the viewer can fill here that still has open spots. */
   teams: FillableTeam[];
-  /** The team whose row opened it, picked to start with. */
-  team: Team;
+  className?: string;
 }
 
 /**
- * Fill with AI, as a row in a team's section of the Team card: the AI
- * suggests people for the open spots and nothing is sent until somebody
- * presses Invite. Only on teams the viewer can staff here — theirs, and the
- * ones they back up on Also notify — and the route checks that again.
+ * Fill with AI, as one row under the Team card's actions: the AI suggests
+ * people for the open spots and nothing is sent until somebody presses
+ * Invite. Only on teams the viewer can staff here — theirs, and the ones
+ * they back up on Also notify — and the route checks that again.
  */
 export function TeamFillDialog({
   organizationId,
@@ -103,12 +107,15 @@ export function TeamFillDialog({
   eventName,
   serviceColor,
   teams,
-  team,
+  className,
 }: TeamFillDialogProps) {
   const [open, setOpen] = useState(false);
   const serviceColors = getServiceColors(serviceColor);
-  const row = teams.find((t) => t.team === team);
-  const spots = row?.open ?? 0;
+  // Their own teams to start with; the ones they back up wait for a tap,
+  // unless that's all there is.
+  const own = teams.filter((t) => t.backingUp === null);
+  const start = own.length > 0 ? own : teams;
+  const spots = start.reduce((sum, t) => sum + t.open, 0);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -124,6 +131,7 @@ export function TeamFillDialog({
             serviceColors.tint,
             serviceColors.borderSoft,
             serviceColors.shadow,
+            className,
           )}
         >
           <span
@@ -138,9 +146,9 @@ export function TeamFillDialog({
             <span className="block text-sm font-medium text-foreground">
               {spots === 1 ? "1 open spot" : `${spots} open spots`}
             </span>
-            {/* Somebody else's team is said as a fact rather than a request. */}
+            {/* A team somebody else leads is named as theirs: a fact, not a request. */}
             <span className="block truncate text-xs text-muted-foreground">
-              {row?.backingUp ? `${row.backingUp}'s team` : "AI picks, you approve"}
+              {teamList.format(start.map(teamName))}
             </span>
           </span>
           <span
@@ -171,7 +179,7 @@ export function TeamFillDialog({
           organizationId={organizationId}
           eventId={eventId}
           teams={teams}
-          team={team}
+          start={start.map((t) => t.team)}
           serviceColors={serviceColors}
         />
       </DialogContent>
@@ -183,16 +191,16 @@ function TeamFillChat({
   organizationId,
   eventId,
   teams,
-  team,
+  start,
   serviceColors,
 }: {
   organizationId: string;
   eventId: string;
   teams: FillableTeam[];
-  team: Team;
+  start: Team[];
   serviceColors: ServiceColors;
 }) {
-  const [picked, setPicked] = useState<Team[]>([team]);
+  const [picked, setPicked] = useState<Team[]>(start);
   const [input, setInput] = useState("");
   const [timedOut, setTimedOut] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -209,6 +217,10 @@ function TeamFillChat({
     });
 
   const isStreaming = status === "submitted" || status === "streaming";
+
+  // Somebody else's teams the viewer has picked: said under the tabs, so
+  // stepping in is something they chose.
+  const backups = teams.filter((t) => t.backingUp && picked.includes(t.team));
 
   const lastPart = messages.at(-1)?.parts.at(-1);
   const tailIsLive =
@@ -264,12 +276,26 @@ function TeamFillChat({
           className="flex-wrap"
         >
           {teams.map((t) => (
-            <ToggleGroupItem key={t.team} value={t.team} className="text-xs">
-              {t.label}
-              <span className="text-muted-foreground tabular-nums">{t.open}</span>
+            <ToggleGroupItem
+              key={t.team}
+              value={t.team}
+              className={cn("text-xs transition-all", serviceColors.toggleOn)}
+            >
+              {teamName(t)}
+              <span className="tabular-nums opacity-70">{t.open}</span>
             </ToggleGroupItem>
           ))}
         </ToggleGroup>
+      )}
+
+      {backups.length > 0 && (
+        <div className="-mt-2 space-y-0.5 text-[11px] text-muted-foreground">
+          {backups.map((t) => (
+            <p key={t.team}>
+              {t.label} is {t.backingUp}&apos;s to fill. You&apos;re the backup, so you can step in.
+            </p>
+          ))}
+        </div>
       )}
 
       <div ref={scrollRef} className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">

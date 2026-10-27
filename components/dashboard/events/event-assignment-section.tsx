@@ -327,6 +327,8 @@ export function EventAssignmentsCard({
             eventId={event.id}
             existingRoles={[...rosterRoles]}
             serviceColor={serviceColor}
+            teamLeads={teamLeads}
+            currentUserId={currentUserId}
             className={actionClass}
           />
           {acceptedCount > 0 && emailAllowance && (
@@ -340,6 +342,18 @@ export function EventAssignmentsCard({
               allowance={emailAllowance}
               canUpgrade={canUpgrade}
               className={actionClass}
+            />
+          )}
+          {/* Fill with AI on a line of its own, once for all the viewer's teams.
+              Mounted while they have any, so its own Invite can't close it. */}
+          {aiTeams.length > 0 && (
+            <TeamFillDialog
+              organizationId={event.organizationId}
+              eventId={event.id}
+              eventName={event.name}
+              serviceColor={serviceColor}
+              teams={fillable}
+              className="basis-full"
             />
           )}
         </div>
@@ -381,16 +395,6 @@ export function EventAssignmentsCard({
                 </div>
               </AccordionTrigger>
               <AccordionContent className="space-y-5 pt-1">
-                {aiTeams.some((t) => t.team === category.key) && (
-                  <TeamFillDialog
-                    organizationId={event.organizationId}
-                    eventId={event.id}
-                    eventName={event.name}
-                    serviceColor={serviceColor}
-                    teams={fillable}
-                    team={category.key}
-                  />
-                )}
                 {category.roleGroups.map((group) => {
                   const roleInfo = volunteerRoleConfig[group.role];
                   const isUnfilled = group.items.length === 0;

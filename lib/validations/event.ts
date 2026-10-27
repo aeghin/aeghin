@@ -143,6 +143,8 @@ export type CreateEventInput = z.infer<typeof createEventInputSchema>;
 
 export const addEventRolesSchema = z.object({
   roles: z.array(z.enum(VolunteerRole)).min(1, "Select at least one role"),
+  /** Teams these roles bring onto the event that the adder will fill themselves. */
+  fillMyself: z.array(z.enum(RoleCategory)).optional(),
 });
 
 export type AddEventRolesInput = z.infer<typeof addEventRolesSchema>;

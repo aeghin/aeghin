@@ -10,7 +10,7 @@ import {
 } from "@/generated/prisma/enums";
 
 import { logActivity } from "@/lib/activity";
-import { volunteerRoleConfig } from "@/lib/config/roles";
+import { teamOfRole, volunteerRoleConfig } from "@/lib/config/roles";
 
 import {
   SMART_SCHEDULING_PLAN_ERROR,
@@ -2014,7 +2014,7 @@ export const addEventRoles = async (
 
     if (!parsed.success) return { success: false, error: parsed.error.message };
 
-    const { roles } = parsed.data;
+    const { roles, fillMyself = [] } = parsed.data;
 
     const [membership, event] = await Promise.all([
       prisma.membership.findUnique({
@@ -2025,7 +2025,13 @@ export const addEventRoles = async (
       }),
       prisma.event.findFirst({
         where: { id: eventId, organizationId },
-        select: { rolesNeeded: true },
+        select: {
+          rolesNeeded: true,
+          serviceTypeId: true,
+          createdById: true,
+          teamLeads: { select: { category: true, userId: true } },
+          assignments: { where: { dismissedAt: null }, select: { role: true } },
+        },
       }),
     ]);
 
@@ -2041,17 +2047,83 @@ export const addEventRoles = async (
       return { success: false, error: "Those roles are already on this event" };
     }
 
-    await prisma.event.update({
-      where: { id: eventId },
-      data: { rolesNeeded: merged },
+    // Teams none of the roster's roles were in until now. The create form's
+    // "Who handles open spots" never offered them, so the adder can take one
+    // on here before its lead is told to staff it — and only these.
+    const rosterTeams = new Set(
+      [...event.rolesNeeded, ...event.assignments.map((assignment) => assignment.role)].map(
+        teamOfRole,
+      ),
+    );
+
+    const newTeams = new Set(roles.map(teamOfRole).filter((team) => !rosterTeams.has(team)));
+
+    // Saved as this event's cover, as the edit form saves a pick, and through
+    // the same check: a team that falls to the adder anyway needs no pick.
+    const picks = await resolveEventTeamLeads(
+      [...new Set(fillMyself)]
+        .filter((team) => newTeams.has(team))
+        .map((team) => ({ team, userId: user.id })),
+      organizationId,
+      event.serviceTypeId,
+      event.createdById,
+    );
+
+    if (picks === null) return { success: false, error: TEAM_LEAD_PICK_ERROR };
+
+    await prisma.$transaction(async (tx) => {
+      await tx.event.update({
+        where: { id: eventId },
+        data: { rolesNeeded: merged },
+      });
+
+      if (picks.length > 0) {
+        await tx.eventTeamLead.deleteMany({
+          where: { eventId, category: { in: picks.map((pick) => pick.team) } },
+        });
+
+        await tx.eventTeamLead.createMany({
+          data: picks.map((pick) => ({
+            eventId,
+            category: pick.team,
+            organizationId,
+            userId: pick.userId,
+          })),
+        });
+      }
     });
 
     touch(`event-${eventId}-org-${organizationId}-details`);
     touch(`org-${organizationId}-events`);
 
+    // After the picks, so a team the adder took counts on their bell, not the lead's.
     await syncEventNotifications(eventId, touch);
 
-    // The new roles' leads hear about them, unless they added them themselves.
+    // Never silent, like a pick on the edit form: the team's regular lead
+    // hears it's covered on this event, and the owners do when an admin took it.
+    if (picks.length > 0) {
+      const before = event.teamLeads.map((pick) => ({ team: pick.category, userId: pick.userId }));
+
+      after(() =>
+        notifyCoverChanges({
+          organizationId,
+          eventId,
+          before,
+          after: [
+            ...before.filter((pick) => !picks.some((mine) => mine.team === pick.team)),
+            ...picks,
+          ],
+          changedBy: {
+            userId: user.id,
+            name: `${user.firstName} ${user.lastName}`,
+            role: membership.role,
+          },
+        }),
+      );
+    }
+
+    // The new roles' leads hear about them, unless they added them themselves
+    // or the adder just took the team on — who's in charge is read after the save.
     after(() =>
       notifyTeamsNeeded({
         organizationId,

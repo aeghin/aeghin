@@ -14,12 +14,14 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { Toggle } from "@/components/ui/toggle";
 
 import { cn } from "@/lib/utils";
 import { colorClasses } from "@/lib/config/service-types-config";
-import { VolunteerRole } from "@/generated/prisma/enums";
-import { volunteerRoleConfig } from "@/lib/config/roles";
+import { RoleCategory as Team, VolunteerRole } from "@/generated/prisma/enums";
+import { TEAM_ORDER, teamLabel, teamOfRole, volunteerRoleConfig } from "@/lib/config/roles";
 import { addEventRoles } from "@/lib/actions/event";
+import type { EventTeamLead } from "@/lib/services/team-notifications";
 import { detailButtonClass, detailIconClass } from "./event-detail-parts";
 
 const volunteerRoleEntries = Object.entries(volunteerRoleConfig) as [
@@ -33,6 +35,9 @@ interface AddEventRolesDialogProps {
   /** Roles already on the event — shown as locked in */
   existingRoles: VolunteerRole[];
   serviceColor: string;
+  /** Who handles each team on this event: whoever covers it here, else the service type's lead. */
+  teamLeads: Partial<Record<Team, EventTeamLead>>;
+  currentUserId: string;
   className?: string;
 }
 
@@ -41,19 +46,41 @@ export function AddEventRolesDialog({
   eventId,
   existingRoles,
   serviceColor,
+  teamLeads,
+  currentUserId,
   className,
 }: AddEventRolesDialogProps) {
   const serviceColors = colorClasses[serviceColor];
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<VolunteerRole[]>([]);
+  const [fillMyself, setFillMyself] = useState<Team[]>([]);
   const [isSaving, startSaving] = useTransition();
 
   const existing = new Set(existingRoles);
   const selectedSet = new Set(selected);
 
+  // The teams the picked roles bring onto the event that somebody else would
+  // be told to staff. The create form's "Who handles open spots" never
+  // offered them, so the adder can take one on here before that happens.
+  const rosterTeams = new Set(existingRoles.map(teamOfRole));
+
+  const newTeams = TEAM_ORDER.flatMap((team) => {
+    const handler = teamLeads[team];
+
+    return !rosterTeams.has(team) &&
+      selected.some((role) => teamOfRole(role) === team) &&
+      handler &&
+      handler.person.userId !== currentUserId
+      ? [{ team, name: `${handler.person.firstName} ${handler.person.lastName}` }]
+      : [];
+  });
+
   const handleOpenChange = (next: boolean) => {
     setOpen(next);
-    if (!next) setSelected([]);
+    if (!next) {
+      setSelected([]);
+      setFillMyself([]);
+    }
   };
 
   const toggleRole = (role: VolunteerRole) => {
@@ -68,6 +95,8 @@ export function AddEventRolesDialog({
     startSaving(async () => {
       const result = await addEventRoles(organizationId, eventId, {
         roles: selected,
+        // Only teams still on offer: one whose roles were unpicked again is left out.
+        fillMyself: fillMyself.filter((team) => newTeams.some((entry) => entry.team === team)),
       });
 
       if (!result.success) {
@@ -163,6 +192,43 @@ export function AddEventRolesDialog({
             );
           })}
         </div>
+
+        {newTeams.length > 0 && (
+          <div className="space-y-2">
+            {newTeams.map(({ team, name }) => {
+              const mine = fillMyself.includes(team);
+
+              return (
+                <div
+                  key={team}
+                  className="flex flex-col gap-2 rounded-xl border border-border/60 p-3 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <p className="text-sm text-muted-foreground">
+                    <span className="font-medium text-foreground">
+                      {teamLabel(team)} is new on this event.
+                    </span>{" "}
+                    {mine
+                      ? `You'll fill it, so ${name} won't be asked to.`
+                      : `${name} will be asked to fill it.`}
+                  </p>
+                  <Toggle
+                    variant="outline"
+                    size="sm"
+                    pressed={mine}
+                    onPressedChange={(pressed) =>
+                      setFillMyself((prev) =>
+                        pressed ? [...prev, team] : prev.filter((t) => t !== team),
+                      )
+                    }
+                    className={cn("shrink-0 px-3 text-xs transition-all", serviceColors.toggleOn)}
+                  >
+                    I&apos;ll fill it myself
+                  </Toggle>
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         <DialogFooter className="gap-2 sm:gap-0">
           <Button

@@ -17,6 +17,7 @@ export const colorClasses: Record<
     tint: string;
     borderSoft: string;
     focusBorder: string;
+    toggleOn: string;
   }
 > = {
   indigo: {
@@ -36,6 +37,8 @@ export const colorClasses: Record<
     tint: "bg-indigo-500/5",
     borderSoft: "border-indigo-500/50",
     focusBorder: "focus-within:border-indigo-500/50",
+    toggleOn:
+      "data-[state=on]:border-indigo-500 data-[state=on]:bg-indigo-500 data-[state=on]:text-white data-[state=on]:shadow-sm data-[state=on]:shadow-indigo-500/30 data-[state=on]:hover:bg-indigo-500/90",
   },
   amber: {
     dot: "bg-amber-500",
@@ -54,6 +57,8 @@ export const colorClasses: Record<
     tint: "bg-amber-500/5",
     borderSoft: "border-amber-500/50",
     focusBorder: "focus-within:border-amber-500/50",
+    toggleOn:
+      "data-[state=on]:border-amber-500 data-[state=on]:bg-amber-500 data-[state=on]:text-white data-[state=on]:shadow-sm data-[state=on]:shadow-amber-500/30 data-[state=on]:hover:bg-amber-500/90",
   },
   emerald: {
     dot: "bg-emerald-500",
@@ -72,6 +77,8 @@ export const colorClasses: Record<
     tint: "bg-emerald-500/5",
     borderSoft: "border-emerald-500/50",
     focusBorder: "focus-within:border-emerald-500/50",
+    toggleOn:
+      "data-[state=on]:border-emerald-500 data-[state=on]:bg-emerald-500 data-[state=on]:text-white data-[state=on]:shadow-sm data-[state=on]:shadow-emerald-500/30 data-[state=on]:hover:bg-emerald-500/90",
   },
   pink: {
     dot: "bg-pink-500",
@@ -90,6 +97,8 @@ export const colorClasses: Record<
     tint: "bg-pink-500/5",
     borderSoft: "border-pink-500/50",
     focusBorder: "focus-within:border-pink-500/50",
+    toggleOn:
+      "data-[state=on]:border-pink-500 data-[state=on]:bg-pink-500 data-[state=on]:text-white data-[state=on]:shadow-sm data-[state=on]:shadow-pink-500/30 data-[state=on]:hover:bg-pink-500/90",
   },
   violet: {
     dot: "bg-violet-500",
@@ -108,6 +117,8 @@ export const colorClasses: Record<
     tint: "bg-violet-500/5",
     borderSoft: "border-violet-500/50",
     focusBorder: "focus-within:border-violet-500/50",
+    toggleOn:
+      "data-[state=on]:border-violet-500 data-[state=on]:bg-violet-500 data-[state=on]:text-white data-[state=on]:shadow-sm data-[state=on]:shadow-violet-500/30 data-[state=on]:hover:bg-violet-500/90",
   },
   red: {
     dot: "bg-red-500",
@@ -126,6 +137,8 @@ export const colorClasses: Record<
     tint: "bg-red-500/5",
     borderSoft: "border-red-500/50",
     focusBorder: "focus-within:border-red-500/50",
+    toggleOn:
+      "data-[state=on]:border-red-500 data-[state=on]:bg-red-500 data-[state=on]:text-white data-[state=on]:shadow-sm data-[state=on]:shadow-red-500/30 data-[state=on]:hover:bg-red-500/90",
   },
   blue: {
     dot: "bg-blue-500",
@@ -144,6 +157,8 @@ export const colorClasses: Record<
     tint: "bg-blue-500/5",
     borderSoft: "border-blue-500/50",
     focusBorder: "focus-within:border-blue-500/50",
+    toggleOn:
+      "data-[state=on]:border-blue-500 data-[state=on]:bg-blue-500 data-[state=on]:text-white data-[state=on]:shadow-sm data-[state=on]:shadow-blue-500/30 data-[state=on]:hover:bg-blue-500/90",
   },
   cyan: {
     dot: "bg-cyan-500",
@@ -162,6 +177,8 @@ export const colorClasses: Record<
     tint: "bg-cyan-500/5",
     borderSoft: "border-cyan-500/50",
     focusBorder: "focus-within:border-cyan-500/50",
+    toggleOn:
+      "data-[state=on]:border-cyan-500 data-[state=on]:bg-cyan-500 data-[state=on]:text-white data-[state=on]:shadow-sm data-[state=on]:shadow-cyan-500/30 data-[state=on]:hover:bg-cyan-500/90",
   },
 };
 
