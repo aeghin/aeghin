@@ -11,7 +11,7 @@ export function AiSetlistProUpsell({
   orgId,
   canSubscribe,
   title = "Do more with Pro",
-  description = "A smarter model that researches beyond your catalog, plus an AI assistant that drafts whole events, volunteers included.",
+  description = "A smarter model that researches beyond your library, plus an AI assistant that drafts whole events, volunteers included.",
 }: {
   orgId: string;
   canSubscribe: boolean;

@@ -291,7 +291,7 @@ export function CatalogPicker({
             {filtered.length === 0 ? (
               <p className="py-8 text-center text-xs text-muted-foreground">
                 {catalog.length === 0
-                  ? "No songs in catalog yet."
+                  ? "No songs in the library yet."
                   : "No songs match."}
               </p>
             ) : (

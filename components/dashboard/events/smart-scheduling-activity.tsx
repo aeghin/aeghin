@@ -73,7 +73,7 @@ const describeRow = (item: SmartSchedulingActivityItem): ReactNode => {
       return (
         <>
           <Name>{item.actorName}</Name> declined <Name>{item.targetName}</Name> —
-          auto-fill was off, so nobody was invited
+          Smart Scheduling was off, so nobody was invited
         </>
       );
     case ActivityType.SMART_FILL_NO_CANDIDATES:
@@ -100,13 +100,13 @@ const describeRow = (item: SmartSchedulingActivityItem): ReactNode => {
     case ActivityType.SMART_SCHEDULING_ENABLED:
       return (
         <>
-          <Name>{item.actorName}</Name> turned auto-fill on
+          <Name>{item.actorName}</Name> turned Smart Scheduling on
         </>
       );
     case ActivityType.SMART_SCHEDULING_DISABLED:
       return (
         <>
-          <Name>{item.actorName}</Name> turned auto-fill off
+          <Name>{item.actorName}</Name> turned Smart Scheduling off
         </>
       );
     default:
@@ -206,7 +206,7 @@ export const SmartSchedulingActivity = ({
               ) : (
                 <ZapOff aria-hidden className="size-3 shrink-0" />
               )}
-              Auto-fill {running ? "on" : enabled ? "paused on this plan" : "off"}
+              {running ? "On" : enabled ? "Paused on this plan" : "Off"}
             </p>
             <h2 className="text-[15px] leading-5 font-bold tracking-tight text-foreground">
               Smart Scheduling
@@ -247,7 +247,7 @@ export const SmartSchedulingActivity = ({
         <DialogHeader>
           <DialogTitle>Smart Scheduling log</DialogTitle>
           <DialogDescription>
-            Every auto-fill attempt for this event, newest first.
+            Every time Smart Scheduling tried to fill a spot on this event, newest first.
           </DialogDescription>
         </DialogHeader>
 

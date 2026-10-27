@@ -55,16 +55,16 @@ export const ConfirmMemberDeleteModal = ({open, onOpenChange, userId, organizati
             </div>
             <DialogTitle className="text-center text-xl">Remove Member</DialogTitle>
             <DialogDescription className="text-center mb-2">
-              Are you sure you would like to remove{" "}
+              Remove{" "}
              <span className="font-semibold bg-linear-to-r from-rose-500 to-red-600 bg-clip-text text-transparent">{memberName}</span>
-              {" "}from this organization?
+              {" "}from this organization? They&apos;ll be taken off upcoming events.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <DialogClose asChild>
               <Button disabled={isPending} variant="outline">Cancel</Button>
             </DialogClose>
-            <Button className="bg-red-600 hover:bg-red-700" disabled={isPending} onClick={deleteMember}>{isPending ? (<><Spinner className="inline-start"/> Removing...</>) : ("Remove Member")}</Button>
+            <Button className="bg-red-600 hover:bg-red-600/90 dark:hover:bg-red-700" disabled={isPending} onClick={deleteMember}>{isPending ? (<><Spinner className="inline-start"/> Removing...</>) : ("Remove Member")}</Button>
           </DialogFooter>
         </DialogContent>
     </Dialog>

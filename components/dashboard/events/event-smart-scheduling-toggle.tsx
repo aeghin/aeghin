@@ -49,8 +49,8 @@ export const EventSmartSchedulingToggle = ({
       if (result.success) {
         toast.success(
           next
-            ? "Declines will auto-fill for this event"
-            : "Auto-fill turned off for this event",
+            ? "Smart Scheduling is on for this event"
+            : "Smart Scheduling is off for this event",
           { position: "top-center" },
         );
       } else {
@@ -66,20 +66,20 @@ export const EventSmartSchedulingToggle = ({
         <button
           type="button"
           onClick={() => setPlanOpen(true)}
-          title="Auto-fill is part of Premium"
+          title="Smart Scheduling is part of Premium"
           className={cn(detailButtonClass(serviceColor), className)}
         >
           <Zap className={detailIconClass(serviceColor)} />
-          Auto-fill{enabled ? " paused" : ""}
+          Smart Scheduling{enabled ? " paused" : ""}
         </button>
         <DialogContent className="sm:max-w-120">
           <PlanLimitReached
             icon={Zap}
-            title="Auto-fill is part of Premium"
-            description="Smart Scheduling invites the next best available member when someone declines, and emails you 3 days and 1 day before an event that still isn't fully staffed."
+            title="Smart Scheduling is part of Premium"
+            description="Smart Scheduling invites the next best available member when someone declines or drops out, and warns whoever's in charge of the team 3 days and 1 day before an event that still has open spots."
             hint={
               enabled
-                ? "This event keeps its auto-fill setting, and it picks up again after an upgrade."
+                ? "Smart Scheduling stays saved on this event and turns back on after you upgrade."
                 : undefined
             }
             organizationId={organizationId}
@@ -102,13 +102,13 @@ export const EventSmartSchedulingToggle = ({
       aria-pressed={on}
       title={
         on
-          ? "Declines auto-fill from your roster"
-          : "Declines won't be refilled automatically"
+          ? "When someone declines or drops out, the next best person is invited"
+          : "Smart Scheduling is off, so nobody is invited automatically"
       }
       className={cn(detailButtonClass(serviceColor, { on }), className)}
     >
       <Zap className={cn(detailIconClass(serviceColor), on && "fill-current")} />
-      Auto-fill
+      Smart Scheduling
     </button>
   );
 };

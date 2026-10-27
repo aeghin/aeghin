@@ -63,7 +63,7 @@ export function HeroSection() {
           <div className="overflow-hidden rounded-xl border border-border bg-card shadow-2xl shadow-primary/10 [mask-image:linear-gradient(to_bottom,black_70%,transparent)] md:rounded-2xl">
             <Image
               src={eventPage}
-              alt="An Aeghin event page for Communion Sunday, with the church's sidebar, a five-song setlist, the team chat, Smart Scheduling auto-fill, and the team roster"
+              alt="An Aeghin event page for Communion Sunday, with the church's sidebar, a five-song setlist, the team chat, Smart Scheduling, and the team roster"
               placeholder="blur"
               sizes="(min-width: 1024px) 1024px, 100vw"
               className="h-auto w-full"

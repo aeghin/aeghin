@@ -385,7 +385,7 @@ export function EditEventDetailsDialog({
         <DialogHeader>
           <DialogTitle>Edit event details</DialogTitle>
           <DialogDescription>
-            Changes apply to everyone already assigned to this event.
+            Everyone on this event is notified of what changed.
           </DialogDescription>
         </DialogHeader>
 

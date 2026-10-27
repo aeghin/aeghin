@@ -141,8 +141,8 @@ const describeActivity = (item: ActivityItem): ReactNode => {
       return (
         <>
           <Name>{item.actorName}</Name> declined <Name>{item.targetName}</Name>
-          <EventContext eventName={item.eventName} /> — auto-fill was off, so nobody
-          was invited
+          <EventContext eventName={item.eventName} /> — Smart Scheduling was off, so
+          nobody was invited
         </>
       );
     case ActivityType.SMART_FILL_NO_CANDIDATES:
@@ -172,14 +172,14 @@ const describeActivity = (item: ActivityItem): ReactNode => {
     case ActivityType.SMART_SCHEDULING_ENABLED:
       return (
         <>
-          <Name>{item.actorName}</Name> turned auto-fill on
+          <Name>{item.actorName}</Name> turned Smart Scheduling on
           <EventContext eventName={item.eventName} />
         </>
       );
     case ActivityType.SMART_SCHEDULING_DISABLED:
       return (
         <>
-          <Name>{item.actorName}</Name> turned auto-fill off
+          <Name>{item.actorName}</Name> turned Smart Scheduling off
           <EventContext eventName={item.eventName} />
         </>
       );

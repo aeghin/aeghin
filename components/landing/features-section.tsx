@@ -17,7 +17,7 @@ const features = [
     icon: Sparkles,
     title: "AI Setlists & Events",
     description:
-      "On Premium, describe the service and get an ordered setlist from your own catalog. Pro also drafts whole events, with dates, roles, and volunteers who are actually free.",
+      "On Premium, describe the service and get an ordered setlist from your own song library. Pro also drafts whole events, with dates, roles, and volunteers who are actually free.",
   },
   {
     icon: CalendarCheck,

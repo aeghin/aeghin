@@ -225,9 +225,8 @@ export const EventDeleteMenu = ({
               Delete Event
             </DialogTitle>
             <DialogDescription className="text-center text-muted-foreground">
-              {"Deleting "}
               <span className="font-semibold text-foreground">{eventName}</span>
-              {" cannot be undone. All assignments and dates will be erased."}
+              {" and its roster, setlist and chat will be deleted. This can't be undone."}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="pt-4">

@@ -68,7 +68,7 @@ export const LeaveOrgDialog = ({ organizationId, name, isOwner }: LeaveOrgDialog
               <>
                 {"You're about to leave "}
                 <span className="font-medium text-red-600">{name}</span>
-                {". You'll lose access to its events and assignments until you're invited back. If you're the only owner, transfer ownership or delete the organization first."}
+                {". You'll lose access to its events and assignments until you're invited back. If you're the only owner, make someone else an owner first, or delete the organization."}
               </>
             ) : (
               <>

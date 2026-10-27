@@ -62,7 +62,7 @@ const plans: {
     plan: "pro",
     name: "Pro",
     price: PLAN_PRICES.pro,
-    description: "Drafts whole events, and researches beyond your catalog",
+    description: "Drafts whole events, and researches beyond your library",
     includes: "Everything in Premium, plus",
     features: [
       "AI drafts whole events and picks who's available",

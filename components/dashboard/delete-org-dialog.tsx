@@ -81,9 +81,9 @@ export const DeleteOrgDialog = ({ organizationId, name }: DeleteOrgDialogProps) 
             Delete Organization
           </DialogTitle>
           <DialogDescription className="text-center">
-            {"Deleting "}
+            {"This permanently deletes "}
             <span className="text-red-600">{name}</span>
-            {" cannot be undone once completed. All data will be erased."}
+            {", and every event, song, template, invitation and membership in it. It can't be undone."}
           </DialogDescription>
         </DialogHeader>
             <div className="space-y-2">

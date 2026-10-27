@@ -128,7 +128,7 @@ export const removeMember = async (userId: string, organizationId: string, touch
 
         if (!userId || !organizationId) return { success: false, error: "No data received" };
 
-        if (user.id === userId) return { success: false, error: "You cannot remove yourself. Transfer ownership or use the leave-organization flow." };
+        if (user.id === userId) return { success: false, error: "You can't remove yourself. Use Leave organization instead." };
 
         const assignee = await prisma.membership.findUnique({
             where: {
@@ -362,7 +362,7 @@ export const leaveOrganization = async (organizationId: string, touch: TagInvali
             if (ownerCount <= 1) {
                 return {
                     success: false,
-                    error: "You're the only owner. Transfer ownership or delete the organization before leaving."
+                    error: "You're the only owner. Make someone else an owner, or delete the organization, before leaving."
                 }
             }
         };

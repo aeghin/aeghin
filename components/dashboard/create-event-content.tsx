@@ -877,13 +877,13 @@ export function CreateEventPageContent({
                   <span className="font-medium text-foreground">
                     {conflictWarning.memberName}
                   </span>{" "}
-                  is already assigned to{" "}
+                  is already on{" "}
                   <span className="font-medium text-foreground">
                     {conflictWarning.conflict.eventName}
                   </span>{" "}
                   from {formatConflictTime(conflictWarning.conflict.startTime)} –{" "}
-                  {formatConflictTime(conflictWarning.conflict.endTime)} on this day. Assigning them
-                  may cause a time overlap.
+                  {formatConflictTime(conflictWarning.conflict.endTime)}, which overlaps this
+                  event.
                 </>
               )}
             </DialogDescription>
@@ -1708,10 +1708,10 @@ export function CreateEventPageContent({
                       <div className="flex items-center gap-2">
                         <Zap className="h-4 w-4 text-muted-foreground" />
                         <div>
-                          <p className="text-sm font-medium">Auto-fill Declines</p>
+                          <p className="text-sm font-medium">Smart Scheduling</p>
                           <p className="text-xs text-muted-foreground">
-                            Invite the next best available member when someone
-                            declines{!smartSchedulingAvailable && " · Part of Premium"}
+                            Invites the next best available member when someone
+                            declines or drops out{!smartSchedulingAvailable && " · Part of Premium"}
                           </p>
                         </div>
                       </div>
@@ -1724,7 +1724,7 @@ export function CreateEventPageContent({
                               shouldValidate: true,
                             })
                           }
-                          aria-label="Toggle auto-fill for this event"
+                          aria-label="Toggle Smart Scheduling for this event"
                           className="cursor-pointer self-start sm:self-auto"
                         />
                       ) : canSubscribe ? (

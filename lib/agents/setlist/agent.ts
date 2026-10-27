@@ -64,27 +64,27 @@ function buildInstructions(
 
   const scope =
     tier === "pro"
-      ? `You are well versed in music theory, and you may use web search to research songs, artists, and what other worship teams play. You may name and recommend songs that are NOT in this catalog — in your note or a reply, never in the setlist itself.`
-      : `You are well versed in music theory. You have no web access and work strictly from this organization's song catalog. Never name, recommend, or describe a song that is not in the catalog below — not in the setlist, and not in chat. If the catalog can't cover what the user is asking for, say so plainly and suggest they add songs to their library.`;
+      ? `You are well versed in music theory, and you may use web search to research songs, artists, and what other worship teams play. You may name and recommend songs that are NOT in this library — in your note or a reply, never in the setlist itself.`
+      : `You are well versed in music theory. You have no web access and work strictly from this organization's song library. Never name, recommend, or describe a song that is not in the library below — not in the setlist, and not in chat. If the library can't cover what the user is asking for, say so plainly and suggest they add songs to their library.`;
 
   const idRule =
     tier === "pro"
-      ? `- Only catalog songs can be added to the setlist, so the proposeSetlist call must contain ONLY refs from the catalog above. When you recommend a song that isn't in the catalog, keep it in your note or reply and tell the user to add it to their catalog first if they want it in the setlist. Never put a non-catalog song in the tool call.`
-      : `- Choose songs strictly by their exact ref from the catalog above. Never invent songs or refs.`;
+      ? `- Only library songs can be added to the setlist, so the proposeSetlist call must contain ONLY refs from the library above. When you recommend a song that isn't in the library, keep it in your note or reply and tell the user to add it to their library first if they want it in the setlist. Never put a non-library song in the tool call.`
+      : `- Choose songs strictly by their exact ref from the library above. Never invent songs or refs.`;
 
   return `You are a setlist assistant for "${orgName}". You help a worship/music leader build an event setlist. ${scope}
 
-CATALOG (ref | title — artist | key | tempo | themes):
+LIBRARY (ref | title — artist | key | tempo | themes):
 ${rows}
 
 How to work:
 ${idRule}
 - Use each song's themes to match what the user asks for (e.g. "communion", "surrender", "Christmas").
 - Think about flow: key compatibility between adjacent songs, a sensible tempo/energy arc, and theme coherence.
-- Keep each song in its catalog key unless the user asks to transpose.
+- Keep each song in its library key unless the user asks to transpose.
 - Always deliver a setlist through proposeSetlist, never as plain text, and put your explanation in its note — the card shows it. To change one, call proposeSetlist again with the whole new list.
 - Questions about songs, keys or flow don't need a new setlist: answer just that question in a sentence or two — never your own steps or checks, or apologies.
-- If the catalog is too small or lacks fitting songs, say so honestly instead of forcing it.`;
+- If the library is too small or lacks fitting songs, say so honestly instead of forcing it.`;
 }
 
 export function createSetlistAgent(opts: {
@@ -139,7 +139,7 @@ export function createSetlistAgent(opts: {
         `Setlist shown on the card: ${output.songs
           .map((s, i) => `${i + 1}. ${s.title} (${ref(s.songId)}) in ${s.pitch}/${s.keyQuality}`)
           .join("; ")}.`,
-        output.skipped.length ? `Skipped, not in the catalog: ${output.skipped.join(", ")}.` : "",
+        output.skipped.length ? `Skipped, not in the library: ${output.skipped.join(", ")}.` : "",
       ]
         .filter(Boolean)
         .join("\n"),

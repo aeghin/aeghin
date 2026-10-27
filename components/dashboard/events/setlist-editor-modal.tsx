@@ -135,7 +135,7 @@ export function SetlistEditorModal({
         </Reorder.Group>
 
         <p className="text-xs text-muted-foreground">
-          To add songs or edit BPM, links, or other details, use the editor.
+          To add songs or change BPM, links or other details, use Open editor.
         </p>
 
         <DialogFooter>

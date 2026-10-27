@@ -1077,8 +1077,8 @@ const refillOpenedSpot = async ({
 
     notifyShortage(
       autoFillPaused
-        ? "Auto-fill is paused because this organization's plan doesn't include Smart Scheduling, so no replacement was invited."
-        : "Auto-fill is off for this event, so no replacement was invited.",
+        ? "Smart Scheduling is paused because this organization's plan doesn't include it, so no replacement was invited."
+        : "Smart Scheduling is off for this event, so no replacement was invited.",
     );
 
     touch(`org-${organizationId}-activity`);

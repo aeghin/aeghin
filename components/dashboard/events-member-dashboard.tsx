@@ -849,7 +849,7 @@ function ExpiredInviteCard({
       <div className="flex items-center gap-1.5 pt-0.5">
         <Pill label="Invite expired" icon={Hourglass} />
         <p className="min-w-0 flex-1 text-[11.5px] text-muted-foreground">
-          Ran out before it was answered. Ask an admin for a new one.
+          You didn&apos;t answer in time. Ask an admin to invite you again.
         </p>
       </div>
     </m.div>

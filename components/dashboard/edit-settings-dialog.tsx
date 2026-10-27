@@ -212,8 +212,8 @@ export const EditSettingsDialog = ({
                     </SelectContent>
                   </Select>
                   <FormDescription>
-                    Where your services happen. Reminders and emails go out on this
-                    clock, and events end on it.
+                    Where your services happen. Reminders are sent and events are
+                    marked as over using this time zone.
                   </FormDescription>
                   <FormMessage />
                 </FormItem>

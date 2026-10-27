@@ -92,7 +92,7 @@ export const SettingsTabContent = async ({
               {timeZoneLabel(org?.timeZone ?? FALLBACK_TIME_ZONE)}
             </div>
             <p className="text-xs text-muted-foreground">
-              Reminders and emails go out on this clock, and events end on it.
+              Reminders are sent and events are marked as over using this time zone.
             </p>
           </div>
         </div>

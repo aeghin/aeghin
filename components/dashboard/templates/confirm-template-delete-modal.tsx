@@ -55,7 +55,7 @@ export const ConfirmTemplateDeleteModal = ({ open, onOpenChange, templateId, org
             </div>
             <DialogTitle className="text-center text-xl">Delete Template</DialogTitle>
             <DialogDescription className="text-center mb-2">
-              Are you sure you would like to delete{" "}
+              Delete{" "}
              <span className="font-semibold bg-linear-to-r from-rose-500 to-red-600 bg-clip-text text-transparent">{templateName}</span>
               ? Events already created from it are not affected.
             </DialogDescription>
@@ -64,7 +64,7 @@ export const ConfirmTemplateDeleteModal = ({ open, onOpenChange, templateId, org
             <DialogClose asChild>
               <Button disabled={isPending} variant="outline">Cancel</Button>
             </DialogClose>
-            <Button className="bg-red-600 hover:bg-red-700" disabled={isPending} onClick={deleteTemplate}>{isPending ? (<><Spinner className="inline-start"/> Deleting...</>) : ("Delete Template")}</Button>
+            <Button className="bg-red-600 hover:bg-red-600/90 dark:hover:bg-red-700" disabled={isPending} onClick={deleteTemplate}>{isPending ? (<><Spinner className="inline-start"/> Deleting...</>) : ("Delete Template")}</Button>
           </DialogFooter>
         </DialogContent>
     </Dialog>

@@ -38,11 +38,12 @@ interface RoleAssignButtonsProps {
     memberName: string;
     currentVolunteerRoles: VolunteerRole[];
     canManageMember: boolean;
+    canRemoveMember: boolean;
     canManageVolunteerRoles: boolean;
     canAssignOwner: boolean;
 }
 
-export const RoleAssignButtons = ({ currentRole, userId, organizationId, memberName, currentVolunteerRoles, canManageMember, canManageVolunteerRoles, canAssignOwner }: RoleAssignButtonsProps) => {
+export const RoleAssignButtons = ({ currentRole, userId, organizationId, memberName, currentVolunteerRoles, canManageMember, canRemoveMember, canManageVolunteerRoles, canAssignOwner }: RoleAssignButtonsProps) => {
 
 
     const [isPending, startTransition] = useTransition();
@@ -121,6 +122,13 @@ export const RoleAssignButtons = ({ currentRole, userId, organizationId, memberN
                             Change Role
                         </DropdownMenuLabel>
                         <DropdownMenuRadioGroup value={currentRole} onValueChange={handleRoleChange}>
+                            {/* Shown checked so an owner's row says what they are; picking Admin or Member steps them down. */}
+                            {currentRole === OrgRole.OWNER && (
+                                <DropdownMenuRadioItem disabled value={OrgRole.OWNER}>
+                                    <Crown className="mr-2 h-4 w-4 text-gold" />
+                                    Owner
+                                </DropdownMenuRadioItem>
+                            )}
                             <DropdownMenuRadioItem disabled={isPending} value={OrgRole.ADMIN} className="cursor-pointer">
                                  <Shield className="mr-2 h-4 w-4" />
                                 Admin
@@ -170,8 +178,8 @@ export const RoleAssignButtons = ({ currentRole, userId, organizationId, memberN
                         </DropdownMenuSub>
                     </>
                 )}
-                {canManageMember && <DropdownMenuSeparator />}
-                {canManageMember && (
+                {canRemoveMember && <DropdownMenuSeparator />}
+                {canRemoveMember && (
                     <>
                         <DropdownMenuLabel className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                             Danger Zone

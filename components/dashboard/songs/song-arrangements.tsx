@@ -360,7 +360,7 @@ function ArrangementForm({ initial, songLinks, submitLabel, onSave, onDone }: Ar
                             )}
                         />
                         <p className="text-xs text-muted-foreground">
-                            Leave both empty to show only this arrangement&apos;s files.
+                            Leave the Spotify and YouTube links empty to show only this version&apos;s files.
                         </p>
                     </>
                 )}

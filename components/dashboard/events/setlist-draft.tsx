@@ -94,7 +94,7 @@ export function SetlistDraft({ songs, onChange, catalog, serviceColor }: Setlist
         {songs.length === 0 ? (
           <div className="flex h-32 items-center justify-center rounded-xl border border-dashed border-border/40 bg-muted/10">
             <p className="text-xs text-muted-foreground">
-              No songs yet. Add from the catalog or generate with AI.
+              No songs yet. Add from the library or generate with AI.
             </p>
           </div>
         ) : (

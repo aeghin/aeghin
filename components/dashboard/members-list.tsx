@@ -145,11 +145,15 @@ export function MembersList({ members, currentUserId, viewerRole, timeZone }: Me
         // render and in the browser. UTC put an evening sign-up on the next day.
         const joinedDate = formatDateInZone(member.user.createdAt, timeZone);
 
+        // The phone's rule: an admin may only act on members; an owner on
+        // anyone but themselves, which is how one owner steps another down.
         const canManageMember =
           viewerRole !== OrgRole.MEMBER &&
           !isSelf &&
-          member.role !== OrgRole.OWNER &&
           (viewerRole === OrgRole.OWNER || member.role === OrgRole.MEMBER);
+
+        // Owners can't be removed outright; they're made admin or member first.
+        const canRemoveMember = canManageMember && member.role !== OrgRole.OWNER;
 
         const canManageVolunteerRoles =
           viewerRole !== OrgRole.MEMBER &&
@@ -251,6 +255,7 @@ export function MembersList({ members, currentUserId, viewerRole, timeZone }: Me
                   memberName={member.user.firstName}
                   currentVolunteerRoles={member.volunteerRoles}
                   canManageMember={canManageMember}
+                  canRemoveMember={canRemoveMember}
                   canManageVolunteerRoles={canManageVolunteerRoles}
                   canAssignOwner={canAssignOwner}
                 />

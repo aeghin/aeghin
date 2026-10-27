@@ -64,7 +64,7 @@ export function AiSetlistUpgrade({
               <Sparkles className="h-3.5 w-3.5 text-primary" />
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
-              Build setlists from your organization&apos;s song catalog.
+              Build setlists from your organization&apos;s song library.
             </p>
             <Button
               size="sm"
@@ -82,7 +82,7 @@ export function AiSetlistUpgrade({
               <Sparkles className="h-3.5 w-3.5 text-violet-600 dark:text-violet-400" />
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
-              A smarter model that researches beyond your catalog, plus AI event
+              A smarter model that researches beyond your library, plus AI event
               drafting with volunteer picks.
             </p>
             <Button

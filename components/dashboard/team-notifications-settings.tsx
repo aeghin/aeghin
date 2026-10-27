@@ -193,11 +193,11 @@ export const TeamNotificationsSettings = ({
         <h3 className="text-sm font-semibold">Staffing Alerts</h3>
       </div>
       <p className="mt-1 text-xs text-muted-foreground">
-        When a spot opens up — somebody declines, an invitation expires, or a
-        member leaves — that team&apos;s lead for the service is asked to fill
-        it, and everyone on &quot;Also notify&quot; gets a heads-up. With no
-        lead, the event&apos;s creator is asked. Any event can hand a team to
-        someone else for that event only.
+        When a spot opens up (someone declines, an invitation expires or a
+        member leaves), the team&apos;s lead for that service is asked to fill
+        it. Everyone under &quot;Also notify&quot; gets a heads-up. With no
+        lead, the event&apos;s creator is asked. To use someone else for one
+        event, change it when you create or edit that event.
       </p>
 
       {!selected ? (

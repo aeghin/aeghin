@@ -129,7 +129,7 @@ export function AddEventRolesDialog({
         <DialogHeader>
           <DialogTitle>Add roles to this event</DialogTitle>
           <DialogDescription>
-            Roles show up on the team roster as open slots you can invite into.
+            Roles show up on the team roster as open spots you can invite into.
           </DialogDescription>
         </DialogHeader>
 

@@ -54,16 +54,16 @@ export const ConfirmAssignOwnerModal = ({ open, onOpenChange, userId, organizati
             </div>
             <DialogTitle className="text-center text-xl">Make Owner</DialogTitle>
             <DialogDescription className="text-center mb-2">
-              Are you sure you would like to make{" "}
+              Make{" "}
              <span className="font-semibold bg-linear-to-r from-amber-500 to-yellow-600 bg-clip-text text-transparent">{memberName}</span>
-              {" "}an owner? Owners have full control over this organization.
+              {" "}an owner? Owners have full control over this organization. Another owner can change this later.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <DialogClose asChild>
               <Button disabled={isPending} variant="outline">Cancel</Button>
             </DialogClose>
-            <Button disabled={isPending} onClick={handleAssignOwner} className="relative bg-amber-600 hover:bg-amber-700">
+            <Button disabled={isPending} onClick={handleAssignOwner} className="relative bg-amber-600 hover:bg-amber-600/90 dark:hover:bg-amber-700">
               <span className={isPending ? "invisible" : undefined}>Make Owner</span>
               {isPending && <Spinner className="absolute inset-0 m-auto" />}
             </Button>

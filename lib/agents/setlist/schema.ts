@@ -13,12 +13,12 @@ export const proposeSetlistInputSchema = z.object({
       z.object({
         song: z
           .string()
-          .describe("Ref of a song from the provided catalog."),
+          .describe("Ref of a song from the provided library."),
         pitch: z
           .enum(Pitch)
           .optional()
           .describe(
-            "Only set to transpose; omit to use the catalog default key.",
+            "Only set to transpose; omit to use the library default key.",
           ),
         keyQuality: z.enum(KeyQuality).optional(),
         reason: z

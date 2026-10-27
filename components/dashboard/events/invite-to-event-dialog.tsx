@@ -273,13 +273,13 @@ export function InviteToEventDialog({
                   <span className="font-medium text-foreground">
                     {conflictWarning.memberName}
                   </span>{" "}
-                  is already assigned to{" "}
+                  is already on{" "}
                   <span className="font-medium text-foreground">
                     {conflictWarning.conflict.eventName}
                   </span>{" "}
                   from {formatConflictTime(conflictWarning.conflict.startTime)} –{" "}
-                  {formatConflictTime(conflictWarning.conflict.endTime)} on this
-                  day. Assigning them may cause a time overlap.
+                  {formatConflictTime(conflictWarning.conflict.endTime)}, which overlaps
+                  this event.
                 </>
               )}
             </DialogDescription>

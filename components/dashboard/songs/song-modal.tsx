@@ -395,8 +395,8 @@ export function SongModal({ orgId, song, open, onOpenChange, orgName, songLimit 
                     />
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Used as a starting point in setlists; team members can
-                    transpose per event.
+                    The key it starts in on a setlist. It can be changed for
+                    each event.
                   </p>
                 </div>
 

@@ -85,8 +85,8 @@ export const TeamNotificationsOverview = ({
       )}
 
       <p className="mt-4 text-xs text-muted-foreground">
-        You can hand a team to someone else for one event when you create or
-        edit it.
+        To use someone else for one event, change it when you create or edit
+        that event.
       </p>
     </section>
   );

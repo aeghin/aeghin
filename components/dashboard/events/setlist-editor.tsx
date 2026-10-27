@@ -135,7 +135,7 @@ export function SetlistEditor({
         <aside className="lg:col-span-1">
           <Tabs defaultValue={canUseAi ? "ai" : "catalog"} className="w-full">
             <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="catalog">Catalog</TabsTrigger>
+              <TabsTrigger value="catalog">Library</TabsTrigger>
               <TabsTrigger value="ai">
                 <Sparkles />
                 AI

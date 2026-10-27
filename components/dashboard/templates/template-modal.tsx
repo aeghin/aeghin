@@ -389,11 +389,11 @@ export function TemplateModal({
                 render={({ field }) => (
                   <FormItem className="flex flex-row items-center justify-between rounded-lg border border-border/40 p-3">
                     <div className="space-y-0.5 pr-3">
-                      <FormLabel>Auto-fill Declines</FormLabel>
+                      <FormLabel>Smart Scheduling</FormLabel>
                       <p className="text-xs text-muted-foreground">
                         {smartSchedulingAvailable
-                          ? "Events from this template start with auto-fill on"
-                          : "Part of Premium. Events start with auto-fill off on your plan."}
+                          ? "Events from this template start with Smart Scheduling on"
+                          : "Part of Premium. On your plan, events start with Smart Scheduling off."}
                       </p>
                     </div>
                     <FormControl>

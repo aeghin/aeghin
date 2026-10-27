@@ -274,7 +274,7 @@ function ProposalCard({
   if (output.songs.length === 0) {
     return (
       <p className="text-xs text-muted-foreground">
-        No matching songs found in your catalog.
+        No matching songs found in your library.
       </p>
     );
   }
@@ -339,7 +339,7 @@ function ProposalCard({
 
       {output.skipped.length > 0 && (
         <p className="mt-2 text-[11px] text-muted-foreground">
-          {output.skipped.length} suggestion(s) skipped — not in your catalog.
+          {output.skipped.length} suggestion(s) skipped — not in your library.
         </p>
       )}
     </div>
@@ -381,7 +381,7 @@ function EmptyState({
       <div>
         <p className="text-sm font-medium">Generate a setlist</p>
         <p className="mt-1 text-xs text-muted-foreground">
-          Describe the vibe — I&apos;ll build it from your song catalog.
+          Describe the vibe — I&apos;ll build it from your song library.
         </p>
       </div>
       <div className="w-full space-y-1.5">
