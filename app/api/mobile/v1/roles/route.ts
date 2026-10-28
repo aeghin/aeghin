@@ -1,8 +1,10 @@
-import type { RoleCategory, VolunteerRole } from "@/generated/prisma/enums";
+import type { RoleCategory, VoiceType, VolunteerRole } from "@/generated/prisma/enums";
 import {
     ROLE_ORDER,
     TEAM_ORDER,
+    VOICE_TYPE_ORDER,
     teamLabel,
+    voiceTypeLabel,
     volunteerRoleConfig,
 } from "@/lib/config/roles";
 import { clerkIdOf, fail, json, route } from "@/lib/mobile/route";
@@ -26,19 +28,26 @@ type CatalogTeam = {
     label: string;
 };
 
+type CatalogVoiceType = {
+    voiceType: VoiceType;
+    label: string;
+};
+
 type RoleCatalog = {
     /** Every role, in roster order. */
     roles: CatalogRole[];
     /** Every team, in roster order. */
     teams: CatalogTeam[];
+    /** Every singer's voice type, high to low. */
+    voiceTypes: CatalogVoiceType[];
 };
 
 /**
  * GET /api/mobile/v1/roles
  *
- * Every volunteer role and team, as `lib/config/roles.ts` describes them. The
- * phone reads this instead of keeping its own copy, so a role or team added
- * there shows up on it without an app release.
+ * Every volunteer role, team and voice type, as `lib/config/roles.ts`
+ * describes them. The phone reads this instead of keeping its own copy, so one
+ * added there shows up on it without an app release.
  */
 export const GET = route<Record<string, never>>("GET /roles", async () => {
     const clerkId = await clerkIdOf();
@@ -52,5 +61,6 @@ export const GET = route<Record<string, never>>("GET /roles", async () => {
             return { role, label, emoji: icon, team, sings };
         }),
         teams: TEAM_ORDER.map((team) => ({ team, label: teamLabel(team) })),
+        voiceTypes: VOICE_TYPE_ORDER.map((voiceType) => ({ voiceType, label: voiceTypeLabel(voiceType) })),
     });
 });

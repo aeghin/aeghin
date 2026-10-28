@@ -9,7 +9,7 @@ import {
   type TeamScope,
   type TeamSpotPerson,
 } from "@/lib/agents/team/agent";
-import { ROLE_ORDER, teamOfRole } from "@/lib/config/roles";
+import { ROLE_ORDER, singingVoiceType, teamOfRole } from "@/lib/config/roles";
 import { parseRoleSpots, roleStanding } from "@/lib/role-spots";
 import { getEventDetailsById } from "@/lib/services/events";
 import { getOrganizationTimeZone, getOrgMembersWithUser } from "@/lib/services/organization";
@@ -159,6 +159,7 @@ export async function buildTeamFillAgent({
       userId: m.userId,
       name: `${m.user.firstName} ${m.user.lastName}`,
       volunteerRoles: m.volunteerRoles,
+      voiceType: singingVoiceType(m.volunteerRoles, m.voiceType),
     })),
   });
 

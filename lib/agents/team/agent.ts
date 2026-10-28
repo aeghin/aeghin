@@ -1,6 +1,6 @@
 import { ToolLoopAgent, tool, stepCountIs, InferAgentUIMessage } from "ai";
-import type { RoleCategory as Team, VolunteerRole } from "@/generated/prisma/enums";
-import { teamLabel, volunteerRoleConfig } from "@/lib/config/roles";
+import type { RoleCategory as Team, VoiceType, VolunteerRole } from "@/generated/prisma/enums";
+import { teamLabel, voiceTypeLabel, volunteerRoleConfig } from "@/lib/config/roles";
 import type { RoleEligibility } from "@/lib/types";
 import {
   GATEWAY_CACHING,
@@ -61,6 +61,8 @@ export type TeamAgentMember = {
   userId: string;
   name: string;
   volunteerRoles: VolunteerRole[];
+  /** A singer's voice type: null unless they hold a role that sings and have one set. */
+  voiceType: VoiceType | null;
 };
 
 export type ProposedInvite = {
@@ -156,8 +158,10 @@ export function createTeamFillAgent(opts: {
     })
     .join("\n");
 
+  const voiceOf = (userId: string) => memberById.get(userId)?.voiceType ?? null;
+
   const freeRows = free.length
-    ? free.map((entry) => availabilityLines(toAvailability(entry, ref))).join("\n\n")
+    ? free.map((entry) => availabilityLines(toAvailability(entry, ref, voiceOf))).join("\n\n")
     : "(no open spots)";
 
   const elsewhereRows = elsewhere.length
@@ -167,7 +171,9 @@ export function createTeamFillAgent(opts: {
   const rosterRows = roster
     .map(
       (m) =>
-        `- ${m.name}${m.userId === viewer.userId ? " (you)" : ""} | ${m.volunteerRoles.map((role) => volunteerRoleConfig[role].label).join(", ") || "no roles"}`,
+        `- ${m.name}${m.userId === viewer.userId ? " (you)" : ""} | ${m.volunteerRoles.map((role) => volunteerRoleConfig[role].label).join(", ") || "no roles"}${
+          m.voiceType ? ` | ${voiceTypeLabel(m.voiceType)}` : ""
+        }`,
     )
     .join("\n");
 
@@ -187,7 +193,7 @@ ${freeRows}
 Anybody already asked on this event is left out of these lists: they said yes, they're deciding, or they declined or let it lapse. Nobody is asked twice from here; ${you} can invite somebody again from their row on the Team card.
 On this event in other roles, one role each: ${elsewhereRows}.
 
-MEMBERS (name | roles), for questions about anyone:
+MEMBERS (name | roles | voice type, for a singer who has one), for questions about anyone:
 ${rosterRows}
 
 HOW TO WORK
@@ -203,6 +209,12 @@ PICKING PEOPLE
 - Honour named requests whenever the person is in WHO'S FREE for that role. When they aren't, say exactly why — can't serve (blocked out with the dates, or serving another event then), already asked on this event, already on it in another role, or doesn't hold the role — and offer the best alternative.
 - Leaving a spot open is fine. Say which and why in your note.
 - Asked why somebody wasn't picked, answer from the facts and give the numbers.
+
+VOICE TYPES
+Some singers have a voice type, shown after their name: Soprano, Alto, Tenor, Baritone or Bass. It counts only when ${you} brings voice types up — "two sopranos", "an alto", "who are our altos?", "a mix of parts":
+- When they do, do exactly what they asked: a spot they want for a soprano goes only to somebody shown as Soprano, and you fill only what they asked for. When too few are free, leave those spots open and say so in your note. Never hand them to another voice type unless ${you} said another will do.
+- When they don't, pick singers exactly as you would if voice types didn't exist, and never mention one — not in reasons, the note or answers.
+- Somebody with no voice type shown doesn't have one. Never guess it.
 
 HARD RULES — the server enforces these
 - Use refs exactly as written in WHO'S FREE. Never invent one, never pass a name.

@@ -5,13 +5,20 @@ import { animate, m, useMotionValue, useTransform } from "motion/react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import type { OrgRole, VolunteerRole } from "@/generated/prisma/enums";
-import { getRoleConfig, volunteerRoleConfig } from "@/lib/config/roles";
+import { MicVocal } from "lucide-react";
+import type { OrgRole, VoiceType, VolunteerRole } from "@/generated/prisma/enums";
+import {
+  getRoleConfig,
+  singingVoiceType,
+  voiceTypeLabel,
+  volunteerRoleConfig,
+} from "@/lib/config/roles";
 import { floatingNow, formatDateInZone } from "@/lib/time-zone";
 
 export type MemberProfileData = {
   role: OrgRole;
   volunteerRoles: VolunteerRole[];
+  voiceType: VoiceType | null;
   createdAt: Date;
   organization: {
     name: string;
@@ -76,6 +83,7 @@ export default function MemberProfile({
   const memberRole = getRoleConfig(membership.role);
   const RoleIcon = memberRole.icon;
   const volunteerRoles = membership.volunteerRoles;
+  const voiceType = singingVoiceType(volunteerRoles, membership.voiceType);
   // A real moment, on the organization's clock — the same on the server render
   // and in the browser. UTC put an evening join on the next day.
   const joinedDate = formatDateInZone(membership.createdAt, timeZone);
@@ -126,6 +134,12 @@ export default function MemberProfile({
                   </Badge>
                 );
               })}
+              {voiceType && (
+                <Badge className="gap-1.5 rounded-full border border-border bg-card px-4 py-2 text-sm font-semibold text-foreground hover:bg-card">
+                  <MicVocal aria-hidden className="h-3.5 w-3.5 text-muted-foreground" />
+                  {voiceTypeLabel(voiceType)}
+                </Badge>
+              )}
               <span className="px-1 py-2 text-sm text-muted-foreground">
                 Member since {joinedDate}
               </span>

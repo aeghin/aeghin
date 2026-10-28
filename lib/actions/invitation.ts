@@ -5,7 +5,7 @@ import prisma from "@/lib/prisma";
 import { orgInvitationSchema, OrgInvitationInput } from "../validations/invitations";
 import { OrgRole, InvitationStatus, ActivityType, type VolunteerRole } from "@/generated/prisma/enums";
 import { logActivity } from "@/lib/activity";
-import { volunteerRoleConfig } from "@/lib/config/roles";
+import { hasSingingRole, singingVoiceType, volunteerRoleConfig } from "@/lib/config/roles";
 
 import { Resend } from "resend";
 import InvitationEmail from "@/components/email/email-template";
@@ -82,7 +82,14 @@ export async function inviteMember(data: OrgInvitationInput, touch: TagInvalidat
         if (!user) return { success: false, error: "User not found" };
 
 
-        const { email, volunteerRoles, orgId } = orgInvitationSchema.parse(data);
+        const { email, volunteerRoles, voiceType: picked, orgId } = orgInvitationSchema.parse(data);
+
+        // Without a role that sings there's no voice type to keep.
+        const voiceType = singingVoiceType(volunteerRoles, picked ?? null);
+
+        // The phone doesn't send one yet, so inviting the same person again
+        // from it keeps the voice type an earlier invite set.
+        const keepVoiceType = picked === undefined && hasSingingRole(volunteerRoles);
 
         const membership = await prisma.membership.findUnique({
             where: {
@@ -122,6 +129,7 @@ export async function inviteMember(data: OrgInvitationInput, touch: TagInvalidat
                 expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),  
                 status: InvitationStatus.PENDING,
                 volunteerRoles,
+                voiceType: keepVoiceType ? undefined : voiceType,
                 invitedById: user.id,
                 // Sent again, it's news again in the invitee's bell.
                 seenAt: null,
@@ -129,6 +137,7 @@ export async function inviteMember(data: OrgInvitationInput, touch: TagInvalidat
             create: {
                 email,
                 volunteerRoles,
+                voiceType,
                 expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
                 invitedById: user.id,
                 organizationId: orgId,
@@ -222,6 +231,7 @@ export async function acceptOrgInvite(token: string, touch: TagInvalidator = upd
             await trx.membership.create({
                 data: {
                     volunteerRoles: invitation.volunteerRoles,
+                    voiceType: invitation.voiceType,
                     userId: user.id,
                     organizationId: invitation.organizationId,
                 }

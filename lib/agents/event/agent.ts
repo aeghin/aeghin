@@ -1,6 +1,6 @@
 import { ToolLoopAgent, tool, stepCountIs, InferAgentUIMessage } from "ai";
-import type { RoleCategory as Team, VolunteerRole } from "@/generated/prisma/enums";
-import { ROLE_ORDER, TEAM_ORDER, teamLabel, teamOfRole, teamsOfRoles, volunteerRoleConfig } from "@/lib/config/roles";
+import type { RoleCategory as Team, VoiceType, VolunteerRole } from "@/generated/prisma/enums";
+import { ROLE_ORDER, TEAM_ORDER, teamLabel, teamOfRole, teamsOfRoles, voiceTypeLabel, volunteerRoleConfig } from "@/lib/config/roles";
 import type { RoleEligibility } from "@/lib/types";
 import { spotsFor, storedRoleSpots, type RoleSpots } from "@/lib/role-spots";
 import {
@@ -43,6 +43,8 @@ export type AgentRosterMember = {
   userId: string;
   name: string;
   volunteerRoles: VolunteerRole[];
+  /** A singer's voice type: null unless they hold a role that sings and have one set. */
+  voiceType: VoiceType | null;
   /** An admin or owner: somebody who can cover a team. */
   manager: boolean;
 };
@@ -222,7 +224,7 @@ function buildInstructions(opts: {
       (m) =>
         `- ${ref(m.userId)} | ${m.name}${m.userId === viewer.userId ? " (you)" : ""} | ${
           m.volunteerRoles.map((role) => volunteerRoleConfig[role].label).join(", ") || "no roles"
-        }${m.manager ? " · admin or owner" : ""}`,
+        }${m.manager ? " · admin or owner" : ""}${m.voiceType ? ` | ${voiceTypeLabel(m.voiceType)}` : ""}`,
     )
     .join("\n");
 
@@ -241,7 +243,7 @@ Read what they ask for by name and by team — "the band" means the Band roles h
 TEMPLATES — the org's own recurring patterns. Use one ONLY when they ask for it by name or plainly describe that service ("the youth gathering", "Sunday morning"). Never reach for one to fill in something they simply did not mention. When you do use one, take its times, location, roles and service type:
 ${templateRows}
 
-MEMBERS (ref | name | roles):
+MEMBERS (ref | name | roles | voice type, for a singer who has one):
 ${rosterRows}
 
 WHO STAFFS WHAT
@@ -277,6 +279,12 @@ PICKING PEOPLE
 - Leaving a spot open on a team ${you} staffs is fine; say why in your summary.
 - Asked why somebody wasn't picked, answer from the facts: they can't serve and why, they don't hold the role, or they ranked lower — and give the numbers.
 - Some roles need more than one person — three BGVs, two guitarists, a template's "BGVS x3". Set roleSpots for those and assign up to that many. Every assignment is somebody wanted there, never a backup, so never assign more people to a role than it needs.
+
+VOICE TYPES
+Some singers have a voice type, shown after their name: Soprano, Alto, Tenor, Baritone or Bass. It counts only when ${you} brings voice types up — "two sopranos", "an alto", "who are our altos?", "a mix of parts":
+- When they do, every singer you pick for a voice type they asked for must be shown with it. When too few are free, leave those spots open and say so in your summary. Never hand them to another voice type unless ${you} said another will do.
+- When they don't, pick singers exactly as you would if voice types didn't exist, and never mention one — not in reasons, the summary or answers.
+- Somebody with no voice type shown doesn't have one. Never guess it.
 
 HARD RULES — the server enforces these and will reject the draft
 - Event name: 25 characters maximum. Location: 20 characters maximum.
@@ -315,7 +323,8 @@ export function createEventDraftAgent(opts: {
     inputSchema: checkAvailabilityInputSchema,
     execute: async ({ days, roles }): Promise<CheckAvailabilityOutput> => {
       const eligibility = await deps.checkAvailability({ days, roles });
-      return { days, roles: eligibility.map((entry) => toAvailability(entry, ref)) };
+      const voiceOf = (userId: string) => memberById.get(userId)?.voiceType ?? null;
+      return { days, roles: eligibility.map((entry) => toAvailability(entry, ref, voiceOf)) };
     },
     // The same facts as lines rather than JSON, which repeats every key for
     // every person — re-read again by every follow-up in this chat.

@@ -31,6 +31,7 @@ export const getMemberProfile = async (
     select: {
       role: true,
       volunteerRoles: true,
+      voiceType: true,
       createdAt: true,
       organization: { select: { name: true } },
       user: {

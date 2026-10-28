@@ -32,6 +32,18 @@ enum VolunteerRole {
   TRANSLATOR
 }
 
+/// A singer's voice type, named and ordered in `voiceTypeConfig` in
+/// lib/config/roles.ts. Only means something for somebody holding a role that
+/// sings; it stays on the membership when they stop, and shows again if they
+/// start.
+enum VoiceType {
+  SOPRANO
+  ALTO
+  TENOR
+  BARITONE
+  BASS
+}
+
 enum InvitationStatus {
   PENDING
   ACCEPTED
@@ -157,6 +169,7 @@ model Membership {
   id          String   @id @default(uuid())
   role OrgRole @default(MEMBER)
   volunteerRoles VolunteerRole[]
+  voiceType VoiceType?
 
   // This person's own order for the service-type pills on Events. Ids no
   // longer in the organization are skipped on read; ones missing from it go
@@ -191,6 +204,8 @@ model Invitation {
   token String @unique @default(uuid())
   status InvitationStatus @default(PENDING)
   volunteerRoles VolunteerRole[]
+  // Copied onto the membership when it's accepted.
+  voiceType VoiceType?
   expiresAt DateTime
 
   // When the invitee opened it from the bell. Null reads as unread there, and

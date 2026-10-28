@@ -3,7 +3,8 @@ import "server-only";
 import prisma from "../prisma";
 import { cacheLife, cacheTag } from 'next/cache';
 import { zoneOrFallback } from '@/lib/time-zone';
-import { InvitationStatus } from "@/generated/prisma/enums";
+import { InvitationStatus, type VoiceType } from "@/generated/prisma/enums";
+import { singingVoiceType } from "@/lib/config/roles";
 
 export const getOrganizationDetailsById = async (id: string, userId: string) => {
     "use cache";
@@ -128,6 +129,7 @@ export const organizationMembersList = async (organizationId: string) => {
     select: {
       organizationId: true,
       volunteerRoles: true,
+      voiceType: true,
       role: true,
       user: {
         select: {
@@ -240,6 +242,38 @@ export const getOrgMembersWithUser = async (organizationId: string) => {
   });
 
   return members;
+};
+
+/**
+ * Each singer's voice type, by user id: everyone holding a role that sings
+ * who has one set. For the Team card, which every viewer of an event sees,
+ * where the full member list is only loaded for managers. Carries the
+ * members-list tag, which a change to roles or voice type expires.
+ */
+export const getOrgVoiceTypes = async (
+  organizationId: string,
+): Promise<Record<string, VoiceType>> => {
+
+  "use cache";
+
+  cacheLife("hours");
+
+  cacheTag(`org-${organizationId}-members-list`);
+
+  const rows = await prisma.membership.findMany({
+    where: { organizationId, voiceType: { not: null } },
+    select: { userId: true, volunteerRoles: true, voiceType: true },
+  });
+
+  const voiceTypes: Record<string, VoiceType> = {};
+
+  for (const row of rows) {
+    const voiceType = singingVoiceType(row.volunteerRoles, row.voiceType);
+
+    if (voiceType) voiceTypes[row.userId] = voiceType;
+  }
+
+  return voiceTypes;
 };
 
 

@@ -1,6 +1,6 @@
 import type { StopCondition, ToolSet } from "ai";
-import type { VolunteerRole } from "@/generated/prisma/enums";
-import { volunteerRoleConfig } from "@/lib/config/roles";
+import type { VoiceType, VolunteerRole } from "@/generated/prisma/enums";
+import { voiceTypeLabel, volunteerRoleConfig } from "@/lib/config/roles";
 import type { RoleEligibility } from "@/lib/types";
 
 // Shared by the agents, which client components import for their types: keep
@@ -84,6 +84,8 @@ export const proposalAccepted =
 export type AvailabilityCandidate = {
   ref: string;
   name: string;
+  /** Their voice type, on a role that sings; null when there's none to show. */
+  voiceType: VoiceType | null;
   /** Invitations they said yes to, out of `responded`. */
   accepted: number;
   responded: number;
@@ -112,16 +114,22 @@ export type AvailabilityRole = {
   excluded: AvailabilityExclusion[];
 };
 
-/** A role's eligibility with ids swapped for handles, ready for a tool's output. */
+/**
+ * A role's eligibility with ids swapped for handles, ready for a tool's
+ * output. `voiceOf` reads a member's voice type off the agent's roster; it's
+ * only attached on a role that sings.
+ */
 export const toAvailability = (
   entry: RoleEligibility,
   ref: (id: string) => string,
+  voiceOf: (id: string) => VoiceType | null,
 ): AvailabilityRole => ({
   role: entry.role,
   totalQualified: entry.totalQualified,
   eligible: entry.eligible.map((candidate) => ({
     ref: ref(candidate.userId),
     name: candidate.name,
+    voiceType: volunteerRoleConfig[entry.role].sings ? voiceOf(candidate.userId) : null,
     accepted: candidate.accepted,
     responded: candidate.responded,
     recentServes: candidate.recentServes,
@@ -158,7 +166,7 @@ export function availabilityLines(entry: AvailabilityRole): string {
     `${label} (${entry.role}) — ${entry.eligible.length} free of ${entry.totalQualified}:`,
     ...entry.eligible.map(
       (c) =>
-        `- ${c.ref} ${c.name}: ${yesRate(c)} · ${served(c)}${
+        `- ${c.ref} ${c.name}${c.voiceType ? ` (${voiceTypeLabel(c.voiceType)})` : ""}: ${yesRate(c)} · ${served(c)}${
           c.upcoming > 0 ? ` · ${c.upcoming} more booked ahead` : ""
         }`,
     ),

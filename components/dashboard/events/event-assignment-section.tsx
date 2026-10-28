@@ -22,6 +22,7 @@ import {
   InvitationStatus,
   RoleCategory as Team,
   VolunteerRole,
+  type VoiceType,
 } from "@/generated/prisma/enums";
 import { statusStyles } from "@/lib/config/status";
 import { getServiceColors } from "@/lib/config/service-types-config";
@@ -29,6 +30,7 @@ import { getServiceColors } from "@/lib/config/service-types-config";
 
 import {
   volunteerRoleConfig,
+  voiceTypeLabel,
   ROLE_ORDER,
   TEAM_ORDER,
   teamLabel,
@@ -66,6 +68,8 @@ interface EventAssignmentsCardProps {
   canWithdraw: boolean;
   /** Org roster for the invite pickers — empty for members, who can't invite */
   members: TeamMember[];
+  /** Each singer's voice type by user id, shown beside them on a role that sings. */
+  voiceTypes: Record<string, VoiceType>;
   /** This month's group emails — null for members, who can't send them */
   emailAllowance: EmailAllowance | null;
   /** Whether the organization's plan includes auto-fill */
@@ -127,6 +131,7 @@ export function EventAssignmentsCard({
   canManage,
   canWithdraw,
   members,
+  voiceTypes,
   emailAllowance,
   smartSchedulingAvailable,
   canUpgrade,
@@ -257,7 +262,8 @@ export function EventAssignmentsCard({
   const actionClass = "flex-1 basis-28";
 
   return (
-    <div className={cn(DETAIL_CARD, "relative isolate")}>
+    // A container, so every row can ask how wide the card is: see the voice type.
+    <div className={cn(DETAIL_CARD, "@container/team relative isolate")}>
       {/* The service colour washed in behind the header — a gradient and two
           blurred blobs — fading out before the roster so the rows stay plain. */}
       <div
@@ -426,6 +432,7 @@ export function EventAssignmentsCard({
                                 eventId={event.id}
                                 role={group.role}
                                 members={membersByRole[group.role] || []}
+                                voiceTypes={voiceTypes}
                                 onEvent={onEvent}
                                 eventDates={eventDates}
                                 serviceColor={event.serviceType.color}
@@ -449,6 +456,7 @@ export function EventAssignmentsCard({
                             eventId={event.id}
                             role={group.role}
                             members={membersByRole[group.role] || []}
+                            voiceTypes={voiceTypes}
                             onEvent={onEvent}
                             eventDates={eventDates}
                             variant="row"
@@ -474,6 +482,9 @@ export function EventAssignmentsCard({
                             status === InvitationStatus.EXPIRED;
                           const BadgeIcon = statusBadgeIcons[status];
                           const assignmentStyles = statusStyles[status];
+                          const voiceType = roleInfo.sings
+                            ? voiceTypes[assignment.userId]
+                            : undefined;
 
                           return (
                             <div
@@ -525,22 +536,46 @@ export function EventAssignmentsCard({
                                 </span>
                               </div>
 
+                              {/* A singer's voice type rides after the name when
+                                  the card is wide enough for both. In the narrow
+                                  column on a laptop it drops under the name
+                                  instead of cutting the name short. Decided by
+                                  the card's width rather than each row's, so
+                                  every row in it does the same. */}
                               <div className="min-w-0 flex-1">
-                                <p
-                                  className={cn(
-                                    "truncate text-sm font-semibold",
-                                    isDeclined &&
-                                      "text-muted-foreground line-through",
+                                <p className="flex min-w-0 items-baseline text-sm">
+                                  <span
+                                    className={cn(
+                                      "truncate font-semibold",
+                                      isDeclined &&
+                                        "text-muted-foreground line-through",
+                                    )}
+                                  >
+                                    {isCurrentUser
+                                      ? "You"
+                                      : `${assignment.user.firstName} ${assignment.user.lastName}`}
+                                  </span>
+                                  {voiceType && (
+                                    <span className="ml-1 hidden shrink-0 text-muted-foreground @min-[23rem]/team:inline">
+                                      · {voiceTypeLabel(voiceType)}
+                                    </span>
                                   )}
-                                >
-                                  {isCurrentUser
-                                    ? "You"
-                                    : `${assignment.user.firstName} ${assignment.user.lastName}`}
                                 </p>
-                                {isExpired && (
-                                  <p className="truncate text-xs text-muted-foreground">
-                                    Invite expired{" "}
-                                    {lapsedAgo(assignment.expiresAt, now)}
+                                {(voiceType || isExpired) && (
+                                  <p
+                                    className={cn(
+                                      "truncate text-xs text-muted-foreground",
+                                      !isExpired && "@min-[23rem]/team:hidden",
+                                    )}
+                                  >
+                                    {voiceType && (
+                                      <span className="@min-[23rem]/team:hidden">
+                                        {voiceTypeLabel(voiceType)}
+                                        {isExpired && " · "}
+                                      </span>
+                                    )}
+                                    {isExpired &&
+                                      `Invite expired ${lapsedAgo(assignment.expiresAt, now)}`}
                                   </p>
                                 )}
                               </div>
@@ -575,6 +610,7 @@ export function EventAssignmentsCard({
                             eventId={event.id}
                             role={group.role}
                             members={membersByRole[group.role] || []}
+                            voiceTypes={voiceTypes}
                             onEvent={onEvent}
                             eventDates={eventDates}
                             variant="row"

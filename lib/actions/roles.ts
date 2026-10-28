@@ -2,7 +2,8 @@
 
 import { currentUser } from "@/lib/services/user";
 import prisma from "@/lib/prisma";
-import { ActivityType, OrgRole, VolunteerRole } from "@/generated/prisma/enums";
+import { ActivityType, OrgRole, VolunteerRole, VoiceType } from "@/generated/prisma/enums";
+import { hasSingingRole, VOICE_TYPE_ORDER } from "@/lib/config/roles";
 import { revalidatePath, updateTag } from "next/cache";
 import { after } from "next/server";
 import { logActivity, orgRoleLabels } from "@/lib/activity";
@@ -318,6 +319,82 @@ export const updateVolunteerRoles = async (userId: string, organizationId: strin
     revalidatePath(`/dashboard/organizations/${organizationId}`);
     revalidatePath(`/dashboard/organizations/${organizationId}/members`);
     revalidatePath(`/dashboard/organizations/${organizationId}/keys`);
+
+    return { success: true };
+
+    } catch {
+        return { success: false, error: "Something went wrong, please try again."}
+    }
+
+};
+
+/**
+ * Sets a singer's voice type, or clears it with null. The same people may
+ * change it as may change their volunteer roles.
+ */
+export const updateVoiceType = async (userId: string, organizationId: string, voiceType: VoiceType | null, touch: TagInvalidator = updateTag): Promise<ActionResponse> => {
+
+    try {
+
+    if (!userId || !organizationId) return { success: false, error: "No data received" };
+
+    if (voiceType !== null && !VOICE_TYPE_ORDER.includes(voiceType)) return { success: false, error: "Invalid voice type" };
+
+    const user = await currentUser();
+
+    if (!user) return { success: false, error: "Unauthorized" };
+
+    const member = await prisma.membership.findUnique({
+        where: {
+            userId_organizationId: {
+                userId: user.id,
+                organizationId
+            }
+        },
+        select: {
+            role: true
+        }
+    });
+
+    if (!member) return { success: false, error: "Unable to find membership." };
+
+    if (member.role === OrgRole.MEMBER) return { success: false, error: "Unauthorized. Reach out to an administrator"}
+
+    const assignee = await prisma.membership.findUnique({
+        where: {
+            userId_organizationId: {
+                userId,
+                organizationId
+            }
+        },
+        select: {
+            role: true,
+            volunteerRoles: true
+        }
+    });
+
+    if (!assignee) return { success: false, error: "Unable to find membership for this user" };
+
+    if (member.role === OrgRole.ADMIN && assignee.role === OrgRole.OWNER) return { success: false, error: "Insufficient Permissions. Unable to change an owner's voice type." };
+
+    // The menu only offers it to a singer; clearing it is always allowed.
+    if (voiceType !== null && !hasSingingRole(assignee.volunteerRoles)) return { success: false, error: "Give them a role that sings first." };
+
+    await prisma.membership.update({
+        where: {
+            userId_organizationId: {
+                userId,
+                organizationId
+            }
+        },
+        data: {
+            voiceType
+        }
+    });
+    touch(`org-${organizationId}-members-list`);
+    touch(`user-${userId}-org-${organizationId}-role`);
+    revalidatePath(`/dashboard/organizations/${organizationId}`);
+    revalidatePath(`/dashboard/organizations/${organizationId}/members`);
 
     return { success: true };
 

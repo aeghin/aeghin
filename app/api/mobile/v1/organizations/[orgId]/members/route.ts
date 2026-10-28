@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 
 import prisma from "@/lib/prisma";
-import { type OrgRole, type VolunteerRole } from "@/generated/prisma/enums";
+import { type OrgRole, type VoiceType, type VolunteerRole } from "@/generated/prisma/enums";
+import { singingVoiceType } from "@/lib/config/roles";
 import { canManage, clerkIdOf, membershipFor } from "@/lib/mobile/route";
 
 
@@ -21,6 +22,8 @@ type OrganizationMember = {
     role: OrgRole;
     /** What they can be scheduled for — the event invite picker filters on it. */
     volunteerRoles: VolunteerRole[];
+    /** A singer's voice type: null unless they hold a role that sings and have one set. */
+    voiceType: VoiceType | null;
     joinedAt: string;
 };
 
@@ -68,6 +71,7 @@ export async function GET(
             select: {
                 role: true,
                 volunteerRoles: true,
+                voiceType: true,
                 createdAt: true,
                 user: {
                     select: {
@@ -92,7 +96,7 @@ export async function GET(
          */
         const seesContacts = canManage(viewer.role);
 
-        const members: OrganizationMember[] = memberships.map(({ role, volunteerRoles, createdAt, user }) => {
+        const members: OrganizationMember[] = memberships.map(({ role, volunteerRoles, voiceType, createdAt, user }) => {
             const visible = seesContacts || user.id === viewer.userId;
 
             return {
@@ -104,6 +108,7 @@ export async function GET(
                 imageUrl: user.userImageUrl,
                 role,
                 volunteerRoles,
+                voiceType: singingVoiceType(volunteerRoles, voiceType),
                 joinedAt: createdAt.toISOString(),
             };
         });

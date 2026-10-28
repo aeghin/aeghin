@@ -22,6 +22,7 @@ import { getEventMessages } from "@/lib/services/chat";
 import {
   getOrganizationTimeZone,
   getOrgMembersWithUser,
+  getOrgVoiceTypes,
   getUserMembershipRole,
 } from "@/lib/services/organization";
 import {
@@ -106,6 +107,9 @@ export default async function EventDetailPage({
 
   // Only managers can invite, so members never pay for the roster
   const members = canManage ? await getOrgMembersWithUser(orgId) : [];
+
+  // Everyone sees a singer's voice type beside their name on the Team card.
+  const voiceTypes = await getOrgVoiceTypes(orgId);
 
   const smartSchedulingActivity = canManage
     ? await getEventSmartSchedulingActivity(eventId, orgId)
@@ -288,6 +292,7 @@ export default async function EventDetailPage({
                 canManage={canManage}
                 canWithdraw={!!withdraw}
                 members={members}
+                voiceTypes={voiceTypes}
                 emailAllowance={emailAllowance}
                 smartSchedulingAvailable={smartSchedulingAvailable}
                 canUpgrade={membership.role === OrgRole.OWNER}

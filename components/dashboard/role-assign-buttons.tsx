@@ -17,10 +17,16 @@ import {
 
 import { Button } from "@/components/ui/button";
 
-import { MoreVertical, Shield, Users, Trash2, Settings2, Crown } from "lucide-react";
+import { MoreVertical, Shield, Users, Trash2, Settings2, Crown, MicVocal } from "lucide-react";
 
-import { OrgRole, VolunteerRole } from "@/generated/prisma/enums";
-import { ROLE_ORDER, volunteerRoleConfig } from "@/lib/config/roles";
+import { OrgRole, VolunteerRole, VoiceType } from "@/generated/prisma/enums";
+import {
+    ROLE_ORDER,
+    VOICE_TYPE_ORDER,
+    hasSingingRole,
+    voiceTypeLabel,
+    volunteerRoleConfig,
+} from "@/lib/config/roles";
 
 import { useOptimistic, useState, useTransition } from "react";
 
@@ -28,8 +34,10 @@ import { updateUserRole } from "@/lib/actions/roles";
 import { toast } from "sonner";
 import { ConfirmMemberDeleteModal } from "@/components/dashboard/confirm-member-delete-modal";
 import { ConfirmAssignOwnerModal } from "@/components/dashboard/confirm-assign-owner-modal";
-import { updateVolunteerRoles } from "@/lib/actions/roles";
+import { updateVolunteerRoles, updateVoiceType } from "@/lib/actions/roles";
 
+/** The Voice Type menu's "Not set": a radio item can't carry null. */
+const NO_VOICE_TYPE = "none";
 
 interface RoleAssignButtonsProps {
     userId: string;
@@ -37,13 +45,14 @@ interface RoleAssignButtonsProps {
     currentRole: OrgRole;
     memberName: string;
     currentVolunteerRoles: VolunteerRole[];
+    currentVoiceType: VoiceType | null;
     canManageMember: boolean;
     canRemoveMember: boolean;
     canManageVolunteerRoles: boolean;
     canAssignOwner: boolean;
 }
 
-export const RoleAssignButtons = ({ currentRole, userId, organizationId, memberName, currentVolunteerRoles, canManageMember, canRemoveMember, canManageVolunteerRoles, canAssignOwner }: RoleAssignButtonsProps) => {
+export const RoleAssignButtons = ({ currentRole, userId, organizationId, memberName, currentVolunteerRoles, currentVoiceType, canManageMember, canRemoveMember, canManageVolunteerRoles, canAssignOwner }: RoleAssignButtonsProps) => {
 
 
     const [isPending, startTransition] = useTransition();
@@ -60,6 +69,11 @@ export const RoleAssignButtons = ({ currentRole, userId, organizationId, memberN
 
     // The menu renders a checkbox per known role, so keep the lookup keyed.
     const optimisticRoleSet = new Set(optimisticRoles);
+
+    const [optimisticVoiceType, setOptimisticVoiceType] = useOptimistic<VoiceType | null, VoiceType | null>(
+        currentVoiceType,
+        (_current, voiceType) => voiceType
+    );
 
     const handleRoleChange = (role: string) => {
         const newRole = role as OrgRole;
@@ -99,6 +113,22 @@ export const RoleAssignButtons = ({ currentRole, userId, organizationId, memberN
                 toast.error(result.error, { position: "top-center" });
             } else {
                 toast.success("Successfully updated volunteer role", { position: "top-center" });
+            };
+        });
+    };
+
+    const handleVoiceTypeChange = (value: string) => {
+        const voiceType = value === NO_VOICE_TYPE ? null : (value as VoiceType);
+
+        startTransition(async () => {
+
+            setOptimisticVoiceType(voiceType);
+
+            const result = await updateVoiceType(userId, organizationId, voiceType);
+            if (!result.success) {
+                toast.error(result.error, { position: "top-center" });
+            } else {
+                toast.success("Successfully updated voice type", { position: "top-center" });
             };
         });
     };
@@ -176,6 +206,27 @@ export const RoleAssignButtons = ({ currentRole, userId, organizationId, memberN
                                 })}
                             </DropdownMenuSubContent>
                         </DropdownMenuSub>
+                        {/* Only a singer has one; it shows the moment a role that sings is ticked. */}
+                        {hasSingingRole(optimisticRoles) && (
+                            <DropdownMenuSub>
+                                <DropdownMenuSubTrigger disabled={isPending} className="cursor-pointer">
+                                    <MicVocal className="mr-2 h-4 w-4" />
+                                    Voice Type
+                                </DropdownMenuSubTrigger>
+                                <DropdownMenuSubContent className="w-44">
+                                    <DropdownMenuRadioGroup value={optimisticVoiceType ?? NO_VOICE_TYPE} onValueChange={handleVoiceTypeChange}>
+                                        <DropdownMenuRadioItem value={NO_VOICE_TYPE} disabled={isPending} className="cursor-pointer">
+                                            Not set
+                                        </DropdownMenuRadioItem>
+                                        {VOICE_TYPE_ORDER.map((voiceType) => (
+                                            <DropdownMenuRadioItem key={voiceType} value={voiceType} disabled={isPending} className="cursor-pointer">
+                                                {voiceTypeLabel(voiceType)}
+                                            </DropdownMenuRadioItem>
+                                        ))}
+                                    </DropdownMenuRadioGroup>
+                                </DropdownMenuSubContent>
+                            </DropdownMenuSub>
+                        )}
                     </>
                 )}
                 {canRemoveMember && <DropdownMenuSeparator />}

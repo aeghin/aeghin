@@ -2,9 +2,10 @@ import {
     assignOwnerRole,
     removeMember,
     updateUserRole,
+    updateVoiceType,
     updateVolunteerRoles,
 } from "@/lib/actions/roles";
-import { OrgRole, VolunteerRole } from "@/generated/prisma/enums";
+import { OrgRole, VoiceType, VolunteerRole } from "@/generated/prisma/enums";
 import {
     actionFailure,
     clerkIdOf,
@@ -25,6 +26,10 @@ const isOrgRole = (value: unknown): value is OrgRole =>
 const isVolunteerRole = (value: unknown): value is VolunteerRole =>
     typeof value === "string" && value in VolunteerRole;
 
+/** A voice type, or null to clear it. */
+const isVoiceTypeOrNull = (value: unknown): value is VoiceType | null =>
+    value === null || (typeof value === "string" && value in VoiceType);
+
 /**
  * PATCH /api/mobile/v1/organizations/[orgId]/members/[userId]
  *
@@ -35,6 +40,7 @@ const isVolunteerRole = (value: unknown): value is VolunteerRole =>
  * - `{ role: "OWNER" }` grants ownership — owners only.
  * - `{ toggleVolunteerRole: VolunteerRole }` adds the role if the member
  *   lacks it and removes it otherwise.
+ * - `{ voiceType: VoiceType | null }` sets a singer's voice type, or clears it.
  *
  * Every rule is the action's; this only picks which one to call.
  */
@@ -64,6 +70,12 @@ export const PATCH = route<Params>("PATCH .../members/[userId]", async (req, { p
         return json({ success: true });
     }
 
+    if ("voiceType" in body && isVoiceTypeOrNull(body.voiceType)) {
+        const result = await updateVoiceType(userId, orgId, body.voiceType, expireTag);
+        if (!result.success) return actionFailure(result.error);
+        return json({ success: true });
+    }
+
     if (isOrgRole(body.role)) {
         const result =
             body.role === OrgRole.OWNER
@@ -76,7 +88,7 @@ export const PATCH = route<Params>("PATCH .../members/[userId]", async (req, { p
         return json({ success: true, role: body.role });
     }
 
-    return fail(400, "Expected a role or a volunteer role to toggle.");
+    return fail(400, "Expected a role, a volunteer role to toggle, or a voice type.");
 });
 
 /**

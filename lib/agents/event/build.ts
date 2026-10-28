@@ -2,6 +2,7 @@ import "server-only";
 
 import { OrgRole } from "@/generated/prisma/enums";
 import { createEventDraftAgent, type AgentTeamLeads, type AgentViewer } from "@/lib/agents/event/agent";
+import { singingVoiceType } from "@/lib/config/roles";
 import { getOrgEventTemplates } from "@/lib/services/event-templates";
 import { getOrgMembersWithUser } from "@/lib/services/organization";
 import { getEligibilityByRole } from "@/lib/services/scheduling";
@@ -72,6 +73,7 @@ export async function buildEventDraftAgent({
       userId: m.userId,
       name: `${m.user.firstName} ${m.user.lastName}`,
       volunteerRoles: m.volunteerRoles,
+      voiceType: singingVoiceType(m.volunteerRoles, m.voiceType),
       manager: m.role !== OrgRole.MEMBER,
     })),
     teamLeads,

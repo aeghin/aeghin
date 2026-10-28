@@ -34,8 +34,8 @@ import {
 
 import { cn } from "@/lib/utils";
 import { colorClasses } from "@/lib/config/service-types-config";
-import { VolunteerRole } from "@/generated/prisma/enums";
-import { volunteerRoleConfig } from "@/lib/config/roles";
+import { VolunteerRole, type VoiceType } from "@/generated/prisma/enums";
+import { voiceTypeLabel, volunteerRoleConfig } from "@/lib/config/roles";
 import {
   checkMemberAvailability,
   inviteMembersToEvent,
@@ -71,6 +71,8 @@ interface InviteToEventDialogProps {
   role: VolunteerRole;
   /** Org members who hold this volunteer role */
   members: InviteMember[];
+  /** Each singer's voice type by user id, shown beside them when the role sings. */
+  voiceTypes: Record<string, VoiceType>;
   /**
    * Anyone still live on this event, by user id — one role per member, so
    * they can't be re-invited, and their row says which role they hold.
@@ -117,6 +119,7 @@ export function InviteToEventDialog({
   eventId,
   role,
   members,
+  voiceTypes,
   onEvent,
   eventDates,
   variant = "compact",
@@ -383,6 +386,9 @@ export function InviteToEventDialog({
                 const conflict = conflicts[member.userId];
                 const blockout = blockouts[member.userId];
                 const isBlocked = isOnEvent || !!blockout;
+                const voiceType = roleInfo.sings
+                  ? voiceTypes[member.userId]
+                  : undefined;
 
                 return (
                   <label
@@ -429,6 +435,11 @@ export function InviteToEventDialog({
                         <p className="truncate font-medium">
                           {capitalizeName(member.user.firstName)}{" "}
                           {capitalizeName(member.user.lastName)}
+                          {voiceType && (
+                            <span className="font-normal text-muted-foreground">
+                              {" "}· {voiceTypeLabel(voiceType)}
+                            </span>
+                          )}
                         </p>
                         <p className="truncate text-xs text-muted-foreground">
                           {member.user.email}

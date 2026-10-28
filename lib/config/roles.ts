@@ -1,5 +1,5 @@
 
-import { VolunteerRole, OrgRole, RoleCategory as Team } from "@/generated/prisma/enums";
+import { VolunteerRole, OrgRole, RoleCategory as Team, VoiceType } from "@/generated/prisma/enums";
 import { Crown, Shield, User } from "lucide-react";
 
 export type VolunteerRoleDefinition = {
@@ -76,6 +76,30 @@ export const rolesOfTeam = (team: Team): VolunteerRole[] =>
 /** Whether any of these roles sings — the gate for the key journal and song assignment. */
 export const hasSingingRole = (roles: VolunteerRole[]): boolean =>
   roles.some((role) => volunteerRoleConfig[role].sings);
+
+/**
+ * A singer's voice type, high to low, in the order pickers list them. Only
+ * shown for somebody holding a role that sings. Added the same way as a role:
+ * a value on the `VoiceType` enum, an entry here and a migration.
+ */
+export const voiceTypeConfig: Record<VoiceType, { label: string }> = {
+  [VoiceType.SOPRANO]: { label: "Soprano" },
+  [VoiceType.ALTO]: { label: "Alto" },
+  [VoiceType.TENOR]: { label: "Tenor" },
+  [VoiceType.BARITONE]: { label: "Baritone" },
+  [VoiceType.BASS]: { label: "Bass" },
+};
+
+/** Every voice type, in the order written above. */
+export const VOICE_TYPE_ORDER = Object.keys(voiceTypeConfig) as VoiceType[];
+
+export const voiceTypeLabel = (voiceType: VoiceType): string => voiceTypeConfig[voiceType].label;
+
+/** Their voice type when they hold a role that sings, else null: the only time it shows. */
+export const singingVoiceType = (
+  roles: VolunteerRole[],
+  voiceType: VoiceType | null,
+): VoiceType | null => (hasSingingRole(roles) ? voiceType : null);
 
 export const getRoleConfig = (role: OrgRole) => {
   switch (role) {

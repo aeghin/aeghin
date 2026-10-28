@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Mail, Phone, ChevronRight, CalendarDays, Search, SearchX, ArrowUpRight } from "lucide-react";
+import { Mail, Phone, ChevronRight, CalendarDays, Search, SearchX, ArrowUpRight, MicVocal } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 import { Badge } from "@/components/ui/badge";
@@ -24,8 +24,13 @@ import {
   HoverCardTrigger
 } from "@/components/ui/hover-card";
 
-import { OrgRole, VolunteerRole } from "@/generated/prisma/enums";
-import { getRoleConfig, volunteerRoleConfig } from "@/lib/config/roles";
+import { OrgRole, VolunteerRole, VoiceType } from "@/generated/prisma/enums";
+import {
+  getRoleConfig,
+  singingVoiceType,
+  voiceTypeLabel,
+  volunteerRoleConfig,
+} from "@/lib/config/roles";
 
 import { cn } from "@/lib/utils";
 import { formatDateInZone } from "@/lib/time-zone";
@@ -36,6 +41,7 @@ import { capitalizeName } from "@/lib/names";
 interface Members {
   organizationId: string
   volunteerRoles: VolunteerRole[]
+  voiceType: VoiceType | null
   role: OrgRole
   user: {
     id: string
@@ -138,6 +144,7 @@ export function MembersList({ members, currentUserId, viewerRole, timeZone }: Me
         const roleConfig = getRoleConfig(member.role)
         const RoleIcon = roleConfig.icon
         const volunteerRoles = member.volunteerRoles.map((role) => volunteerRoleConfig[role])
+        const voiceType = singingVoiceType(member.volunteerRoles, member.voiceType)
 
         const isSelf = member.user.id === currentUserId;
 
@@ -203,6 +210,15 @@ export function MembersList({ members, currentUserId, viewerRole, timeZone }: Me
                               {label}
                             </Badge>
                           ))}
+                          {voiceType && (
+                            <Badge
+                              variant="secondary"
+                              className="gap-1 bg-muted/50 text-[10px] font-normal"
+                            >
+                              <MicVocal aria-hidden className="h-3 w-3" />
+                              {voiceTypeLabel(voiceType)}
+                            </Badge>
+                          )}
                         </div>
                       </HoverCardContent>
                     </HoverCard>
@@ -254,6 +270,7 @@ export function MembersList({ members, currentUserId, viewerRole, timeZone }: Me
                   organizationId={member.organizationId}
                   memberName={member.user.firstName}
                   currentVolunteerRoles={member.volunteerRoles}
+                  currentVoiceType={member.voiceType}
                   canManageMember={canManageMember}
                   canRemoveMember={canRemoveMember}
                   canManageVolunteerRoles={canManageVolunteerRoles}

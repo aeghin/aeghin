@@ -15,6 +15,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { UserPlus, Check, Users } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 
@@ -27,8 +34,14 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 
-import { VolunteerRole } from "@/generated/prisma/enums";
-import { ROLE_ORDER, volunteerRoleConfig } from "@/lib/config/roles";
+import { VolunteerRole, VoiceType } from "@/generated/prisma/enums";
+import {
+  ROLE_ORDER,
+  VOICE_TYPE_ORDER,
+  hasSingingRole,
+  voiceTypeLabel,
+  volunteerRoleConfig,
+} from "@/lib/config/roles";
 
 import { inviteMember } from "@/lib/actions/invitation";
 import { PlanLimitReached } from "@/components/dashboard/plan-limit-reached";
@@ -50,6 +63,9 @@ interface InvitePersonModalProps {
   canUpgrade?: boolean
 };
 
+/** The Voice Type picker's "Not set": a Select item can't carry null. */
+const NO_VOICE_TYPE = "none";
+
 export function InvitePersonModal({
   open,
   onOpenChange,
@@ -69,6 +85,7 @@ export function InvitePersonModal({
     defaultValues: {
       email: "",
       volunteerRoles: [],
+      voiceType: null,
       orgId: organizationId,
     },
   });
@@ -77,6 +94,7 @@ export function InvitePersonModal({
 
   const volunteerRoles = form.watch("volunteerRoles");
   const volunteerRoleSet = new Set(volunteerRoles);
+  const sings = hasSingingRole(volunteerRoles);
 
   const toggleRole = (role: VolunteerRole) => {
     const current = form.getValues("volunteerRoles");
@@ -84,6 +102,9 @@ export function InvitePersonModal({
       ? current.filter((r) => r !== role)
       : [...current, role];
     form.setValue("volunteerRoles", updated, { shouldValidate: true });
+
+    // Nothing left that sings, so there's no voice type to send.
+    if (!hasSingingRole(updated)) form.setValue("voiceType", null);
   };
 
 
@@ -232,6 +253,43 @@ export function InvitePersonModal({
                   </FormItem>
                 )}
               />
+
+              {sings && (
+                <FormField
+                  control={form.control}
+                  name="voiceType"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Voice Type</FormLabel>
+                      <Select
+                        value={field.value ?? NO_VOICE_TYPE}
+                        onValueChange={(value) =>
+                          field.onChange(value === NO_VOICE_TYPE ? null : (value as VoiceType))
+                        }
+                        disabled={isPending}
+                      >
+                        <FormControl>
+                          <SelectTrigger className="w-full cursor-pointer">
+                            <SelectValue />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value={NO_VOICE_TYPE}>Not set</SelectItem>
+                          {VOICE_TYPE_ORDER.map((voiceType) => (
+                            <SelectItem key={voiceType} value={voiceType}>
+                              {voiceTypeLabel(voiceType)}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        Optional. You can change it later from Members.
+                      </p>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
             </div>
 
             {volunteerRoles.length > 0 && (

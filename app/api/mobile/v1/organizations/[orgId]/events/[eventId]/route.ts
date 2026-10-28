@@ -4,6 +4,8 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { SMART_SCHEDULING_ACTIVITY_TYPES } from "@/lib/services/activity";
 import { getAdjacentEvents } from "@/lib/services/events";
+import { getOrgVoiceTypes } from "@/lib/services/organization";
+import { volunteerRoleConfig } from "@/lib/config/roles";
 import {
     eventTeamLeads,
     getTeamNotificationSettings,
@@ -21,6 +23,7 @@ import {
     type ActivityType,
     type KeyQuality,
     type Pitch,
+    type VoiceType,
     type VolunteerRole,
 } from "@/generated/prisma/enums";
 import { parseRoleSpots, type RoleSpots } from "@/lib/role-spots";
@@ -61,6 +64,8 @@ type EventDetailsAssignment = {
         lastName: string;
         userImageUrl: string | null;
     };
+    /** Their voice type, on a role that sings; null otherwise or when none is set. */
+    voiceType: VoiceType | null;
     /** Who sent it. Null once they have left the organization. */
     invitedBy: {
         firstName: string;
@@ -453,6 +458,9 @@ export async function GET(
         // and best-effort: a failure here costs the arrows, never the event.
         const adjacentRead = getAdjacentEvents(eventId, orgId, membership.userId, canManage)
             .catch(() => ({ previous: null, next: null }));
+        // The same for the singers' voice types: a failure costs the labels.
+        const voiceTypesRead = getOrgVoiceTypes(orgId)
+            .catch((): Record<string, VoiceType> => ({}));
 
         const now = new Date();
 
@@ -555,6 +563,7 @@ export async function GET(
             LAST_CALL_DAYS[0];
 
         const adjacent = await adjacentRead;
+        const voiceTypes = await voiceTypesRead;
 
         const details: EventDetails = {
             id: event.id,
@@ -576,6 +585,9 @@ export async function GET(
             assignments: event.assignments.map(({ assignedBy, ...assignment }) => ({
                 ...assignment,
                 expiresAt: assignment.expiresAt.toISOString(),
+                voiceType: volunteerRoleConfig[assignment.role].sings
+                    ? (voiceTypes[assignment.userId] ?? null)
+                    : null,
                 invitedBy: assignedBy,
             })),
             setlist: event.setlistSongs.map((entry) => {
