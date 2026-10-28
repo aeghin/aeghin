@@ -58,6 +58,39 @@ function foldLatestPage(
   return [...kept.sort(byPosted), ...held.filter(isSending)];
 }
 
+/** A tab hidden this long drops its connection; showing it again reconnects. */
+const DISCONNECT_AFTER_MINUTES = 5;
+
+/**
+ * True once the tab has stayed hidden for `ms`, and false again the moment it
+ * shows, so a quick look at another tab doesn't count.
+ */
+function useHiddenFor(ms: number): boolean {
+  const [hidden, setHidden] = useState(false);
+
+  useEffect(() => {
+    let timer: number | undefined;
+    const update = () => {
+      window.clearTimeout(timer);
+      if (document.hidden) {
+        timer = window.setTimeout(() => setHidden(true), ms);
+      } else {
+        setHidden(false);
+      }
+    };
+
+    // A page opened in a background tab starts the clock straight away.
+    if (document.hidden) update();
+    document.addEventListener("visibilitychange", update);
+    return () => {
+      window.clearTimeout(timer);
+      document.removeEventListener("visibilitychange", update);
+    };
+  }, [ms]);
+
+  return hidden;
+}
+
 export function useEventChat(
   eventId: string,
   { initial, canPost, me }: UseEventChatOptions,
@@ -80,10 +113,16 @@ export function useEventChat(
     messagesRef.current = messages;
   }, [messages]);
 
-  // Next keeps a visited page mounted but hidden (Activity), which tears the
-  // subscription below down — so connecting a second time means this chat was
-  // away and missed whatever was posted meanwhile.
+  // Next keeps a visited page mounted but hidden (Activity), and a tab left in
+  // the background drops its connection (below). Either tears the subscription
+  // down — so connecting a second time means this chat was away and missed
+  // whatever was posted meanwhile.
   const connectedBefore = useRef(false);
+
+  // Ably renews its token every hour through the token route, which reads the
+  // database, so a tab forgotten in the background would wake it hourly and
+  // take up an Ably connection with nobody looking.
+  const longHidden = useHiddenFor(DISCONNECT_AFTER_MINUTES * 60_000);
 
   // Append with id-dedupe (covers our own echoed publish vs. optimistic temp).
   const upsert = useCallback((incoming: ChatMessage) => {
@@ -94,6 +133,8 @@ export function useEventChat(
   }, []);
 
   useEffect(() => {
+    if (longHidden) return;
+
     // Read before re-subscribing, so no live message can stand in for one that
     // was missed.
     const returning = connectedBefore.current;
@@ -102,7 +143,7 @@ export function useEventChat(
     let active = true;
 
     // Best-effort: if it fails, the chat stays exactly as it was.
-    const catchUp = async () => {
+    const catchUp = async (from: string | null) => {
       try {
         const res = await fetchLatestMessages(eventId);
         if (!active || !res.success) return;
@@ -110,8 +151,7 @@ export function useEventChat(
         const page = [...res.messages].reverse();
         // The page covers everything missed only if it reaches back to the
         // newest message held before.
-        const restart =
-          anchorId === null || !page.some((m) => m.id === anchorId);
+        const restart = from === null || !page.some((m) => m.id === from);
 
         setMessages((prev) => foldLatestPage(prev, page, restart));
         if (restart) {
@@ -176,6 +216,23 @@ export function useEventChat(
     };
     document.addEventListener("visibilitychange", onVisibility);
 
+    // Ably hands over what was posted while the connection was down only if
+    // it's back within 2 minutes; past that it reattaches without it
+    // (`resumed` is false). Each such attach fetches what was missed: the first
+    // from where the chat stood before subscribing (nothing on a first load,
+    // which the server just rendered), later ones from where it stands now.
+    // Anything posted after the attach arrives live, and the union in
+    // foldLatestPage absorbs the overlap.
+    let firstAttach = true;
+    const onAttach = (change: Ably.ChannelStateChange) => {
+      const first = firstAttach;
+      firstAttach = false;
+      if (change.resumed) return;
+      if (!first) void catchUp(newestSavedId(messagesRef.current));
+      else if (returning) void catchUp(anchorId);
+    };
+    channel.on(["attached", "update"], onAttach);
+
     // Enter presence only after WE attach the channel. enter() on an unattached
     // channel makes Ably fire an internal, un-catchable channel.attach()
     // (_enterOrUpdateClient) whose promise is discarded and rejects with
@@ -185,10 +242,6 @@ export function useEventChat(
     channel
       .attach()
       .then(async () => {
-        // After attach, so anything posted from here on arrives live and the
-        // union in foldLatestPage absorbs the overlap. Not awaited: presence
-        // shouldn't wait on it.
-        if (returning) void catchUp();
         if (canPost && !away) await enterPresence();
         // Viewers hold a subscribe-only token and never enter, so no presence
         // event of their own fires — seed the roster once on attach or their
@@ -203,6 +256,7 @@ export function useEventChat(
       // Remove listeners synchronously so no state updates fire post-unmount.
       channel.unsubscribe();
       channel.presence.unsubscribe();
+      channel.off(onAttach);
 
       // Close in any state: the in-flight attach/enter/leave promises reject
       // with "Connection closed" when we tear down mid-connect (StrictMode's
@@ -213,6 +267,7 @@ export function useEventChat(
       client.close();
     };
   }, [
+    longHidden,
     eventId,
     canPost,
     me.id,
