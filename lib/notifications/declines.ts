@@ -37,6 +37,7 @@ export async function notifyDeclineShortage({
   declinerName,
   backedOut,
   reason,
+  pushReason,
 }: {
   organizationId: string;
   organization: { name: string; logoUrl: string | null };
@@ -52,6 +53,8 @@ export async function notifyDeclineShortage({
   backedOut: boolean;
   /** Why nobody was invited in their place, worded per smart-fill outcome. */
   reason: string;
+  /** The same, short enough for a lock screen. */
+  pushReason: string;
 }): Promise<void> {
   try {
     // Which service's lead has it, whether somebody covers the team on this
@@ -147,7 +150,7 @@ export async function notifyDeclineShortage({
         // who's only copied in to go and fill it.
         title: headsUp ? `Heads-up: ${subject}` : subject,
         subtitle: organization.name,
-        body: `${declinerName} ${backedOut ? "can't make it anymore" : "declined"}. ${headsUp ?? reason}`,
+        body: `${declinerName} ${backedOut ? "can't make it anymore" : "declined"}. ${headsUp ?? pushReason}`,
         data: { type: "event", organizationId, eventId },
       })),
     );
@@ -234,9 +237,10 @@ export async function notifyReplacement({
     const when = formatEventWhen(event.dates);
     const label = kind === "invited" ? "replacement invited" : "replacement accepted";
 
+    // The role goes in the push's message, so the event fits in the title.
     const subject =
       kind === "invited"
-        ? `${roleLabel} replacement invited: ${event.name}`
+        ? `Replacement invited: ${event.name}`
         : `${roleLabel} filled: ${event.name}`;
 
     await sendEmailBatches(
@@ -266,7 +270,7 @@ export async function notifyReplacement({
 
     const happened =
       kind === "invited"
-        ? `${decliner?.name ?? "Somebody"} ${decliner?.backedOut ? "can't make it anymore" : "declined"}. Smart Scheduling invited ${replacementName} in their place.`
+        ? `${decliner?.name ?? "Somebody"} ${decliner?.backedOut ? "can't make it anymore" : "declined"}. Smart Scheduling invited ${replacementName} as ${roleLabel}.`
         : `${replacementName} accepted the invitation Smart Scheduling sent.`;
 
     await sendPushNotices(

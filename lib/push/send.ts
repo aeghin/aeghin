@@ -102,26 +102,29 @@ export async function sendPushNotices(
       where: {
         user: { email: { in: [...new Set(notices.map((notice) => notice.email))] } },
       },
-      select: { token: true, user: { select: { email: true } } },
+      select: { token: true, platform: true, user: { select: { email: true } } },
     });
 
     if (rows.length === 0) return;
 
-    const tokensByEmail = new Map<string, string[]>();
+    const tokensByEmail = new Map<string, { token: string; platform: string | null }[]>();
 
     for (const row of rows) {
       const tokens = tokensByEmail.get(row.user.email) ?? [];
-      tokens.push(row.token);
+      tokens.push({ token: row.token, platform: row.platform });
       tokensByEmail.set(row.user.email, tokens);
     }
 
     const messages = notices.flatMap((notice) =>
       (tokensByEmail.get(notice.email) ?? []).map(
-        (token): ExpoPushMessage => ({
+        ({ token, platform }): ExpoPushMessage => ({
           to: token,
           title: clip(notice.title, TITLE_LIMIT),
-          subtitle: notice.subtitle,
-          body: clip(notice.body, BODY_LIMIT),
+          // Android shows no subtitle, so the church name starts the message
+          // there. A phone that hasn't said which it is gets today's format.
+          ...(platform === "android" && notice.subtitle
+            ? { body: clip(`${notice.subtitle} · ${notice.body}`, BODY_LIMIT) }
+            : { subtitle: notice.subtitle, body: clip(notice.body, BODY_LIMIT) }),
           data: notice.data,
           ...(!notice.quiet && { sound: "default" }),
           // Chat has its own Android channel, so it can be silenced without

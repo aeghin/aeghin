@@ -1,4 +1,23 @@
 import type { PushNotice } from "@/lib/push/send";
+import { shortDeadline } from "@/lib/push/timing";
+
+/**
+ * When a Smart Scheduling pick's answer is due, as the invitation email's
+ * `answerBy` decides it. A deadline is never cut short for the event, so an
+ * event inside the window comes first.
+ */
+const answerBy = ({
+  expiresAt,
+  startsAt,
+  timeZone,
+}: {
+  expiresAt: Date;
+  startsAt: Date | null;
+  timeZone: string;
+}) =>
+  startsAt && startsAt.getTime() > Date.now() && startsAt < expiresAt
+    ? "Please answer before it starts."
+    : `Please answer by ${shortDeadline(expiresAt, timeZone)}.`;
 
 /**
  * The push that goes with every event invitation email — creating an event,
@@ -17,6 +36,7 @@ export const assignmentPush = ({
   when,
   kind,
   invitedByName,
+  deadline,
 }: {
   email: string;
   eventName: string;
@@ -29,23 +49,31 @@ export const assignmentPush = ({
   kind: "invite" | "resend" | "replacement";
   /** Full name of whoever sent it. Null once they're gone from the organization. */
   invitedByName: string | null;
+  /**
+   * A Smart Scheduling pick's answer window, on the clock it's read on. Its
+   * deadline is whatever was left of the declined invitation's, often too
+   * short for a reminder, so this push says when the answer is due.
+   */
+  deadline?: { expiresAt: Date; startsAt: Date | null; timeZone: string };
 }): PushNotice => {
   const details = [roleLabel, when].filter(Boolean).join(" · ");
 
-  const who =
-    kind === "replacement"
-      ? "A spot opened up. "
-      : !invitedByName
-        ? ""
-        : kind === "resend"
-          ? `${invitedByName} sent it again. `
-          : `${invitedByName} invited you. `;
+  const who = !invitedByName
+    ? ""
+    : kind === "resend"
+      ? `${invitedByName} sent it again. `
+      : `${invitedByName} invited you. `;
 
-  const ask = `${who}Tap to accept or decline.`;
+  // A pick is told it's needed, not that a spot is free: "a spot opened up"
+  // read as something to take or leave.
+  const ask =
+    kind === "replacement"
+      ? `You're needed to fill in. ${deadline ? answerBy(deadline) : "Tap to accept or decline."}`
+      : `${who}Tap to accept or decline.`;
 
   return {
     email,
-    title: `You're invited to serve: ${eventName}`,
+    title: `Can you serve at ${eventName}?`,
     subtitle: organizationName,
     body: details ? `${details}\n${ask}` : ask,
     data: { type: "invitation", organizationId, eventId },

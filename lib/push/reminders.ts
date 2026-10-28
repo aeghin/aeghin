@@ -335,10 +335,11 @@ export async function sendRehearsalReminders(now: Date): Promise<SendCount> {
         .filter(({ phoneZone }) => phoneZone)
         .map(({ row: { event, role, user }, rehearsal }) => ({
           email: user.email,
-          title: `Tomorrow: rehearsal for ${event.name}`,
+          // "Tomorrow" leads the message, leaving the title room for the name.
+          title: `Rehearsal: ${event.name}`,
           subtitle: event.organization.name,
           body: [
-            `Rehearsal ${rehearsal}`,
+            `Tomorrow · ${rehearsal}`,
             [volunteerRoleConfig[role].label, formatEventShort(event.dates)]
               .filter(Boolean)
               .join(" · "),

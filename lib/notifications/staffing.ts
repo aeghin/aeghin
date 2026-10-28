@@ -131,26 +131,26 @@ export function nameList(names: string[]): string {
 }
 
 /**
- * The email's subject and the push's title, naming who didn't answer so it
- * reads in the inbox and on the lock screen without opening anything.
+ * The email's subject and the push's title, worded like a decline or a
+ * departure. Who didn't answer goes in the message: after the event's name,
+ * a phone's lock screen always cut it off.
  */
 export function lapseSubject(lapsed: LapsedInvite[], eventName: string) {
   const roles = [...new Set(lapsed.map((item) => item.roleLabel))];
-  const who = nameList(lapsed.map((item) => item.inviteeName));
 
   // "Pianist needed", not "Needs a Pianist": half the role labels can't take
   // an "a" — Aux Keys, Usher, BGVs, Choir, Camera, Lighting.
   return roles.length === 1
-    ? `${roles[0]} needed: ${eventName} — ${who} didn't answer`
-    : `${roles.length} roles needed: ${eventName} — ${who} didn't answer`;
+    ? `${roles[0]} needed: ${eventName}`
+    : `${roles.length} roles needed: ${eventName}`;
 }
 
 /**
- * The push's body. The title already says who didn't answer, so this says when
- * the event is and what to do about it — or, when none of it is theirs, who has
- * been asked to.
+ * The push's body: who didn't answer and what to do about it — or, when none
+ * of it is theirs, who has been asked to — then when the event is.
  */
 export function lapseBody(lapsed: LapsedInvite[], when: string | null) {
+  const who = nameList(lapsed.map((item) => item.inviteeName));
   const headsUps = [...new Set(lapsed.map((item) => item.headsUp ?? null))];
 
   // Only when none of it is theirs: a heads-up on one line of several they
@@ -163,7 +163,7 @@ export function lapseBody(lapsed: LapsedInvite[], when: string | null) {
       ? headsUps[0]
       : "Others have been asked to fill them.";
 
-  return [when, next].filter(Boolean).join("\n");
+  return [`${who} didn't answer. ${next}`, when].filter(Boolean).join("\n");
 }
 
 /**

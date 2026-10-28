@@ -64,6 +64,7 @@ import { organizationSender } from "@/lib/email/organization";
 import { sendEmailBatches } from "@/lib/email/send";
 import { assignmentPush } from "@/lib/push/notices";
 import { sendPushNotices } from "@/lib/push/send";
+import { zonesByEmail } from "@/lib/push/timing";
 import { notifyDeclineShortage, notifyReplacement } from "@/lib/notifications/declines";
 import {
   notifyCoverChanges,
@@ -1038,9 +1039,10 @@ const refillOpenedSpot = async ({
    * team on this event, else the team's lead for the event's service type,
    * else the event's creator — and copies in whoever follows it.
    * Scheduled rather than awaited: the answer has committed and the
-   * volunteer is owed it now.
+   * volunteer is owed it now. The push gets the shorter reason: its title
+   * already says the spot is open, and the email has the whole of it.
    */
-  const notifyShortage = (reason: string) => {
+  const notifyShortage = (reason: string, pushReason: string) => {
     after(() =>
       notifyDeclineShortage({
         organizationId,
@@ -1054,6 +1056,7 @@ const refillOpenedSpot = async ({
         declinerName,
         backedOut,
         reason,
+        pushReason,
       }),
     );
   };
@@ -1079,6 +1082,9 @@ const refillOpenedSpot = async ({
       autoFillPaused
         ? "Smart Scheduling is paused because this organization's plan doesn't include it, so no replacement was invited."
         : "Smart Scheduling is off for this event, so no replacement was invited.",
+      autoFillPaused
+        ? "Smart Scheduling is paused on the current plan."
+        : "Smart Scheduling is off for this event.",
     );
 
     touch(`org-${organizationId}-activity`);
@@ -1162,8 +1168,14 @@ const refillOpenedSpot = async ({
         });
       });
 
-      after(() =>
-        sendPushNotices("declineEventInvitation replacement", [
+      after(async () => {
+        // The deadline on their phone's clock, like the answer reminders,
+        // else the church's.
+        const zones = await zonesByEmail([replacement.email]).catch(
+          () => new Map<string, string>(),
+        );
+
+        await sendPushNotices("declineEventInvitation replacement", [
           assignmentPush({
             email: replacement.email,
             eventName,
@@ -1174,9 +1186,16 @@ const refillOpenedSpot = async ({
             when: formatEventShort(assignment.event.dates),
             kind: "replacement",
             invitedByName: null,
+            deadline: {
+              expiresAt: replacementExpiry,
+              startsAt: eventStartAt(assignment.event.dates, assignment.organization.timeZone),
+              timeZone:
+                zones.get(replacement.email) ??
+                zoneOrFallback(assignment.organization.timeZone),
+            },
           }),
-        ]),
-      );
+        ]);
+      });
 
       // Whoever runs the team hears what Smart Scheduling did with the spot,
       // though nobody has to act on it.
@@ -1204,6 +1223,7 @@ const refillOpenedSpot = async ({
 
       notifyShortage(
         `Nobody in ${assignment.organization.name} has the ${roleLabel} role, so there was no one to invite.`,
+        `Nobody else has the ${roleLabel} role.`,
       );
     } else if (outcome.status === "ALL_UNAVAILABLE") {
       const breakdown = [
@@ -1226,6 +1246,7 @@ const refillOpenedSpot = async ({
 
       notifyShortage(
         `Everyone qualified is unavailable — ${breakdown.join(", ")}.`,
+        "Everyone qualified is unavailable.",
       );
     } else {
       await logActivity({
@@ -1240,6 +1261,7 @@ const refillOpenedSpot = async ({
 
       notifyShortage(
         "Smart Scheduling could not look for a replacement. The role needs filling by hand.",
+        "Smart Scheduling couldn't look for a replacement.",
       );
     }
   } catch {
@@ -1256,6 +1278,7 @@ const refillOpenedSpot = async ({
 
     notifyShortage(
       "Smart Scheduling hit an error looking for a replacement. The role needs filling by hand.",
+      "Smart Scheduling couldn't look for a replacement.",
     );
   }
 

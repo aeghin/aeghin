@@ -19,11 +19,7 @@ import {
   type Person,
 } from "@/lib/notifications/audience";
 import { directoriesFor } from "@/lib/notifications/directory";
-import {
-  LAST_CALL_DAYS,
-  NOTIFY_WINDOW_HOURS,
-  nameList,
-} from "@/lib/notifications/staffing";
+import { LAST_CALL_DAYS, NOTIFY_WINDOW_HOURS } from "@/lib/notifications/staffing";
 import { sendPushNotices, type PushNotice } from "@/lib/push/send";
 import { claimOnce } from "@/lib/push/staffing";
 import { parseRoleSpots, spotsFor } from "@/lib/role-spots";
@@ -31,6 +27,7 @@ import {
   daysBefore,
   inZone,
   isDue,
+  shortDeadline,
   wakingNext,
   wakingSameDay,
   wallClock,
@@ -161,15 +158,6 @@ function untilEvent(firstStart: Date, now: Date, clock: string): string {
 
   return `in ${days} days`;
 }
-
-/** "Sat 10:30 PM", for a push: which week it falls in is never in doubt. */
-const shortDeadline = (deadline: Date, timeZone: string) =>
-  deadline.toLocaleString("en-US", {
-    timeZone,
-    weekday: "short",
-    hour: "numeric",
-    minute: "2-digit",
-  });
 
 /**
  * "Sat, Oct 11, 10:30 PM CDT" on the reader's clock, for an email. The zone is
@@ -346,15 +334,17 @@ export async function sendAnswerReminders(now: Date): Promise<SendCount> {
         ? [
             {
               email: row.user.email,
-              title: `Still need your answer: ${row.event.name}`,
+              // The invitation's own question, so the two read as one
+              // conversation; what's new about this one leads the message.
+              title: `Can you serve at ${row.event.name}?`,
               subtitle: row.event.organization.name,
               body: [
+                eventFirst
+                  ? `Still need your answer. It's ${untilEvent(firstStart, now, phoneZone)}.`
+                  : `Still need your answer. Expires ${shortDeadline(row.expiresAt, phoneZone)}.`,
                 [volunteerRoleConfig[row.role].label, formatEventShort(row.event.dates)]
                   .filter(Boolean)
                   .join(" · "),
-                eventFirst
-                  ? `It's ${untilEvent(firstStart, now, phoneZone)}. Tap to accept or decline.`
-                  : `Expires ${shortDeadline(row.expiresAt, phoneZone)}. Tap to accept or decline.`,
               ].join("\n"),
               data: {
                 type: "invitation",
@@ -723,10 +713,16 @@ export async function sendNoAnswerAlerts(now: Date): Promise<SendCount> {
 
   const sending = [...buckets.values()];
 
+  // Who hasn't answered goes in the message: two names in the title pushed the
+  // event off a phone's lock screen.
   const subjectOf = (bucket: WaitingBucket) =>
-    `${bucket.owns ? "" : "Heads-up: "}No answer from ${nameList(
-      bucket.waiting.map((invite) => invite.inviteeName),
-    )}: ${bucket.eventName}`;
+    `${bucket.owns ? "" : "Heads-up: "}No answer yet: ${bucket.eventName}`;
+
+  /** "Dan Reyes (Pianist) hasn't answered." */
+  const whoOf = (bucket: WaitingBucket) =>
+    `${new Intl.ListFormat("en", { type: "conjunction" }).format(
+      bucket.waiting.map((invite) => `${invite.inviteeName} (${invite.roleLabel})`),
+    )} ${bucket.waiting.length === 1 ? "hasn't" : "haven't"} answered.`;
 
   const emails = sending.map((bucket) => {
     const when = formatEventWhen(bucket.dates);
@@ -760,7 +756,7 @@ export async function sendNoAnswerAlerts(now: Date): Promise<SendCount> {
         title: subjectOf(bucket),
         subtitle: bucket.organizationName,
         body: [
-          [...new Set(bucket.waiting.map((invite) => invite.roleLabel))].join(", "),
+          whoOf(bucket),
           `${waitingTiming(bucket, now, false)}.`,
           // Only when none of it is theirs: a heads-up on one of several they
           // own reads as though the whole push were somebody else's.
@@ -897,7 +893,7 @@ export async function sendClosedInviteNotices(now: Date): Promise<SendCount> {
         [volunteerRoleConfig[row.role].label, formatEventShort(row.event.dates)]
           .filter(Boolean)
           .join(" · "),
-        `It closed before you answered. If you can still make it, ask ${
+        `If you can still make it, ask ${
           row.assignedBy
             ? `${row.assignedBy.firstName} ${row.assignedBy.lastName}`
             : "an admin"

@@ -58,7 +58,7 @@ const pushInvitation = async (invitation: {
 
         await sendPushNotices("organization invitation", [{
             email: invitee.email,
-            title: `You've been invited to join ${invitation.organizationName}`,
+            title: `Join ${invitation.organizationName}?`,
             body: `${invitation.invitedByName} invited you${roles ? ` as ${roles}` : ""}. Tap to accept or decline.`,
             data: { type: "organization-invite", token: invitation.token },
         }]);

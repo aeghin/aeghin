@@ -785,6 +785,10 @@ model PushToken {
   // hours before" is for the person holding it. Null from builds that predate it.
   timeZone String?
 
+  // "ios" or "android". Android shows no subtitle, so the church name goes at
+  // the start of the message there instead. Null from builds that predate it.
+  platform String?
+
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 

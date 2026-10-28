@@ -52,7 +52,7 @@ export default function EventInviteReminderEmail({
   viewLink,
 }: EventInviteReminderEmailProps) {
   const invited = autoFilled
-    ? `a spot opened up on this event, and you're invited to serve as ${roleLabel}.`
+    ? `you're needed to fill in as ${roleLabel}.`
     : invitedByName
       ? `${invitedByName} invited you to serve as ${roleLabel}.`
       : `you're invited to serve as ${roleLabel}.`;

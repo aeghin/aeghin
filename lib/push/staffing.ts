@@ -246,9 +246,11 @@ export async function sendLastCalls(now: Date): Promise<SendCount> {
 
         return {
           email: addressee.person.email,
-          title: `Not fully staffed yet: ${event.name}`,
+          title: `Not fully staffed: ${event.name}`,
           subtitle: event.organization.name,
-          body: [formatEventShort(event.dates), missing.join(" · ")]
+          // What's open first: a collapsed Android notification shows only
+          // the first line.
+          body: [missing.join(" · "), formatEventShort(event.dates)]
             .filter(Boolean)
             .join("\n"),
           data: {

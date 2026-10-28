@@ -214,7 +214,7 @@ export async function notifyNewTeamWatcher({
         email: person.email,
         title: `Also notify: ${label} for ${serviceType.name}`,
         subtitle: organization.name,
-        body: `${addedByName} added you. When one of ${label}'s roles opens up, ${asked} is asked to fill it and you'll get a heads-up.`,
+        body: `${addedByName} added you. You'll get a heads-up when a ${label} spot opens up.`,
         data: { type: "organization", organizationId, tab: "all" },
       },
     ]);
@@ -326,7 +326,8 @@ export async function notifyFormerTeamLead({
         email: membership.user.email,
         title: `No longer ${label} lead: ${serviceType.name}`,
         subtitle: organization.name,
-        body: `${change}. You won't be asked to fill ${label}'s open spots anymore.${watching}`,
+        // The title says they're off it; what that means is in the email.
+        body: `${change}.${stillWatching ? " You'll still get heads-ups." : ""}`,
         data: { type: "organization", organizationId },
       },
     ]);
@@ -432,12 +433,13 @@ export async function notifyEventCovers({
 
     await sendPushNotices(
       "event team cover",
-      messages.map(({ person, labels }) => ({
+      messages.map(({ person, teams, labels }) => ({
         email: person.email,
-        title: `You're covering ${labels}`,
+        // The event in the title; what covering means stays in the email.
+        title: `Covering ${labels}: ${event.name}`,
         subtitle: organization.name,
         body: [
-          `${assignedByName} asked you to handle ${labels} for ${event.name}. You'll be asked to fill any spot that opens up on it.`,
+          `${assignedByName} asked you to handle ${teams.length > 1 ? "them" : "it"}.`,
           short,
         ]
           .filter(Boolean)
@@ -566,9 +568,11 @@ export async function notifyTeamsNeeded({
       const openRoles = open.map(({ role, count }) => spotLabel(role, count)).join(", ");
 
       // "New event for Band", not "Band needed": that's how a decline reads,
-      // and nothing has fallen through yet.
+      // and nothing has fallen through yet. The team, not its roles, when
+      // spots are added: the message lists the roles, and several pushed the
+      // event out of the title.
       const subject = added
-        ? `${openRoles} added: ${event.name}`
+        ? `${teamLabels} spots added: ${event.name}`
         : `New event for ${teamLabels}: ${event.name}`;
 
       return { person, reason, teamLabels, openRoles, subject };
@@ -848,15 +852,29 @@ export async function notifyCoverChanges({
               ? [`${list(back)} Back With You`, `${list(back)} back with you`]
               : [`No Longer Covering ${list(dropped)}`, `No longer covering ${list(dropped)}`];
 
+      // Shorter on a phone, where the longer two pushed the event's name off
+      // the lock screen.
+      const pushHeadline =
+        kinds > 1
+          ? "Teams changed"
+          : off.length === 0 && back.length === 0
+            ? `Not covering ${list(dropped)}`
+            : headline;
+
       const led = [...off, ...back];
 
       return {
         person,
         heading,
         headline,
+        pushHeadline,
         // The card under it names the event.
         message: [`${changedBy.name} ${what} for this event.`, ...effects(true)].join(" "),
-        pushBody: [`${changedBy.name} ${what}.`, ...effects(false)].join(" "),
+        // Several changes at once ran past four lines: just who did what.
+        pushBody:
+          kinds > 1
+            ? `${changedBy.name} ${what}.`
+            : [`${changedBy.name} ${what}.`, ...effects(false)].join(" "),
         teams: [
           ...off.map(handoffFor),
           ...back.map(({ team }) => ({ teamLabel: teamLabel(team), handler: "Back with you" })),
@@ -903,9 +921,9 @@ export async function notifyCoverChanges({
 
     await sendPushNotices("team cover change", [
       ...notices.map(
-        ({ person, headline, pushBody }): PushNotice => ({
+        ({ person, pushHeadline, pushBody }): PushNotice => ({
           email: person.email,
-          title: `${headline}: ${event.name}`,
+          title: `${pushHeadline}: ${event.name}`,
           subtitle: organizationName,
           body: [pushBody, short].filter(Boolean).join("\n"),
           data: { type: "event", organizationId, eventId },
@@ -914,7 +932,9 @@ export async function notifyCoverChanges({
       ...owners.map(
         (owner): PushNotice => ({
           email: owner.email,
-          title: `Heads-up: ${plural ? "team changes" : "team change"} for ${event.name}`,
+          // No "Heads-up:" on the phone: owners only ever get this one, so it
+          // tells nothing apart, and it pushed the event's name off.
+          title: `${plural ? "Team changes" : "Team change"}: ${event.name}`,
           subtitle: organizationName,
           body: [
             `${changedBy.name} changed who handles ${labels} for this event.`,

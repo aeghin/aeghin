@@ -38,8 +38,15 @@ const timeZoneFrom = (body: unknown): string | null => {
     }
 };
 
+/** "ios" or "android", or null for anything else. */
+const platformFrom = (body: unknown): string | null => {
+    const platform = isObject(body) ? body.platform : null;
+
+    return platform === "ios" || platform === "android" ? platform : null;
+};
+
 /**
- * POST /api/mobile/v1/push-tokens { token, timeZone? }
+ * POST /api/mobile/v1/push-tokens { token, timeZone?, platform? }
  *
  * Registers this phone for the caller's notifications. Upserted on the token,
  * so a phone somebody else was signed in on moves to the caller instead of
@@ -48,6 +55,10 @@ const timeZoneFrom = (body: unknown): string | null => {
  * `timeZone` is the phone's own zone, which is what times the day-before
  * reminder. Optional because older builds don't send it; a missing or unknown
  * one leaves whatever was stored before.
+ *
+ * `platform` decides where the church name goes: Android shows no subtitle,
+ * so it starts the message there. Optional the same way, and an Android phone
+ * that hasn't sent it keeps today's format.
  */
 export const POST = route<Record<string, never>>("POST /push-tokens", async (req) => {
     const clerkId = await clerkIdOf();
@@ -60,6 +71,7 @@ export const POST = route<Record<string, never>>("POST /push-tokens", async (req
     if (!token) return fail(400, "Invalid push token");
 
     const timeZone = timeZoneFrom(body);
+    const platform = platformFrom(body);
 
     const user = await prisma.user.findUnique({
         where: { clerkId },
@@ -70,8 +82,12 @@ export const POST = route<Record<string, never>>("POST /push-tokens", async (req
 
     await prisma.pushToken.upsert({
         where: { token },
-        update: { userId: user.id, timeZone: timeZone ?? undefined },
-        create: { token, userId: user.id, timeZone },
+        update: {
+            userId: user.id,
+            timeZone: timeZone ?? undefined,
+            platform: platform ?? undefined,
+        },
+        create: { token, userId: user.id, timeZone, platform },
     });
 
     return json({ success: true });

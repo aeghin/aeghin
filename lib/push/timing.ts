@@ -101,6 +101,15 @@ export function wakingNext(floating: Date): Date {
   return floating;
 }
 
+/** "Sat 10:30 PM", for a push: which week it falls in is never in doubt. */
+export const shortDeadline = (deadline: Date, timeZone: string) =>
+  deadline.toLocaleString("en-US", {
+    timeZone,
+    weekday: "short",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+
 /**
  * Whether a push planned for `sendAt` goes out on this tick: it has come due,
  * not so long ago that it's stale, and it's waking hours in `timeZone` right

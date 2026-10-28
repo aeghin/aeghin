@@ -78,7 +78,7 @@ export default function EventAssignmentEmail({
 }: EventAssignmentEmailProps) {
   const ask =
     kind === "replacement"
-      ? `a spot opened up on this event, and you're invited to serve as ${roleLabel}.`
+      ? `you're needed to fill in as ${roleLabel}.`
       : kind === "resend"
         ? invitedByName
           ? `${invitedByName} sent your ${roleLabel} invitation again.`
