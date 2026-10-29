@@ -14,6 +14,7 @@ import {
   Hourglass,
   ArrowLeftRight,
   CalendarCheck,
+  ListFilter,
   UserPlus,
   type LucideIcon,
 } from "lucide-react";
@@ -93,6 +94,7 @@ interface Event {
   rolesNeeded: string[];
   rehearsalStart?: Date | string | null;
   rehearsalEnd?: Date | string | null;
+  smartSchedulingEnabled: boolean;
   /** Only on All Events — see `getOrgEvents`. */
   roleMeter?: RoleMeter;
 }
@@ -198,6 +200,8 @@ interface MemberEventsDashboardProps {
   timeZone: string;
   /** Whose hints these are: each "Got it" is remembered per account. */
   userId: string;
+  /** Whether the plan runs Smart Scheduling — managers only, for All Events' mark. */
+  smartSchedulingAvailable: boolean;
 }
 
 // Motion only scale-corrects borderRadius when it's a number or a px string —
@@ -220,6 +224,7 @@ export function MemberEventsDashboard({
   canManage,
   timeZone,
   userId,
+  smartSchedulingAvailable,
 }: MemberEventsDashboardProps) {
   const [timeScope, setTimeScope] = useState<TimeScope>("upcoming");
   const [selectedServiceType, setSelectedServiceType] = useState<string | null>(
@@ -693,6 +698,12 @@ export function MemberEventsDashboard({
           >
             {filteredPendingEvents.length === 0 &&
             filteredExpiredEvents.length === 0 ? (
+              selectedServiceType ? (
+                <FilteredEmpty
+                  message="No invitations for this kind of service."
+                  onClear={() => setSelectedServiceType(null)}
+                />
+              ) : (
               <m.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -710,6 +721,7 @@ export function MemberEventsDashboard({
                   No invitations are waiting on you.
                 </p>
               </m.div>
+              )
             ) : (
               <div className="space-y-3">
                 {filteredPendingEvents.map((event, index) => (
@@ -782,6 +794,12 @@ export function MemberEventsDashboard({
               {groupedSchedule.length === 0 ? (
                 upNext ? null : (
                   <>
+                    {selectedServiceType ? (
+                      <FilteredEmpty
+                        message="No events of this kind in the period you're looking at."
+                        onClear={() => setSelectedServiceType(null)}
+                      />
+                    ) : (
                     <m.div
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
@@ -802,6 +820,7 @@ export function MemberEventsDashboard({
                             : "Check back later for new assignments"}
                       </p>
                     </m.div>
+                    )}
 
                     {startTip.show && (
                       <Tip
@@ -845,6 +864,11 @@ export function MemberEventsDashboard({
                           now={churchNow}
                           highlight={key === nextKey}
                           roleMeter={activeTab === "all" ? event.roleMeter : null}
+                          smartScheduling={
+                            activeTab === "all" &&
+                            smartSchedulingAvailable &&
+                            event.smartSchedulingEnabled
+                          }
                         />
                       </m.div>
                     ))}
@@ -855,6 +879,33 @@ export function MemberEventsDashboard({
         )}
       </AnimatePresence>
     </div>
+  );
+}
+
+// ─── Filtered Empty State ──────────────────────────────────────
+
+/**
+ * An empty list the service filter caused, as on the phone. "You're all caught
+ * up" would be false here: there can be invitations or events for the other
+ * services, so this says what's hiding them and offers the way back.
+ */
+function FilteredEmpty({ message, onClear }: { message: string; onClear: () => void }) {
+  return (
+    <m.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.1 }}
+      className="flex flex-col items-center justify-center rounded-xl border border-border bg-card px-6 py-16 text-center"
+    >
+      <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-secondary">
+        <ListFilter className="h-6 w-6 text-muted-foreground" />
+      </div>
+      <p className="text-sm font-medium text-foreground">Nothing here</p>
+      <p className="mt-1 text-xs text-muted-foreground">{message}</p>
+      <Button variant="outline" size="sm" className="mt-4 cursor-pointer" onClick={onClear}>
+        Show all services
+      </Button>
+    </m.div>
   );
 }
 

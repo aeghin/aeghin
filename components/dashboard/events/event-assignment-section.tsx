@@ -411,6 +411,13 @@ export function EventAssignmentsCard({
                   const isUnfilled = group.items.length === 0;
                   const { needed, accepted, open } = group.standing;
                   const openLabel = `${open} more needed`;
+                  // The server lets a role go only while nobody is live on it,
+                  // so the × shows only then, as the phone offers its swipe.
+                  const removable = !group.items.some(
+                    (a) =>
+                      a.status === InvitationStatus.ACCEPTED ||
+                      (a.status === InvitationStatus.PENDING && a.expiresAt > now),
+                  );
 
                   return (
                     <div key={group.role} className="group/role space-y-2">
@@ -445,11 +452,14 @@ export function EventAssignmentsCard({
                                 spots={{ needed, open }}
                               />
                             )}
-                            <EventRoleRemoveButton
-                              organizationId={event.organizationId}
-                              eventId={event.id}
-                              role={group.role}
-                            />
+                            {removable && (
+                              <EventRoleRemoveButton
+                                organizationId={event.organizationId}
+                                eventId={event.id}
+                                role={group.role}
+                                invites={group.items.map((a) => displayStatus(a, now))}
+                              />
+                            )}
                           </span>
                         )}
                       </div>
@@ -604,7 +614,16 @@ export function EventAssignmentsCard({
                               </span>
                               {canManage &&
                                 !(isCurrentUser && canWithdraw && assignment.status === InvitationStatus.ACCEPTED) && (
-                                  <EventVolunteerRowMenu assignedUserId={assignment.userId} eventId={assignment.eventId} organizationId={assignment.organizationId} isExpired={isExpired} isEnded={isDeclined} />
+                                  <EventVolunteerRowMenu
+                                    assignedUserId={assignment.userId}
+                                    eventId={assignment.eventId}
+                                    organizationId={assignment.organizationId}
+                                    isExpired={isExpired}
+                                    isEnded={isDeclined}
+                                    name={`${assignment.user.firstName} ${assignment.user.lastName}`}
+                                    roleLabel={roleInfo.label}
+                                    status={status}
+                                  />
                                 )}
                             </div>
                           );

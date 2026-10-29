@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { Calendar, ChevronRight, Clock, MapPin, type LucideIcon } from "lucide-react";
+import { Calendar, ChevronRight, Clock, MapPin, Zap, type LucideIcon } from "lucide-react";
 
 import { DateTile } from "@/components/dashboard/events/date-tile";
 import { StaffingMeter } from "@/components/dashboard/events/staffing-meter";
@@ -34,6 +34,8 @@ interface EventCardProps {
   highlight?: boolean;
   /** All Events only: where each role on the roster stands. */
   roleMeter?: RoleMeter | null;
+  /** All Events only: Smart Scheduling is on here and the plan runs it. */
+  smartScheduling?: boolean;
 }
 
 /**
@@ -51,6 +53,7 @@ export function EventCard({
   now,
   highlight,
   roleMeter,
+  smartScheduling,
 }: EventCardProps) {
   const colors = getServiceColors(service?.color ?? "indigo");
   const time = formatTimeOn(event.dates, day, now);
@@ -78,6 +81,7 @@ export function EventCard({
           </p>
           <div className="flex flex-wrap items-center gap-1.5 sm:shrink-0">
             <ServiceBadge service={service} />
+            {smartScheduling && <SmartSchedulingMark tint={colors.badgeText} />}
             {role && <RoleChip role={role} />}
           </div>
         </div>
@@ -133,6 +137,21 @@ export function RoleChip({ role }: { role: string }) {
     <span className="inline-flex shrink-0 items-center gap-1 py-0.5 text-xs font-medium text-muted-foreground">
       <span aria-hidden>{info.icon}</span>
       {info.label}
+    </span>
+  );
+}
+
+/**
+ * Smart Scheduling is on for this event — the managers' list only, as on the
+ * phone. The event page's filled bolt, in the service's colour, beside the
+ * service it belongs with, so a column of cards scans by shape rather than by
+ * reading a label on each.
+ */
+function SmartSchedulingMark({ tint }: { tint: string }) {
+  return (
+    <span title="Smart Scheduling on" className={cn("inline-flex shrink-0 items-center", tint)}>
+      <Zap aria-hidden className="size-3.5 fill-current" />
+      <span className="sr-only">Smart Scheduling on</span>
     </span>
   );
 }

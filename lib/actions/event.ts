@@ -2005,6 +2005,8 @@ export const setEventSmartScheduling = async (
     });
 
     touch(`event-${eventId}-org-${organizationId}-details`);
+    // All Events marks each card that has it on.
+    touch(`org-${organizationId}-events`);
     touch(`org-${organizationId}-activity`);
     touch(`event-${eventId}-org-${organizationId}-activity`);
 
