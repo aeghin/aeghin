@@ -415,8 +415,15 @@ export function SongLibrary({ songs, orgId, orgName, canManage, songLimit, canUp
           <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-muted">
             <Music className="h-5 w-5 text-muted-foreground" />
           </div>
-          <p className="text-sm font-medium">No songs match your filters</p>
-          <p className="text-xs text-muted-foreground">Try clearing filters or searching for something else.</p>
+          {/* Unfiltered, nothing can be hiding: the library is empty, as the phone says. */}
+          <p className="text-sm font-medium">
+            {hasActiveFilters ? "No songs match your filters" : "No songs yet"}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {hasActiveFilters
+              ? "Try clearing filters or searching for something else."
+              : "Songs added to the library show up here."}
+          </p>
           {hasActiveFilters && (
             <Button variant="outline" size="sm" onClick={clearFilters} className="mt-2">
               Clear filters

@@ -41,7 +41,7 @@ import { EmailTeamDialog } from "./email-team-dialog";
 import { AddEventRolesDialog } from "./add-event-roles-dialog";
 import { InviteToEventDialog, type EventPlace } from "./invite-to-event-dialog";
 import { TeamFillDialog, type FillableTeam } from "./team-fill-dialog";
-import { EventRoleRemoveButton } from "./event-role-remove-button";
+import { EventRoleRemoveButton, EventRoleRemoveTip } from "./event-role-remove-button";
 import { roleStanding } from "@/lib/role-spots";
 import { EventSmartSchedulingToggle } from "./event-smart-scheduling-toggle";
 import { DETAIL_CARD, DetailCardHeader } from "./event-detail-parts";
@@ -246,6 +246,11 @@ export function EventAssignmentsCard({
     })
     .filter((cat) => cat.roleGroups.length > 0);
 
+  // The remove hint sits under one role only: the first that nobody is on.
+  const tipRole = canManage
+    ? categories.flatMap((cat) => cat.roleGroups).find((g) => g.items.length === 0)?.role
+    : undefined;
+
   // Fill with AI: the viewer's teams that still have spots nobody has taken.
   // A team they only back up waits for its lead until the backup is needed:
   // a spot on it fell through, which is when they're emailed, or last call.
@@ -448,6 +453,12 @@ export function EventAssignmentsCard({
                           </span>
                         )}
                       </div>
+
+                      {/* Right under the line with the ×, pointing at the role's
+                          name. Inside the team, so folding it takes the hint too. */}
+                      {group.role === tipRole && (
+                        <EventRoleRemoveTip userId={currentUserId} />
+                      )}
 
                       {isUnfilled &&
                         (canManage ? (

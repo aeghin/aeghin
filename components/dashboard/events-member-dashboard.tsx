@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect, useTransition } from "react";
+import { Fragment, useState, useMemo, useEffect, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { m, AnimatePresence } from "motion/react";
 import {
@@ -12,9 +12,14 @@ import {
   CheckCircle2,
   ClockAlert,
   Hourglass,
+  ArrowLeftRight,
+  CalendarCheck,
+  UserPlus,
   type LucideIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Tip } from "@/components/tip";
+import { useTip } from "@/hooks/use-tip";
 import Link from "next/link";
 import { InvitationStatus } from "@/generated/prisma/enums";
 import { capitalizeName } from "@/lib/names";
@@ -191,6 +196,8 @@ interface MemberEventsDashboardProps {
   canManage: boolean;
   /** The organization's zone: what "today" is, against event times written in its wall clock. */
   timeZone: string;
+  /** Whose hints these are: each "Got it" is remembered per account. */
+  userId: string;
 }
 
 // Motion only scale-corrects borderRadius when it's a number or a px string —
@@ -212,6 +219,7 @@ export function MemberEventsDashboard({
   organizationId,
   canManage,
   timeZone,
+  userId,
 }: MemberEventsDashboardProps) {
   const [timeScope, setTimeScope] = useState<TimeScope>("upcoming");
   const [selectedServiceType, setSelectedServiceType] = useState<string | null>(
@@ -473,6 +481,27 @@ export function MemberEventsDashboard({
   const eventHref = (eventId: string) =>
     `/dashboard/organizations/${organizationId}/events/${eventId}`;
 
+  // ── Hints ───────────────────────────────────────────────────
+
+  // An organization with no events yet: people come first, since an event
+  // can only invite someone for a role they hold.
+  const startTip = useTip(
+    "getStarted",
+    userId,
+    canManage &&
+      activeTab !== "pending" &&
+      allEvents.length === 0 &&
+      groupedSchedule.length === 0 &&
+      !upNext,
+  );
+  // Managers can already open an invitation's event; everyone else waits on Accept.
+  const pendingTip = useTip(
+    "pendingInvite",
+    userId,
+    !canManage && activeTab === "pending" && filteredPendingEvents.length > 0,
+  );
+  const orderTip = useTip("orderServices", userId, serviceTypes.length > 1);
+
   // ── JSX ─────────────────────────────────────────────────────
 
   return (
@@ -635,6 +664,23 @@ export function MemberEventsDashboard({
         onSelect={setSelectedServiceType}
       />
 
+      {orderTip.show && (
+        <Tip
+          icon={ArrowLeftRight}
+          title="Put your services in order"
+          message={
+            <>
+              <span className="pointer-coarse:hidden">Drag a service to move it.</span>
+              <span className="hidden pointer-coarse:inline">
+                Hold a service, then drag it to move it.
+              </span>{" "}
+              Only you see your order.
+            </>
+          }
+          onDismiss={orderTip.dismiss}
+        />
+      )}
+
       {/* Content */}
       <AnimatePresence mode="wait">
         {activeTab === "pending" ? (
@@ -667,16 +713,25 @@ export function MemberEventsDashboard({
             ) : (
               <div className="space-y-3">
                 {filteredPendingEvents.map((event, index) => (
-                  <PendingEventCard
-                    key={event.id}
-                    event={event}
-                    organizationId={organizationId}
-                    index={index}
-                    isMounted={isMounted}
-                    getServiceType={getServiceType}
-                    canManage={canManage}
-                    now={now}
-                  />
+                  <Fragment key={event.id}>
+                    <PendingEventCard
+                      event={event}
+                      organizationId={organizationId}
+                      index={index}
+                      isMounted={isMounted}
+                      getServiceType={getServiceType}
+                      canManage={canManage}
+                      now={now}
+                    />
+                    {index === 0 && pendingTip.show && (
+                      <Tip
+                        icon={CalendarCheck}
+                        title="Accept to open the event"
+                        message="You'll see its team, setlist and chat once you accept."
+                        onDismiss={pendingTip.dismiss}
+                      />
+                    )}
+                  </Fragment>
                 ))}
 
                 {filteredExpiredEvents.length > 0 && (
@@ -726,26 +781,37 @@ export function MemberEventsDashboard({
 
               {groupedSchedule.length === 0 ? (
                 upNext ? null : (
-                  <m.div
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.1 }}
-                    className="flex flex-col items-center justify-center rounded-xl border border-border bg-card px-6 py-16 text-center"
-                  >
-                    <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-secondary">
-                      <Calendar className="h-6 w-6 text-muted-foreground" />
-                    </div>
-                    <p className="text-sm font-medium text-foreground">
-                      {activeTab === "all" ? "No events" : "No scheduled events"}
-                    </p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {timeScope === "past"
-                        ? "No past events found"
-                        : activeTab === "all"
-                          ? "No events in this period"
-                          : "Check back later for new assignments"}
-                    </p>
-                  </m.div>
+                  <>
+                    <m.div
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.1 }}
+                      className="flex flex-col items-center justify-center rounded-xl border border-border bg-card px-6 py-16 text-center"
+                    >
+                      <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-secondary">
+                        <Calendar className="h-6 w-6 text-muted-foreground" />
+                      </div>
+                      <p className="text-sm font-medium text-foreground">
+                        {activeTab === "all" ? "No events" : "No scheduled events"}
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {timeScope === "past"
+                          ? "No past events found"
+                          : activeTab === "all"
+                            ? "No events in this period"
+                            : "Check back later for new assignments"}
+                      </p>
+                    </m.div>
+
+                    {startTip.show && (
+                      <Tip
+                        icon={UserPlus}
+                        title="Invite people first"
+                        message="Invite people from Members and choose their volunteer roles. You can only invite someone to an event for a role they have."
+                        onDismiss={startTip.dismiss}
+                      />
+                    )}
+                  </>
                 )
               ) : (
                 // Every other period drops finished events, so the whole Past

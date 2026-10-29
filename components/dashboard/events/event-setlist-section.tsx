@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import { Music, ArrowUpRight, FileText, AudioLines } from "lucide-react";
 import { YoutubeIcon, SpotifyIcon } from "@/components/icons/brand-icons";
 import { Badge } from "@/components/ui/badge";
@@ -8,7 +9,7 @@ import { formatKey } from "@/lib/constants/key";
 import { InvitationStatus } from "@/generated/prisma/enums";
 import { volunteerRoleConfig } from "@/lib/config/roles";
 import { SongVocalistAssign } from "./song-vocalist-assign";
-import { SongKeyCard } from "./song-key-card";
+import { SongKeyCard, SongKeySaveTip } from "./song-key-card";
 import { versionLinks } from "@/lib/arrangements";
 import type { EventDetails, SetlistSong, SongKeyEntry } from "@/lib/types";
 
@@ -19,6 +20,8 @@ interface EventSetlistSectionProps {
   /** The caller sings on this event, so each row gets a ⋮ with its key card. */
   canSaveKeys: boolean
   myKeys: SongKeyEntry[]
+  /** Whose hint the ⋮'s is: its "Got it" is remembered per account. */
+  currentUserId: string
 }
 
 export function EventSetlistSection({
@@ -27,6 +30,7 @@ export function EventSetlistSection({
   canManage,
   canSaveKeys,
   myKeys,
+  currentUserId,
 }: EventSetlistSectionProps) {
   const serviceColor = event.serviceType.color;
 
@@ -134,12 +138,12 @@ export function EventSetlistSection({
               const showPeople = canManage || assigned.length > 0;
 
               return (
-                // Mobile: two grid rows — the title owns the first, every control
-                // sits on the second, and a singer's ⋮ gets a column of its own.
-                // From sm up the inner wrapper becomes `display: contents` and
-                // its children rejoin the flex row.
+                <Fragment key={song.id}>
+                {/* Mobile: two grid rows — the title owns the first, every control
+                    sits on the second, and a singer's ⋮ gets a column of its own.
+                    From sm up the inner wrapper becomes `display: contents` and
+                    its children rejoin the flex row. */}
                 <div
-                  key={song.id}
                   className={cn(
                     "group grid items-center gap-x-3 gap-y-2 rounded-lg px-3 py-2.5 transition-colors hover:bg-muted/50 sm:flex sm:gap-3",
                     canSaveKeys ? "grid-cols-[1.5rem_1fr_auto]" : "grid-cols-[1.5rem_1fr]",
@@ -260,6 +264,9 @@ export function EventSetlistSection({
                     </div>
                   )}
                 </div>
+
+                {idx === 0 && canSaveKeys && <SongKeySaveTip userId={currentUserId} />}
+                </Fragment>
               );
             })}
           </div>

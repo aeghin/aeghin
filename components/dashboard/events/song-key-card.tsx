@@ -6,12 +6,15 @@ import {
   BookmarkPlus,
   Loader2,
   MessageSquareText,
+  Mic2,
   MoreVertical,
   RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Tip } from "@/components/tip";
+import { useTip } from "@/hooks/use-tip";
 import { cn } from "@/lib/utils";
 import { formatKey } from "@/lib/constants/key";
 import { saveSongKey } from "@/lib/actions/song-key";
@@ -138,6 +141,36 @@ export function SongKeyCard({
         )}
       </PopoverContent>
     </Popover>
+  );
+}
+
+/** For a singer's first setlist: under the first song, pointing up at its ⋮. */
+export function SongKeySaveTip({ userId }: { userId: string }) {
+  const tip = useTip("saveKey", userId);
+
+  if (!tip.show) return null;
+
+  // Inset like the rows, so the arrow lands under the ⋮.
+  return (
+    <div className="px-2 pb-1">
+      <Tip
+        icon={Mic2}
+        title="Save the key you sing"
+        message={
+          // A mouse only brings the ⋮ out by pointing at the song.
+          <>
+            <span className="pointer-coarse:hidden">
+              Point at a song and open its ⋮ to keep its key in My keys.
+            </span>
+            <span className="hidden pointer-coarse:inline">
+              Open ⋮ on a song to keep its key in My keys.
+            </span>
+          </>
+        }
+        align="end"
+        onDismiss={tip.dismiss}
+      />
+    </div>
   );
 }
 

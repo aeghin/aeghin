@@ -20,6 +20,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { InfoTip } from "@/components/info-tip";
 import { cn } from "@/lib/utils";
 import { getServiceColors } from "@/lib/config/service-types-config";
 import { DETAIL_CARD, detailButtonClass, detailIconClass } from "./event-detail-parts";
@@ -208,9 +209,19 @@ export const SmartSchedulingActivity = ({
               )}
               {running ? "On" : enabled ? "Paused on this plan" : "Off"}
             </p>
-            <h2 className="text-[15px] leading-5 font-bold tracking-tight text-foreground">
-              Smart Scheduling
-            </h2>
+            <div className="flex items-center gap-1">
+              <h2 className="text-[15px] leading-5 font-bold tracking-tight text-foreground">
+                Smart Scheduling
+              </h2>
+              {/* The upgrade dialog's words: the toggle only says this on hover. */}
+              <InfoTip label="About Smart Scheduling">
+                Invites the next best available member when someone declines or drops
+                out, and warns whoever&apos;s in charge of the team 3 days and 1 day
+                before an event that still has open spots.
+                {enabled && !running &&
+                  " Smart Scheduling stays saved on this event and turns back on after you upgrade."}
+              </InfoTip>
+            </div>
           </div>
 
           {items.length > 0 && (

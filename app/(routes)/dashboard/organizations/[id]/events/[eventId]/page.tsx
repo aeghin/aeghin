@@ -256,6 +256,7 @@ export default async function EventDetailPage({
                 canManage={canManage}
                 canSaveKeys={isEventVocalist}
                 myKeys={myKeys}
+                currentUserId={user.id}
               />
             </div>
             <div className="order-4 lg:order-none">

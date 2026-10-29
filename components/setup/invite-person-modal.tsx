@@ -247,7 +247,8 @@ export function InvitePersonModal({
                       })}
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      Select one or more volunteer roles for this person.
+                      Select one or more volunteer roles for this person. You can
+                      invite them to events for these roles.
                     </p>
                     <FormMessage />
                   </FormItem>

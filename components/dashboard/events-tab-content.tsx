@@ -32,6 +32,7 @@ export const EventsTabContent = async ({
       organizationId={organizationId}
       canManage={canManage}
       timeZone={timeZone}
+      userId={userId}
     />
   );
 };

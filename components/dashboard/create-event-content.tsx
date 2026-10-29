@@ -1212,6 +1212,12 @@ export function CreateEventPageContent({
                                 </div>
                               </div>
                             )}
+                            {/* As on the phone: an empty dropdown beside a bare + says nothing. */}
+                            {!isCreatingNewType && optimisticServiceTypes.length === 0 && (
+                              <p className="text-xs text-muted-foreground">
+                                Every event needs a service type. Click + to make the first one.
+                              </p>
+                            )}
                             {errors.serviceTypeId && (
                               <p className="text-xs text-red-500">
                                 {errors.serviceTypeId.message}
