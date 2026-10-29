@@ -136,18 +136,18 @@ export const EventDeleteMenu = ({
             <DropdownMenuItem
               disabled={isPending}
               onClick={() => setWithdrawOpen(true)}
-              className="cursor-pointer text-destructive focus:text-destructive"
+              className="cursor-pointer"
             >
-              <Frown className="mr-2 h-4 w-4" />
+              <Frown className="mr-2 h-4 w-4 text-destructive" />
               Can&apos;t Make It?
             </DropdownMenuItem>
           )}
           {canManage && (
             <DropdownMenuItem
               onClick={() => setConfirmOpen(true)}
-              className="cursor-pointer text-destructive focus:text-destructive"
+              className="cursor-pointer"
             >
-              <Trash2 className="mr-2 h-4 w-4" />
+              <Trash2 className="mr-2 h-4 w-4 text-destructive" />
               Delete Event
             </DropdownMenuItem>
           )}

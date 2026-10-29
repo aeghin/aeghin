@@ -97,19 +97,19 @@ export const EventVolunteerRowMenu = ({ assignedUserId, eventId, organizationId,
               <RefreshCw className="mr-2 h-4 w-4" />
               Resend Invitation
             </DropdownMenuItem>
-            <DropdownMenuItem disabled={isPending} onClick={deleteInvite} className="cursor-pointer text-destructive focus:text-destructive">
-              <UserRoundMinus className="mr-2 h-4 w-4" />
+            <DropdownMenuItem disabled={isPending} onClick={deleteInvite} className="cursor-pointer">
+              <UserRoundMinus className="mr-2 h-4 w-4 text-destructive" />
               Remove Person
             </DropdownMenuItem>
           </>
         ) : isEnded ? (
-          <DropdownMenuItem disabled={isPending} onClick={deleteInvite} className="cursor-pointer text-destructive focus:text-destructive">
-            <UserRoundMinus className="mr-2 h-4 w-4" />
+          <DropdownMenuItem disabled={isPending} onClick={deleteInvite} className="cursor-pointer">
+            <UserRoundMinus className="mr-2 h-4 w-4 text-destructive" />
             Remove Person
           </DropdownMenuItem>
         ) : (
-          <DropdownMenuItem disabled={isPending} onClick={removeUserAssignment} className="cursor-pointer text-destructive focus:text-destructive">
-            <Trash2 className="mr-2 h-4 w-4" />
+          <DropdownMenuItem disabled={isPending} onClick={removeUserAssignment} className="cursor-pointer">
+            <Trash2 className="mr-2 h-4 w-4 text-destructive" />
             Remove From Event
           </DropdownMenuItem>
         )}

@@ -235,8 +235,8 @@ export const RoleAssignButtons = ({ currentRole, userId, organizationId, memberN
                         <DropdownMenuLabel className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                             Danger Zone
                         </DropdownMenuLabel>
-                        <DropdownMenuItem onClick={() => setRemoveMemberConfirm(true)} disabled={isPending} className="cursor-pointer text-destructive focus:text-destructive">
-                            <Trash2 className="mr-2 h-4 w-4" />
+                        <DropdownMenuItem onClick={() => setRemoveMemberConfirm(true)} disabled={isPending} className="cursor-pointer">
+                            <Trash2 className="mr-2 h-4 w-4 text-destructive" />
                             Remove Member
                         </DropdownMenuItem>
                     </>

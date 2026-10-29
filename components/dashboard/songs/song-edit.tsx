@@ -87,9 +87,8 @@ export const EditSongDetails = ({ song, orgId, storage }: EditSongDetailsProps) 
                             e.preventDefault();
                             setConfirmOpen(true);
                         }}
-                        className="text-destructive focus:text-destructive"
                     >
-                        <Trash2 className="h-4 w-4" />
+                        <Trash2 className="h-4 w-4 text-destructive" />
                         Delete song
                     </DropdownMenuItem>
                 </DropdownMenuContent>
