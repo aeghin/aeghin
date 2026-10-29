@@ -71,12 +71,8 @@ export function Footer() {
         </div>
 
         <p className="mt-6 text-xs text-muted-foreground/70 text-center md:text-left">
-          Android is a trademark of Google LLC. The Android robot is reproduced or modified from work created and shared by
-          Google and used according to terms described in the{" "}
-          <a href="https://creativecommons.org/licenses/by/3.0/" className="underline hover:text-foreground">
-            Creative Commons 3.0 Attribution License
-          </a>
-          .
+          Apple and the Apple logo are trademarks of Apple Inc., registered in the U.S. and other countries. App Store
+          is a service mark of Apple Inc. Google Play and the Google Play logo are trademarks of Google LLC.
         </p>
       </div>
     </footer>
