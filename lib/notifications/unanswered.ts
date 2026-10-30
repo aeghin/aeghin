@@ -419,8 +419,6 @@ type WaitingBucket = {
    */
   closesFirst: Date | null;
   waiting: WaitingInvite[];
-  /** Who has been told, once per wording, for the copied-in push: "Sam (Band lead) has been told." */
-  told: string[];
 };
 
 /**
@@ -536,8 +534,6 @@ export async function sendNoAnswerAlerts(now: Date): Promise<SendCount> {
     row: (typeof upcoming)[number];
     addressee: Addressee;
     headsUp: string | null;
-    /** The push's heads-up: nobody has been asked to fill an invitation still open. */
-    told: string | null;
     serviceTypeName: string | null;
     /** Whether the last call reaches this person about this event. */
     lastCalled: boolean;
@@ -578,7 +574,6 @@ export async function sendNoAnswerAlerts(now: Date): Promise<SendCount> {
         row,
         addressee,
         headsUp: null,
-        told: null,
         serviceTypeName,
         lastCalled: lastCalledIds.has(addressee.person.userId),
       });
@@ -588,8 +583,8 @@ export async function sendNoAnswerAlerts(now: Date): Promise<SendCount> {
       candidates.push({
         row,
         addressee,
-        headsUp: audience.headsUp,
-        told: audience.told,
+        // Told, not asked: nothing is open to fill while it's still waiting.
+        headsUp: audience.told,
         serviceTypeName,
         lastCalled: lastCalledIds.has(addressee.person.userId),
       });
@@ -672,7 +667,7 @@ export async function sendNoAnswerAlerts(now: Date): Promise<SendCount> {
   for (const item of planned) {
     if (!won.has(item.key)) continue;
 
-    const { row, addressee, headsUp, told, serviceTypeName, phoneZone, clock, firstStart, closesFirst } =
+    const { row, addressee, headsUp, serviceTypeName, phoneZone, clock, firstStart, closesFirst } =
       item;
     const { person, reason } = addressee;
     const footer = reasonLine(reason, row.organization.name, row.role, serviceTypeName);
@@ -701,14 +696,11 @@ export async function sendNoAnswerAlerts(now: Date): Promise<SendCount> {
         firstStart,
         closesFirst: closesFirst ? row.expiresAt : null,
         waiting: [invite],
-        told: told ? [told] : [],
       });
       continue;
     }
 
     existing.waiting.push(invite);
-
-    if (told && !existing.told.includes(told)) existing.told.push(told);
 
     if (
       closesFirst &&
@@ -761,27 +753,31 @@ export async function sendNoAnswerAlerts(now: Date): Promise<SendCount> {
 
   const pushes: PushNotice[] = sending
     .filter((bucket) => bucket.phoneZone)
-    .map((bucket) => ({
-      email: bucket.recipient.email,
-      title: subjectOf(bucket),
-      subtitle: bucket.organizationName,
-      body: [
-        whoOf(bucket),
-        `${waitingTiming(bucket, now, false)}.`,
-        // Only when none of it is theirs: a heads-up on one of several they
-        // own reads as though the whole push were somebody else's.
-        !bucket.owns &&
-          (bucket.told.length === 1 ? bucket.told[0] : "Others have been told."),
-        formatEventShort(bucket.dates),
-      ]
-        .filter(Boolean)
-        .join("\n"),
-      data: {
-        type: "event",
-        organizationId: bucket.organizationId,
-        eventId: bucket.eventId,
-      },
-    }));
+    .map((bucket) => {
+      const headsUps = [...new Set(bucket.waiting.map((invite) => invite.headsUp))];
+
+      return {
+        email: bucket.recipient.email,
+        title: subjectOf(bucket),
+        subtitle: bucket.organizationName,
+        body: [
+          whoOf(bucket),
+          `${waitingTiming(bucket, now, false)}.`,
+          // Only when none of it is theirs: a heads-up on one of several they
+          // own reads as though the whole push were somebody else's.
+          !bucket.owns &&
+            (headsUps.length === 1 ? headsUps[0] : "Others have been told."),
+          formatEventShort(bucket.dates),
+        ]
+          .filter(Boolean)
+          .join("\n"),
+        data: {
+          type: "event",
+          organizationId: bucket.organizationId,
+          eventId: bucket.eventId,
+        },
+      };
+    });
 
   await sendEmailBatches("no answer yet", emails);
   await sendPushNotices("no answer yet", pushes);
