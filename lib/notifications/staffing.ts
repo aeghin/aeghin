@@ -13,7 +13,6 @@ import {
 } from "@/lib/notifications/audience";
 import { directoriesFor } from "@/lib/notifications/directory";
 import {
-  isFullyStaffed,
   parseRoleSpots,
   roleStanding,
   rosterStandings,
@@ -52,6 +51,7 @@ export const LAST_CALL_DAYS = [3, 1];
 export const NOTIFY_WINDOW_HOURS = 6;
 
 type RosterAssignment = {
+  userId: string;
   role: VolunteerRole;
   status: InvitationStatus;
   expiresAt: Date;
@@ -59,10 +59,12 @@ type RosterAssignment = {
 };
 
 /**
- * What an event's roster still lacks: open spots — "BGVs ×2" when a role is
- * two short — and invitations still waiting on an answer. "Fully staffed" is
- * the bell's test: every spot has somebody who accepted, and nobody is still
- * deciding.
+ * What an event's roster still lacks, as told to `recipientId`: open spots —
+ * "BGVs ×2" when a role is two short — and invitations still waiting on an
+ * answer, other than their own, which their answer reminders already ask
+ * about. Nothing left means fully staffed, the bell's test (every spot has
+ * somebody who accepted, and nobody is still deciding), or short only of their
+ * own answer.
  */
 export function rosterGaps(
   event: {
@@ -71,6 +73,7 @@ export function rosterGaps(
     assignments: RosterAssignment[];
   },
   now: Date,
+  recipientId: string,
 ) {
   const standings = rosterStandings(
     event.rolesNeeded,
@@ -79,15 +82,20 @@ export function rosterGaps(
     now,
   );
 
+  const unfilledRoles = standings
+    .filter((standing) => standing.open > 0)
+    .map((standing) => spotLabel(standing.role, standing.open));
+
   const waiting = event.assignments.filter(
-    (row) => row.status === InvitationStatus.PENDING && row.expiresAt > now,
+    (row) =>
+      row.status === InvitationStatus.PENDING &&
+      row.expiresAt > now &&
+      row.userId !== recipientId,
   );
 
   return {
-    fullyStaffed: isFullyStaffed(standings) && waiting.length === 0,
-    unfilledRoles: standings
-      .filter((standing) => standing.open > 0)
-      .map((standing) => spotLabel(standing.role, standing.open)),
+    nothingLeft: unfilledRoles.length === 0 && waiting.length === 0,
+    unfilledRoles,
     waitingOn: waiting.map((row) => ({
       inviteeName: `${row.user.firstName} ${row.user.lastName}`,
       roleLabel: volunteerRoleConfig[row.role].label,
@@ -212,6 +220,7 @@ export async function lapseBuckets(
       organizationId: true,
       expiresAt: true,
       lapsedAt: true,
+      userId: true,
       user: { select: { firstName: true, lastName: true } },
       event: {
         select: {
@@ -320,7 +329,12 @@ export async function lapseBuckets(
       add(owner, row, null, directory.organizationName, serviceTypeName);
     }
 
+    // A heads-up about your own invitation tells you nothing "Invitation
+    // expired" hasn't. Whoever runs the team still hears about their own,
+    // since the spot is still theirs to fill.
     for (const copied of audience.copied) {
+      if (copied.person.userId === row.userId) continue;
+
       add(copied, row, audience.headsUp, directory.organizationName, serviceTypeName);
     }
   }

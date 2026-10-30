@@ -34,6 +34,7 @@ export async function notifyDeclineShortage({
   dates,
   role,
   inviterId,
+  declinerId,
   declinerName,
   backedOut,
   reason,
@@ -48,6 +49,7 @@ export async function notifyDeclineShortage({
   role: VolunteerRole;
   /** Who sent the declined invitation: copied in when somebody else is asked. */
   inviterId: string | null;
+  declinerId: string;
   declinerName: string;
   /** They had accepted and then said they can't make it. */
   backedOut: boolean;
@@ -102,12 +104,13 @@ export async function notifyDeclineShortage({
 
     const serviceTypeName = directory.serviceTypeNames.get(event.serviceTypeId);
 
+    // Somebody copied in who declined has just done it themselves, so there's
+    // no heads-up for them; an owner still hears, as above.
     const recipients = [
       ...audience.owners.map((addressee) => ({ ...addressee, headsUp: null })),
-      ...audience.copied.map((addressee) => ({
-        ...addressee,
-        headsUp: audience.headsUp,
-      })),
+      ...audience.copied
+        .filter(({ person }) => person.userId !== declinerId)
+        .map((addressee) => ({ ...addressee, headsUp: audience.headsUp })),
     ];
 
     if (recipients.length === 0) return;
@@ -175,7 +178,8 @@ export async function notifyDeclineShortage({
  * Nobody is asked to act, which is why this is separate from
  * `notifyDeclineShortage`. The replacement is left out even when they run the
  * team: they have their own invitation. The one who declined or backed out is
- * not — a lead who leaves their own team still owns filling it.
+ * not — a lead who leaves their own team still owns filling it — unless they
+ * were only copied in, and the decline that set this off was their own.
  *
  * Best effort: the answer has committed, so a failure is logged and never
  * becomes the caller's error.
@@ -197,7 +201,7 @@ export async function notifyReplacement({
   inviterId: string | null;
   replacement: { userId: string; firstName: string; lastName: string };
   /** Who declined. Only known on the decline itself. */
-  decliner: { name: string; backedOut: boolean } | null;
+  decliner: { userId: string; name: string; backedOut: boolean } | null;
 }): Promise<void> {
   try {
     const event = await prisma.event.findUnique({
@@ -229,9 +233,10 @@ export async function notifyReplacement({
       inviterId,
     });
 
-    const recipients = [...audience.owners, ...audience.copied].filter(
-      ({ person }) => person.userId !== replacement.userId,
-    );
+    const recipients = [
+      ...audience.owners,
+      ...audience.copied.filter(({ person }) => person.userId !== decliner?.userId),
+    ].filter(({ person }) => person.userId !== replacement.userId);
 
     if (recipients.length === 0) return;
 

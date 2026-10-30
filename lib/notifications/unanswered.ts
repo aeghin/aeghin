@@ -19,7 +19,11 @@ import {
   type Person,
 } from "@/lib/notifications/audience";
 import { directoriesFor } from "@/lib/notifications/directory";
-import { LAST_CALL_DAYS, NOTIFY_WINDOW_HOURS } from "@/lib/notifications/staffing";
+import {
+  LAST_CALL_DAYS,
+  NOTIFY_WINDOW_HOURS,
+  lapseBuckets,
+} from "@/lib/notifications/staffing";
 import { sendPushNotices, type PushNotice } from "@/lib/push/send";
 import { claimOnce } from "@/lib/push/staffing";
 import { parseRoleSpots, spotsFor } from "@/lib/role-spots";
@@ -450,8 +454,9 @@ function waitingTiming(bucket: WaitingBucket, now: Date, long: boolean): string 
  *
  * The same people hear as when it closes (`lapseBuckets`): whoever covers its
  * team on the event, else the team's lead, else the creator, else the owners,
- * with "Also notify" and whoever sent it copied in. One email and one push per
- * person per event, however many are waiting. Somebody else accepting the same
+ * with "Also notify" and whoever sent it copied in, leaving out the invitee
+ * themselves. One email and one push per person per event, however many are
+ * waiting. Somebody else accepting the same
  * role changes nothing — every invite is somebody wanted there — unless the
  * role already has as many yeses as it needs. And on a plan with the
  * last call, whoever that check already reaches on the same day — the event's
@@ -490,6 +495,7 @@ export async function sendNoAnswerAlerts(now: Date): Promise<SendCount> {
       expiresAt: true,
       assignedById: true,
       organizationId: true,
+      userId: true,
       user: { select: { firstName: true, lastName: true } },
       event: {
         select: {
@@ -569,7 +575,13 @@ export async function sendNoAnswerAlerts(now: Date): Promise<SendCount> {
     const serviceTypeName =
       directory.serviceTypeNames.get(row.event.serviceTypeId) ?? null;
 
+    // Never about their own invitation, whether they run the team or are
+    // copied in: their answer reminders already ask them.
+    const isInvitee = ({ person }: Addressee) => person.userId === row.userId;
+
     for (const addressee of audience.owners) {
+      if (isInvitee(addressee)) continue;
+
       candidates.push({
         row,
         addressee,
@@ -580,6 +592,8 @@ export async function sendNoAnswerAlerts(now: Date): Promise<SendCount> {
     }
 
     for (const addressee of audience.copied) {
+      if (isInvitee(addressee)) continue;
+
       candidates.push({
         row,
         addressee,
@@ -814,6 +828,7 @@ export async function sendClosedInviteNotices(now: Date): Promise<SendCount> {
       role: true,
       expiresAt: true,
       lapsedAt: true,
+      userId: true,
       user: { select: { email: true, firstName: true } },
       assignedBy: { select: { firstName: true, lastName: true } },
       event: {
@@ -841,9 +856,26 @@ export async function sendClosedInviteNotices(now: Date): Promise<SendCount> {
 
   if (recent.length === 0) return { pushes: 0, emails: 0 };
 
-  const zones = await zonesByEmail(recent.map((row) => row.user.email));
+  // Somebody who runs the team their own invitation was for hears "Pianist
+  // needed" about it instead, which asks them to fill the spot; "ask Sam to
+  // send it again" would be asking themselves. Read from the same buckets that
+  // alert is built from, so the two can't disagree about who got it.
+  const owned = new Set(
+    (await lapseBuckets({ id: { in: recent.map((row) => row.id) } }, now)).flatMap(
+      (bucket) =>
+        bucket.lapsed
+          .filter((lapse) => lapse.headsUp === null)
+          .map((lapse) => `${lapse.assignmentId}:${bucket.recipient.userId}`),
+    ),
+  );
 
-  const planned = recent.flatMap((row) => {
+  const notifying = recent.filter((row) => !owned.has(`${row.id}:${row.userId}`));
+
+  if (notifying.length === 0) return { pushes: 0, emails: 0 };
+
+  const zones = await zonesByEmail(notifying.map((row) => row.user.email));
+
+  const planned = notifying.flatMap((row) => {
     const phoneZone = zones.get(row.user.email);
     // Held for morning on their phone's clock, else the organization's.
     const clock = phoneZone ?? zoneOrFallback(row.event.organization.timeZone);

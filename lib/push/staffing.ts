@@ -130,6 +130,7 @@ export async function sendLastCalls(now: Date): Promise<SendCount> {
         organization: { select: { name: true, logoUrl: true, timeZone: true } },
         assignments: {
           select: {
+            userId: true,
             role: true,
             status: true,
             expiresAt: true,
@@ -208,9 +209,10 @@ export async function sendLastCalls(now: Date): Promise<SendCount> {
     const sending = planned.flatMap((item) => {
       if (!won.has(item.key)) return [];
 
-      const gaps = rosterGaps(item.event, now);
+      // Short only of their own answer is nothing to chase: their reminder asks.
+      const gaps = rosterGaps(item.event, now, item.addressee.person.userId);
 
-      return gaps.fullyStaffed ? [] : [{ ...item, ...gaps }];
+      return gaps.nothingLeft ? [] : [{ ...item, ...gaps }];
     });
 
     const emails = sending.map(({ addressee, event, unfilledRoles, waitingOn }) => {

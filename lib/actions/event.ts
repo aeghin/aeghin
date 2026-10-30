@@ -1053,6 +1053,7 @@ const refillOpenedSpot = async ({
         dates: assignment.event.dates,
         role: assignment.role,
         inviterId: assignment.assignedById,
+        declinerId: user.id,
         declinerName,
         backedOut,
         reason,
@@ -1207,7 +1208,7 @@ const refillOpenedSpot = async ({
           role: assignment.role,
           inviterId: assignment.assignedById,
           replacement,
-          decliner: { name: declinerName, backedOut },
+          decliner: { userId: user.id, name: declinerName, backedOut },
         }),
       );
     } else if (outcome.status === "NO_QUALIFIED_MEMBERS") {
