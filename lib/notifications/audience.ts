@@ -78,6 +78,11 @@ export type Audience = {
    * been asked to fill it."
    */
   headsUp: string;
+  /**
+   * For something nobody has to fill yet, like an invitation still waiting on
+   * an answer: "Sam (Band lead) has been told."
+   */
+  told: string;
 };
 
 /** What decides who owns an alert about one role. */
@@ -157,11 +162,11 @@ export function eventOwners(
   return { people: organizationOwners(directory), reason: "owner" };
 }
 
-/** "Sam (Band lead) has been asked to fill it." */
+/** "Sam (Band lead) has been asked to fill it.", or "… has been told." */
 function headsUpLine(
   owners: { people: Person[]; reason: OwnerReason },
   team: Team | null,
-  task: string,
+  done: string,
 ): string {
   const who = names.format(owners.people.map((person) => person.firstName));
   const plural = owners.people.length > 1;
@@ -177,7 +182,7 @@ function headsUpLine(
             : " (owner)"
           : "";
 
-  return `${who}${title} ${plural ? "have" : "has"} been asked to ${task}.`;
+  return `${who}${title} ${plural ? "have" : "has"} been ${done}.`;
 }
 
 /** Owners first, then the copied in the order given, each person once. */
@@ -202,7 +207,8 @@ function assemble(
   return {
     owners: owners.people.map((person) => ({ person, reason: owners.reason })),
     copied,
-    headsUp: headsUpLine(owners, team, task),
+    headsUp: headsUpLine(owners, team, `asked to ${task}`),
+    told: headsUpLine(owners, team, "told"),
   };
 }
 

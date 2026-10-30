@@ -150,7 +150,12 @@ export async function notifyDeclineShortage({
         // who's only copied in to go and fill it.
         title: headsUp ? `Heads-up: ${subject}` : subject,
         subtitle: organization.name,
-        body: `${declinerName} ${backedOut ? "can't make it anymore" : "declined"}. ${headsUp ?? pushReason}`,
+        body: [
+          `${declinerName} ${backedOut ? "can't make it anymore" : "declined"}. ${headsUp ?? pushReason}`,
+          formatEventShort(dates),
+        ]
+          .filter(Boolean)
+          .join("\n"),
         data: { type: "event", organizationId, eventId },
       })),
     );

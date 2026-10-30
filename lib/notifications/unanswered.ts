@@ -419,21 +419,27 @@ type WaitingBucket = {
    */
   closesFirst: Date | null;
   waiting: WaitingInvite[];
+  /** Who has been told, once per wording, for the copied-in push: "Sam (Band lead) has been told." */
+  told: string[];
 };
 
-/** "Expires Sat 10:30 PM", or "Sunday Service is in 3 days" when the event comes first. */
+/**
+ * "The invitation expires Sat, Oct 11, 10:30 PM CDT", or "Sunday Service is
+ * in 3 days" when the event comes first. The push's short form, "Expires Sat
+ * 10:30 PM" or "It's in 3 days", sits under a title that names the event.
+ */
 function waitingTiming(bucket: WaitingBucket, now: Date, long: boolean): string {
   if (!bucket.closesFirst) {
-    return `${bucket.eventName} is ${untilEvent(bucket.firstStart, now, bucket.clock)}`;
+    const until = untilEvent(bucket.firstStart, now, bucket.clock);
+
+    return long ? `${bucket.eventName} is ${until}` : `It's ${until}`;
   }
 
-  const deadline = long
-    ? longDeadline(bucket.closesFirst, bucket.clock)
-    : shortDeadline(bucket.closesFirst, bucket.clock);
+  const one = bucket.waiting.length === 1;
 
-  return bucket.waiting.length === 1
-    ? `The invitation expires ${deadline}`
-    : `The first expires ${deadline}`;
+  return long
+    ? `${one ? "The invitation" : "The first"} expires ${longDeadline(bucket.closesFirst, bucket.clock)}`
+    : `${one ? "Expires" : "First expires"} ${shortDeadline(bucket.closesFirst, bucket.clock)}`;
 }
 
 /**
@@ -530,6 +536,8 @@ export async function sendNoAnswerAlerts(now: Date): Promise<SendCount> {
     row: (typeof upcoming)[number];
     addressee: Addressee;
     headsUp: string | null;
+    /** The push's heads-up: nobody has been asked to fill an invitation still open. */
+    told: string | null;
     serviceTypeName: string | null;
     /** Whether the last call reaches this person about this event. */
     lastCalled: boolean;
@@ -570,6 +578,7 @@ export async function sendNoAnswerAlerts(now: Date): Promise<SendCount> {
         row,
         addressee,
         headsUp: null,
+        told: null,
         serviceTypeName,
         lastCalled: lastCalledIds.has(addressee.person.userId),
       });
@@ -580,6 +589,7 @@ export async function sendNoAnswerAlerts(now: Date): Promise<SendCount> {
         row,
         addressee,
         headsUp: audience.headsUp,
+        told: audience.told,
         serviceTypeName,
         lastCalled: lastCalledIds.has(addressee.person.userId),
       });
@@ -662,7 +672,7 @@ export async function sendNoAnswerAlerts(now: Date): Promise<SendCount> {
   for (const item of planned) {
     if (!won.has(item.key)) continue;
 
-    const { row, addressee, headsUp, serviceTypeName, phoneZone, clock, firstStart, closesFirst } =
+    const { row, addressee, headsUp, told, serviceTypeName, phoneZone, clock, firstStart, closesFirst } =
       item;
     const { person, reason } = addressee;
     const footer = reasonLine(reason, row.organization.name, row.role, serviceTypeName);
@@ -691,11 +701,14 @@ export async function sendNoAnswerAlerts(now: Date): Promise<SendCount> {
         firstStart,
         closesFirst: closesFirst ? row.expiresAt : null,
         waiting: [invite],
+        told: told ? [told] : [],
       });
       continue;
     }
 
     existing.waiting.push(invite);
+
+    if (told && !existing.told.includes(told)) existing.told.push(told);
 
     if (
       closesFirst &&
@@ -748,32 +761,27 @@ export async function sendNoAnswerAlerts(now: Date): Promise<SendCount> {
 
   const pushes: PushNotice[] = sending
     .filter((bucket) => bucket.phoneZone)
-    .map((bucket) => {
-      const headsUps = [...new Set(bucket.waiting.map((invite) => invite.headsUp))];
-
-      return {
-        email: bucket.recipient.email,
-        title: subjectOf(bucket),
-        subtitle: bucket.organizationName,
-        body: [
-          whoOf(bucket),
-          `${waitingTiming(bucket, now, false)}.`,
-          // Only when none of it is theirs: a heads-up on one of several they
-          // own reads as though the whole push were somebody else's.
-          !bucket.owns &&
-            (headsUps.length === 1
-              ? headsUps[0]
-              : "Others have been asked to fill them."),
-        ]
-          .filter(Boolean)
-          .join("\n"),
-        data: {
-          type: "event",
-          organizationId: bucket.organizationId,
-          eventId: bucket.eventId,
-        },
-      };
-    });
+    .map((bucket) => ({
+      email: bucket.recipient.email,
+      title: subjectOf(bucket),
+      subtitle: bucket.organizationName,
+      body: [
+        whoOf(bucket),
+        `${waitingTiming(bucket, now, false)}.`,
+        // Only when none of it is theirs: a heads-up on one of several they
+        // own reads as though the whole push were somebody else's.
+        !bucket.owns &&
+          (bucket.told.length === 1 ? bucket.told[0] : "Others have been told."),
+        formatEventShort(bucket.dates),
+      ]
+        .filter(Boolean)
+        .join("\n"),
+      data: {
+        type: "event",
+        organizationId: bucket.organizationId,
+        eventId: bucket.eventId,
+      },
+    }));
 
   await sendEmailBatches("no answer yet", emails);
   await sendPushNotices("no answer yet", pushes);

@@ -58,24 +58,26 @@ export const assignmentPush = ({
 }): PushNotice => {
   const details = [roleLabel, when].filter(Boolean).join(" · ");
 
+  // The title asks, and tapping is how it's answered, so the message doesn't
+  // say "Tap to accept or decline" unless there's nothing else to say.
   const who = !invitedByName
-    ? ""
+    ? null
     : kind === "resend"
-      ? `${invitedByName} sent it again. `
-      : `${invitedByName} invited you. `;
+      ? `${invitedByName} sent it again.`
+      : `${invitedByName} invited you.`;
 
   // A pick is told it's needed, not that a spot is free: "a spot opened up"
   // read as something to take or leave.
   const ask =
     kind === "replacement"
-      ? `You're needed to fill in. ${deadline ? answerBy(deadline) : "Tap to accept or decline."}`
-      : `${who}Tap to accept or decline.`;
+      ? `You're needed to fill in.${deadline ? ` ${answerBy(deadline)}` : ""}`
+      : who;
 
   return {
     email,
     title: `Can you serve at ${eventName}?`,
     subtitle: organizationName,
-    body: details ? `${details}\n${ask}` : ask,
+    body: [details, ask].filter(Boolean).join("\n") || "Tap to accept or decline.",
     data: { type: "invitation", organizationId, eventId },
   };
 };

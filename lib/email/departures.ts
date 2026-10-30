@@ -6,7 +6,7 @@ import { teamOfRole, volunteerRoleConfig } from "@/lib/config/roles";
 import EventDepartureEmail, {
   type VacatedSpot,
 } from "@/components/email/event-departure-template";
-import { formatEventWhen } from "@/lib/email/event-when";
+import { formatEventShort, formatEventWhen } from "@/lib/email/event-when";
 import { organizationSender } from "@/lib/email/organization";
 import { sendEmailBatches } from "@/lib/email/send";
 import {
@@ -266,7 +266,12 @@ export async function notifyDeparture({
         subtitle: organizationName,
         body:
           vacated.length === 1
-            ? `${happened}. ${vacated[0].headsUp ?? "Their spot needs filling."}`
+            ? [
+                `${happened}. ${vacated[0].headsUp ?? "Their spot needs filling."}`,
+                formatEventShort(eventById.get(eventIds[0])?.dates ?? []),
+              ]
+                .filter(Boolean)
+                .join("\n")
             : `${happened}, leaving ${vacated.length} upcoming events short.${owns ? "" : " Others have been asked to fill them."}`,
         // Several events open on All, where each one's staffing shows: they
         // may not be on the manager's own schedule.
