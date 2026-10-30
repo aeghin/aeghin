@@ -138,6 +138,9 @@ const initials = (name: string) =>
     .map((part) => part[0]?.toUpperCase())
     .join("");
 
+/** "Leo Check and Mia Check", for who's told when the event is created. */
+const names = new Intl.ListFormat("en", { type: "conjunction" });
+
 interface AiEventPanelProps {
   orgId: string;
   /** Whether the org has a service type to file an event under. With none the
@@ -433,7 +436,7 @@ function DraftCard({
     spots: draft.roleSpots?.[role] ?? 1,
   }));
 
-  // Roles by team, each with whoever picks its people. Drafts from before
+  // Roles by team, each with whoever's in charge of it. Drafts from before
   // teams carry none, which makes every team the drafter's.
   const groups = (
     draft.teams?.length
@@ -450,6 +453,9 @@ function DraftCard({
       roles: byRole.filter(({ role }) => teamOfRole(role) === team.team),
     }))
     .filter((team) => team.roles.length > 0);
+
+  // Whoever's in charge of a team the drafter isn't hears about it on Create.
+  const told = [...new Set(groups.filter((team) => !team.you).map((team) => team.name))];
 
   function toggleRemoved(userId: string) {
     setRemoved((prev) => {
@@ -593,64 +599,57 @@ function DraftCard({
                   {teamLabel(team)}
                 </span>
                 <span className="truncate text-[11px] text-muted-foreground">
-                  {you ? (cover ? "You, covering" : "You") : `${name} picks`}
+                  {you
+                    ? cover
+                      ? "You, covering"
+                      : "You"
+                    : cover
+                      ? `${name}, covering`
+                      : `${name} leads`}
                 </span>
               </div>
 
-              {you ? (
-                roles.map(({ role, people, spots }) => (
-                  <div key={role} className="flex flex-col">
-                    <div className="flex items-center gap-1.5 text-xs font-medium">
-                      <span aria-hidden>{volunteerRoleConfig[role].icon}</span>
-                      {volunteerRoleConfig[role].label}
-                      {spots > 1 && (
-                        <span className="font-normal text-muted-foreground">×{spots}</span>
-                      )}
-                      {people.length < spots && (
-                        <Badge variant="secondary" className="ml-auto">
-                          {spots - people.length} open
-                        </Badge>
-                      )}
-                    </div>
-                    {people.map((p) => (
-                      <Item key={p.userId} size="sm" className="gap-2.5 px-0 py-1.5">
-                        <ItemMedia>
-                          <Avatar size="sm">
-                            <AvatarFallback>{initials(p.name)}</AvatarFallback>
-                          </Avatar>
-                        </ItemMedia>
-                        <ItemContent className="min-w-0 gap-0.5">
-                          <ItemTitle className="text-xs">{p.name}</ItemTitle>
-                          <ItemDescription className="text-[11px]">{p.reason}</ItemDescription>
-                        </ItemContent>
-                        <ItemActions>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon-xs"
-                            disabled={locked}
-                            onClick={() => toggleRemoved(p.userId)}
-                            aria-label={`Remove ${p.name}`}
-                          >
-                            <X />
-                          </Button>
-                        </ItemActions>
-                      </Item>
-                    ))}
+              {roles.map(({ role, people, spots }) => (
+                <div key={role} className="flex flex-col">
+                  <div className="flex items-center gap-1.5 text-xs font-medium">
+                    <span aria-hidden>{volunteerRoleConfig[role].icon}</span>
+                    {volunteerRoleConfig[role].label}
+                    {spots > 1 && (
+                      <span className="font-normal text-muted-foreground">×{spots}</span>
+                    )}
+                    {people.length < spots && (
+                      <Badge variant="secondary" className="ml-auto">
+                        {spots - people.length} open
+                      </Badge>
+                    )}
                   </div>
-                ))
-              ) : (
-                // Somebody else's team: its spots wait for them, and they're told.
-                <p className="text-xs text-muted-foreground">
-                  {roles
-                    .map(({ role, spots }) =>
-                      spots > 1
-                        ? `${volunteerRoleConfig[role].label} ×${spots}`
-                        : volunteerRoleConfig[role].label,
-                    )
-                    .join(", ")}
-                </p>
-              )}
+                  {people.map((p) => (
+                    <Item key={p.userId} size="sm" className="gap-2.5 px-0 py-1.5">
+                      <ItemMedia>
+                        <Avatar size="sm">
+                          <AvatarFallback>{initials(p.name)}</AvatarFallback>
+                        </Avatar>
+                      </ItemMedia>
+                      <ItemContent className="min-w-0 gap-0.5">
+                        <ItemTitle className="text-xs">{p.name}</ItemTitle>
+                        <ItemDescription className="text-[11px]">{p.reason}</ItemDescription>
+                      </ItemContent>
+                      <ItemActions>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-xs"
+                          disabled={locked}
+                          onClick={() => toggleRemoved(p.userId)}
+                          aria-label={`Remove ${p.name}`}
+                        >
+                          <X />
+                        </Button>
+                      </ItemActions>
+                    </Item>
+                  ))}
+                </div>
+              ))}
             </div>
           ))}
         </div>
@@ -706,10 +705,13 @@ function DraftCard({
           )}
         </Button>
 
-        {!created && kept.length > 0 && (
+        {!created && (kept.length > 0 || told.length > 0) && (
           <p className="text-center text-[11px] text-muted-foreground">
-            Sends {kept.length === 1 ? "an invite" : "invites"} by email
-            immediately
+            {kept.length > 0
+              ? `Sends ${kept.length === 1 ? "an invite" : "invites"} by email immediately${
+                  told.length > 0 ? ` and lets ${names.format(told)} know` : ""
+                }`
+              : `Lets ${names.format(told)} know`}
           </p>
         )}
 

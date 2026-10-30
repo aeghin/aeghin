@@ -24,8 +24,12 @@ interface EventTeamNeededEmailProps {
   eventTime: string | null;
   /** The teams they handle on this event, e.g. "Band" or "Band and Vocals". */
   teamLabels: string;
-  /** The spots still open on them, e.g. "Drummer, BGVs ×2". */
+  /** The spots still open on them, e.g. "Drummer, BGVs ×2". Empty when every one was filled. */
   openRoles: string;
+  /** Who the creator invited into their teams, each with their role. Empty for roles added later. */
+  invited: { name: string; role: string }[];
+  /** The teams those invitations are on, e.g. "Band". */
+  invitedTeams: string;
   actorName: string;
   /** Roles added to an event that already existed, rather than a new event. */
   added: boolean;
@@ -43,12 +47,15 @@ export default function EventTeamNeededEmail({
   eventTime,
   teamLabels,
   openRoles,
+  invited,
+  invitedTeams,
   actorName,
   added,
   viewLink,
   footer,
 }: EventTeamNeededEmailProps) {
   const heading = added ? `${openRoles} Added` : `New Event for ${teamLabels}`;
+  const who = invited.length === 1 ? invited[0].name : `${invited.length} people`;
 
   return (
     <Tailwind>
@@ -57,7 +64,9 @@ export default function EventTeamNeededEmail({
         <Preview>
           {added
             ? `${openRoles} added to ${eventName}`
-            : `${eventName} needs ${teamLabels}`}
+            : invited.length > 0
+              ? `${actorName} invited ${who} to ${invitedTeams} for ${eventName}`
+              : `${eventName} needs ${teamLabels}`}
         </Preview>
         <Body className="bg-gray-100 font-sans">
           <Container className="mx-auto my-10 max-w-120 rounded-2xl bg-white shadow-sm overflow-hidden">
@@ -91,10 +100,20 @@ export default function EventTeamNeededEmail({
                     Hi {recipientName}, {actorName} added {openRoles} to this
                     event. It&apos;s yours to staff.
                   </>
-                ) : (
+                ) : invited.length === 0 ? (
                   <>
                     Hi {recipientName}, {actorName} created this event and left{" "}
                     {teamLabels} for you to staff.
+                  </>
+                ) : openRoles ? (
+                  <>
+                    Hi {recipientName}, {actorName} created this event, invited{" "}
+                    {who} to {invitedTeams} and left the rest for you to staff.
+                  </>
+                ) : (
+                  <>
+                    Hi {recipientName}, {actorName} created this event and invited{" "}
+                    {who} to {invitedTeams}.
                   </>
                 )}
               </Text>
@@ -115,12 +134,28 @@ export default function EventTeamNeededEmail({
                     ) : null}
                   </>
                 ) : null}
-                <Text className="m-0 mt-3 mb-1 text-xs text-gray-500">
-                  Open spots
-                </Text>
-                <Text className="m-0 text-sm font-medium text-gray-900">
-                  {openRoles}
-                </Text>
+                {invited.length > 0 ? (
+                  <>
+                    <Text className="m-0 mt-3 mb-1 text-xs text-gray-500">
+                      Invited
+                    </Text>
+                    {invited.map((person, index) => (
+                      <Text key={index} className="m-0 text-sm font-medium text-gray-900">
+                        {person.name} · {person.role}
+                      </Text>
+                    ))}
+                  </>
+                ) : null}
+                {openRoles ? (
+                  <>
+                    <Text className="m-0 mt-3 mb-1 text-xs text-gray-500">
+                      Open spots
+                    </Text>
+                    <Text className="m-0 text-sm font-medium text-gray-900">
+                      {openRoles}
+                    </Text>
+                  </>
+                ) : null}
               </Section>
 
               <Button

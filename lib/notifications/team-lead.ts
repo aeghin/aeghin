@@ -2,6 +2,7 @@ import "server-only";
 
 import prisma from "@/lib/prisma";
 import {
+  InvitationStatus,
   OrgRole,
   type RoleCategory as Team,
   type VolunteerRole,
@@ -458,6 +459,10 @@ export async function notifyEventCovers({
  * finds their empty spots by opening the event, or from the bell in the last
  * week.
  *
+ * On a new event it also names who the creator invited into their teams, so a
+ * lead whose spots were all filled up front still hears about it. Their own
+ * invitation stays off the list: it reaches them as an invitation.
+ *
  * Only whoever's in charge of the team on this event, and only a lead or a
  * cover: a team with no lead is already the creator's to fill, and the owners
  * are the last resort, not the first call. Also notify stays quiet — they're
@@ -500,7 +505,13 @@ export async function notifyTeamsNeeded({
           teamLeads: { select: { category: true, userId: true } },
           assignments: {
             where: { dismissedAt: null },
-            select: { role: true, status: true, expiresAt: true },
+            select: {
+              userId: true,
+              role: true,
+              status: true,
+              expiresAt: true,
+              user: { select: { firstName: true, lastName: true } },
+            },
           },
           organization: { select: { name: true, logoUrl: true, timeZone: true } },
         },
@@ -516,21 +527,19 @@ export async function notifyTeamsNeeded({
     const now = new Date();
     const spots = parseRoleSpots(event.roleSpots);
 
-    // Each person told, with the roles still open on the teams they handle.
+    // Each person told, with the roles still open on the teams they handle
+    // and, on a new event, who was invited into them.
     const byPerson = new Map<
       string,
       {
         person: Person;
         reason: "cover" | "lead";
         open: { role: VolunteerRole; count: number }[];
+        invited: { name: string; role: VolunteerRole }[];
       }
     >();
 
     for (const role of new Set(roles)) {
-      const { open } = roleStanding(role, spots, event.assignments, now);
-
-      if (open === 0) continue;
-
       const team = teamOfRole(role);
 
       const { people, reason } = roleOwners(directory, {
@@ -547,9 +556,30 @@ export async function notifyTeamsNeeded({
 
       if (!person || person.userId === actor.userId) continue;
 
-      const entry = byPerson.get(person.userId) ?? { person, reason, open: [] };
+      const { open } = roleStanding(role, spots, event.assignments, now);
 
-      entry.open.push({ role, count: open });
+      // Roles added later start empty, so only a new event has anybody to name.
+      const invited = added
+        ? []
+        : event.assignments
+            .filter(
+              (assignment) =>
+                assignment.role === role &&
+                assignment.userId !== person.userId &&
+                assignment.status === InvitationStatus.PENDING &&
+                assignment.expiresAt > now,
+            )
+            .map((assignment) => ({
+              name: `${assignment.user.firstName} ${assignment.user.lastName}`,
+              role,
+            }));
+
+      if (open === 0 && invited.length === 0) continue;
+
+      const entry = byPerson.get(person.userId) ?? { person, reason, open: [], invited: [] };
+
+      if (open > 0) entry.open.push({ role, count: open });
+      entry.invited.push(...invited);
       byPerson.set(person.userId, entry);
     }
 
@@ -561,11 +591,15 @@ export async function notifyTeamsNeeded({
     const serviceTypeName = directory.serviceTypeNames.get(event.serviceTypeId) ?? null;
     const viewLink = `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/organizations/${organizationId}/events/${eventId}`;
 
-    const messages = [...byPerson.values()].map(({ person, reason, open }) => {
+    const messages = [...byPerson.values()].map(({ person, reason, open, invited }) => {
       const teamLabels = names.format(
-        teamsOfRoles(open.map(({ role }) => role)).map(teamLabel),
+        teamsOfRoles([...open, ...invited].map(({ role }) => role)).map(teamLabel),
       );
       const openRoles = open.map(({ role, count }) => spotLabel(role, count)).join(", ");
+      // Only the teams somebody was invited to: a lead of two may have one untouched.
+      const invitedTeams = names.format(
+        teamsOfRoles(invited.map(({ role }) => role)).map(teamLabel),
+      );
 
       // "New event for Band", not "Band needed": that's how a decline reads,
       // and nothing has fallen through yet. The team, not its roles, when
@@ -575,12 +609,12 @@ export async function notifyTeamsNeeded({
         ? `${teamLabels} spots added: ${event.name}`
         : `New event for ${teamLabels}: ${event.name}`;
 
-      return { person, reason, teamLabels, openRoles, subject };
+      return { person, reason, teamLabels, openRoles, invited, invitedTeams, subject };
     });
 
     await sendEmailBatches(
       "event team needed",
-      messages.map(({ person, reason, teamLabels, openRoles, subject }) => ({
+      messages.map(({ person, reason, teamLabels, openRoles, invited, invitedTeams, subject }) => ({
         from: organizationSender(organizationName),
         to: person.email,
         subject,
@@ -593,6 +627,8 @@ export async function notifyTeamsNeeded({
           eventTime: when?.time ?? null,
           teamLabels,
           openRoles,
+          invited: invited.map(({ name, role }) => ({ name, role: volunteerRoleConfig[role].label })),
+          invitedTeams,
           actorName: actor.name,
           added,
           viewLink,
@@ -606,20 +642,30 @@ export async function notifyTeamsNeeded({
 
     await sendPushNotices(
       "event team needed",
-      messages.map(({ person, teamLabels, openRoles, subject }) => ({
-        email: person.email,
-        title: subject,
-        subtitle: organizationName,
-        body: [
-          added
-            ? `${actor.name} added ${openRoles}. It's yours to staff.`
-            : `${actor.name} left ${teamLabels} for you to staff: ${openRoles}.`,
-          short,
-        ]
-          .filter(Boolean)
-          .join("\n"),
-        data: { type: "event", organizationId, eventId },
-      })),
+      messages.map(({ person, teamLabels, openRoles, invited, invitedTeams, subject }) => {
+        // One name, else a count: a whole band's names would push what's left
+        // for them out of sight.
+        const who = invited.length === 1 ? invited[0].name : `${invited.length} people`;
+
+        return {
+          email: person.email,
+          title: subject,
+          subtitle: organizationName,
+          body: [
+            added
+              ? `${actor.name} added ${openRoles}. It's yours to staff.`
+              : invited.length === 0
+                ? `${actor.name} left ${teamLabels} for you to staff: ${openRoles}.`
+                : openRoles
+                  ? `${actor.name} invited ${who} to ${invitedTeams} and left ${openRoles} for you to staff.`
+                  : `${actor.name} invited ${who} to ${invitedTeams}.`,
+            short,
+          ]
+            .filter(Boolean)
+            .join("\n"),
+          data: { type: "event", organizationId, eventId },
+        };
+      }),
     );
   } catch (err) {
     console.error(`Failed to tell leads event ${eventId} needs their teams`, err);

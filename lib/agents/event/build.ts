@@ -12,8 +12,8 @@ import { getTeamNotificationSettings } from "@/lib/services/team-notifications";
 /**
  * The event-draft agent with everything it reads, for the web and phone
  * routes alike: the org's service types, templates and members, and who leads
- * each team — so a draft only picks people for the teams the person drafting
- * staffs. Null when the org has no service type to file an event under.
+ * each team — so the card can say who's in charge of each one. Null when the
+ * org has no service type to file an event under.
  */
 export async function buildEventDraftAgent({
   organizationId,

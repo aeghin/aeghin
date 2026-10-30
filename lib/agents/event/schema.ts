@@ -86,7 +86,7 @@ export const proposeEventInputSchema = z.object({
     )
     .default([])
     .describe(
-      "Who fills what, only on teams the person drafting staffs. A person may appear at most once — one role each.",
+      "Who fills what, on every team except one they asked to leave to its lead. A person may appear at most once — one role each.",
     ),
   covers: z
     .array(
@@ -114,7 +114,7 @@ export const proposeEventInputSchema = z.object({
   summary: z
     .string()
     .describe(
-      "One or two short sentences at the top of the card, or empty. Only what the card can't show: why a spot on your teams is still open, something they asked for that the draft couldn't do, or a service type that may not fit. Never mention dates, days, times, the place, the rehearsal, settings, who picks any team, or why you picked someone: the card shows all of that.",
+      "One or two short sentences at the top of the card, or empty. Only what the card can't show: why a spot is still open, something they asked for that the draft couldn't do, or a service type that may not fit. Never mention dates, days, times, the place, the rehearsal, settings, who's in charge of a team or who's told, or why you picked someone: the card shows all of that.",
     ),
 });
 

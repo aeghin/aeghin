@@ -84,7 +84,7 @@ export type DraftWarning = {
   reason: string;
 };
 
-/** Who picks the people for one team on a draft. */
+/** Who's in charge of one team on a draft: its lead, a cover, or the person drafting. */
 export type DraftTeam = {
   team: Team;
   /** Their full name; the card says "You" when `you`. */
@@ -116,7 +116,7 @@ export type EventDraft = {
   summary: string;
   warnings: DraftWarning[];
   unfilledRoles: VolunteerRole[];
-  /** Who picks each team's people. Absent from drafts made before teams. */
+  /** Who's in charge of each team. Absent from drafts made before teams. */
   teams?: DraftTeam[];
   /** Absent from drafts made before covers. */
   covers?: DraftCover[];
@@ -176,8 +176,8 @@ function buildInstructions(opts: {
 
   const todayWeekday = WEEKDAYS[new Date(`${today}T00:00:00Z`).getUTCDay()];
 
-  // Who staffs each team for each service type, so the model knows before it
-  // picks which teams are this person's to fill.
+  // Who's in charge of each team for each service type: the card names them,
+  // and they're told when the event is created.
   const serviceTypeRows = serviceTypes
     .map((t) => {
       const leads = teamLeads[t.id] ?? {};
@@ -228,11 +228,11 @@ function buildInstructions(opts: {
     )
     .join("\n");
 
-  return `You plan events for "${orgName}" with ${viewer.name}, who is creating one. You draft it — dates, times, place, roles, rehearsal — and pick people for the teams ${you} staffs. You never create anything: your draft fills a card, and ${you} presses the button.
+  return `You plan events for "${orgName}" with ${viewer.name}, who is creating one. You draft it — dates, times, place, roles, rehearsal — and pick its people. You never create anything: your draft fills a card, and ${you} presses the button.
 
 TODAY IS ${today} (${todayWeekday}).
 
-SERVICE TYPES (ref | name | who staffs each team when ${you} creates the event):
+SERVICE TYPES (ref | name | who's in charge of each team when ${you} creates the event):
 ${serviceTypeRows}
 Every event is filed under one of these. There are no others and you cannot create one. If none of them really fits what they asked for, use the closest and say in your summary which one you used and that it may not be the right home — never let a mismatch pass silently.
 
@@ -246,10 +246,11 @@ ${templateRows}
 MEMBERS (ref | name | roles | voice type, for a singer who has one):
 ${rosterRows}
 
-WHO STAFFS WHAT
-Each team on an event has one person picking its people: the team's lead for that service type, or ${you} when it has none.
-- Pick people only for the teams ${you} staffs. For a team somebody else leads, leave its spots open: the card names who fills them, and they're told the moment the event is created.
-- "I'll handle the band this week" makes ${you} the cover for that team on this event, and "Kevin covers the band" hands it to another admin or owner: put either in covers. Whoever covers a team staffs it, so when ${you} covers one, pick its people too. The regular lead is told either way.
+WHO'S IN CHARGE
+Each team on an event has one person in charge of it: the team's lead for that service type, or ${you} when it has none.
+- Pick people for every team the event needs, including the ones somebody else leads. When ${you} creates the event, the invites go out and each lead is told who was invited to their team and what's still open. The card says so.
+- When ${you} asks to leave a team to its lead — "let James pick the band" — leave that team's spots open for James, who is told to fill them.
+- "I'll handle the band this week" makes ${you} the cover for that team on this event, and "Kevin covers the band" hands it to another admin or owner: put either in covers. A cover is in charge of the team on this event only. The regular lead is told either way.
 - Only admins and owners can cover a team.
 
 WHAT THEY ASKED FOR WINS
@@ -276,7 +277,7 @@ PICKING PEOPLE
 - Mention someone's invite record only when it decided the pick, written as "accepted 2 of 3 invites they answered". Under 3 answers it says little, so lean on how rested they are instead.
 - Honour named requests whenever the person can serve. When they can't, say exactly why — blocked out (with the dates), serving another event then (name it), or doesn't hold the role — and offer the best alternative.
 - Never pick anyone who can't serve, and never give one person two roles.
-- Leaving a spot open on a team ${you} staffs is fine; say why in your summary.
+- Leaving a spot open is fine; say why in your summary.
 - Asked why somebody wasn't picked, answer from the facts: they can't serve and why, they don't hold the role, or they ranked lower — and give the numbers.
 - Some roles need more than one person — three BGVs, two guitarists, a template's "BGVS x3". Set roleSpots for those and assign up to that many. Every assignment is somebody wanted there, never a backup, so never assign more people to a role than it needs.
 
@@ -505,17 +506,6 @@ export function createEventDraftAgent(opts: {
           continue;
         }
 
-        // Somebody else's team: they pick its people, and they're told.
-        const handler = handlerOf(teamOfRole(pick.role));
-
-        if (handler.userId !== viewer.userId) {
-          warnings.push({
-            name: label,
-            role: pick.role,
-            reason: `${teamLabel(teamOfRole(pick.role))} is ${handler.name}'s to fill — they'll be told about the event.`,
-          });
-          continue;
-        }
         if (!member.volunteerRoles.includes(pick.role)) {
           warnings.push({
             name: label,
@@ -593,13 +583,9 @@ export function createEventDraftAgent(opts: {
         (r) => assignments.filter((a) => a.role === r).length < spotsFor(roleSpots, r),
       );
 
-      // A pick dropped from a spot still open on a team this person staffs:
-      // somebody else may be free for it, so the agent gets a round to look.
-      const refill = warnings.some(
-        (w) =>
-          unfilledRoles.includes(w.role) &&
-          handlerOf(teamOfRole(w.role)).userId === viewer.userId,
-      );
+      // A pick dropped from a spot still open: somebody else may be free for
+      // it, so the agent gets a round to look.
+      const refill = warnings.some((w) => unfilledRoles.includes(w.role));
 
       return {
         ok: true,
@@ -645,7 +631,7 @@ export function createEventDraftAgent(opts: {
               ? `Not picked: ${output.draft.warnings.map((w) => `${w.name} for ${volunteerRoleConfig[w.role].label} — ${w.reason}`).join("; ")}`
               : "",
             output.refill
-              ? "Those leave spots open on your teams. Replace them with someone free — call checkAvailability for those roles first, as your list may be out of date — or leave them open and say why in the summary. Then call proposeEvent again with the whole draft."
+              ? "Those leave spots open. Replace them with someone free — call checkAvailability for those roles first, as your list may be out of date — or leave them open and say why in the summary. Then call proposeEvent again with the whole draft."
               : "",
           ]
             .filter(Boolean)
